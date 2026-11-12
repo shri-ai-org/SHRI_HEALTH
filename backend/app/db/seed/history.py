@@ -123,7 +123,7 @@ M54_50 = icd("M54.50", "Low back pain, unspecified")
 G89_29 = icd("G89.29", "Other chronic pain")
 J45_40 = icd("J45.40", "Moderate persistent asthma, uncomplicated")
 J30_2 = icd("J30.2", "Other seasonal allergic rhinitis")
-Z85_3 = icd("Z85.3", "Personal history of malignant neoplasm of breast")
+C50_912 = icd("C50.912", "Malignant neoplasm of unspecified site of left female breast")
 Z92_3 = icd("Z92.3", "Personal history of irradiation")
 Z79_811 = icd("Z79.811", "Long term (current) use of aromatase inhibitors")
 G43_009 = icd("G43.009", "Migraine without aura, not intractable, without status "
@@ -231,13 +231,14 @@ class Reading:
     weight_lb: Decimal                        # [lb_av] (D69: as entered)
     spo2: int | None = None                   # % at rest; asthma and COPD only
     temperature_f: Decimal | None = None      # [degF]; taken at visits only
+    respiratory_rate: int | None = None       # /min; taken at visits only
 
 
 def r(day: str, bp: str, heart_rate: int, weight: str, spo2: int | None = None,
-      temperature: str | None = None) -> Reading:
+      temperature: str | None = None, rr: int | None = None) -> Reading:
     systolic, diastolic = bp.split("/")
     return Reading(dt.date.fromisoformat(day), (int(systolic), int(diastolic)), heart_rate,
-                   Decimal(weight), spo2, Decimal(temperature) if temperature else None)
+                   Decimal(weight), spo2, Decimal(temperature) if temperature else None, rr)
 
 
 #: Six to eight readings in the year before the demo for each history patient, oldest first, so the
@@ -248,46 +249,46 @@ def r(day: str, bp: str, heart_rate: int, weight: str, spo2: int | None = None,
 #: propranolol; Maria Gonzalez's saturation dips with her February exacerbation and recovers after
 #: rehabilitation. A visit's day must have a reading (a test checks).
 VITALS: dict[int, tuple[Reading, ...]] = {
-    2: (r("2025-12-09", "148/90", 78, "212", temperature="98.4"),
+    2: (r("2025-12-09", "148/90", 78, "212", temperature="98.4", rr=16),
         r("2026-01-20", "144/88", 77, "211"),
-        r("2026-03-10", "140/86", 76, "208", temperature="98.2"),
+        r("2026-03-10", "140/86", 76, "208", temperature="98.2", rr=16),
         r("2026-04-28", "136/84", 75, "206"),
-        r("2026-06-16", "132/82", 74, "204", temperature="98.4"),
+        r("2026-06-16", "132/82", 74, "204", temperature="98.4", rr=16),
         r("2026-08-04", "130/80", 73, "202"),
-        r("2026-09-15", "128/78", 72, "201", temperature="98.3"),
+        r("2026-09-15", "128/78", 72, "201", temperature="98.3", rr=16),
         r("2026-10-27", "126/76", 72, "200")),
-    3: (r("2025-11-18", "126/80", 74, "176", temperature="98.4"),
+    3: (r("2025-11-18", "126/80", 74, "176", temperature="98.4", rr=16),
         r("2026-01-06", "125/79", 73, "175"),
-        r("2026-02-24", "124/78", 72, "174", temperature="98.2"),
+        r("2026-02-24", "124/78", 72, "174", temperature="98.2", rr=16),
         r("2026-04-07", "123/78", 71, "173"),
-        r("2026-06-02", "122/78", 70, "172", temperature="98.5"),
+        r("2026-06-02", "122/78", 70, "172", temperature="98.5", rr=16),
         r("2026-07-21", "124/79", 71, "171"),
-        r("2026-09-29", "128/82", 76, "171", temperature="98.4")),
-    4: (r("2025-12-02", "122/78", 76, "186", spo2=95, temperature="98.6"),
+        r("2026-09-29", "128/82", 76, "171", temperature="98.4", rr=16)),
+    4: (r("2025-12-02", "122/78", 76, "186", spo2=95, temperature="98.6", rr=18),
         r("2026-01-13", "120/76", 74, "186", spo2=97),
-        r("2026-03-31", "120/76", 72, "185", spo2=97, temperature="98.4"),
+        r("2026-03-31", "120/76", 72, "185", spo2=97, temperature="98.4", rr=18),
         r("2026-05-12", "118/74", 70, "184", spo2=98),
-        r("2026-08-11", "118/76", 70, "184", spo2=98, temperature="98.3"),
+        r("2026-08-11", "118/76", 70, "184", spo2=98, temperature="98.3", rr=18),
         r("2026-10-06", "118/76", 68, "183", spo2=98)),
-    5: (r("2026-01-13", "130/82", 72, "148", temperature="98.4"),
+    5: (r("2026-01-13", "130/82", 72, "148", temperature="98.4", rr=16),
         r("2026-03-03", "126/80", 70, "149"),
-        r("2026-04-21", "128/80", 70, "149", temperature="98.2"),
-        r("2026-07-28", "126/80", 68, "150", temperature="98.4"),
+        r("2026-04-21", "128/80", 70, "149", temperature="98.2", rr=16),
+        r("2026-07-28", "126/80", 68, "150", temperature="98.4", rr=16),
         r("2026-09-01", "124/78", 68, "150"),
-        r("2026-10-20", "128/78", 70, "151", temperature="98.3")),
-    6: (r("2025-12-16", "124/80", 74, "165", temperature="98.4"),
+        r("2026-10-20", "128/78", 70, "151", temperature="98.3", rr=16)),
+    6: (r("2025-12-16", "124/80", 74, "165", temperature="98.4", rr=16),
         r("2026-01-20", "120/78", 66, "166"),
-        r("2026-04-14", "116/74", 62, "166", temperature="98.2"),
+        r("2026-04-14", "116/74", 62, "166", temperature="98.2", rr=16),
         r("2026-06-09", "116/74", 61, "165"),
-        r("2026-08-25", "114/72", 60, "165", temperature="98.5"),
+        r("2026-08-25", "114/72", 60, "165", temperature="98.5", rr=16),
         r("2026-10-13", "114/72", 60, "164")),
-    7: (r("2025-11-25", "136/84", 82, "158", spo2=94, temperature="98.4"),
-        r("2026-01-08", "134/82", 80, "157", spo2=93),
-        r("2026-02-17", "138/86", 96, "156", spo2=89, temperature="99.1"),
-        r("2026-03-03", "136/84", 84, "156", spo2=92),
-        r("2026-05-19", "134/82", 80, "157", spo2=94, temperature="98.2"),
-        r("2026-07-14", "130/80", 76, "158", spo2=95),
-        r("2026-09-08", "132/80", 78, "158", spo2=94, temperature="98.4")),
+    7: (r("2025-11-25", "124/76", 82, "158", spo2=94, temperature="98.4", rr=18),
+        r("2026-01-08", "122/74", 80, "157", spo2=93),
+        r("2026-02-17", "132/80", 96, "156", spo2=89, temperature="99.1", rr=24),
+        r("2026-03-03", "124/76", 84, "156", spo2=92),
+        r("2026-05-19", "122/74", 80, "157", spo2=94, temperature="98.2", rr=18),
+        r("2026-07-14", "120/72", 76, "158", spo2=95),
+        r("2026-09-08", "122/74", 78, "158", spo2=94, temperature="98.4", rr=18)),
 }
 
 
@@ -321,15 +322,19 @@ HISTORY: dict[int, History] = {
                       "change. Walking most days.",
                       "Heart regular, lungs clear, no edema. Point-of-care A1c 7.2%. LDL "
                       "92 mg/dL.",
-                      "Diabetes near goal. Hypertension improving. Lipids at goal.",
-                      "No changes. Diabetic eye exam referral. Revisit in 3 months.",
-                      "Keep taking your medicines as you are. Book the eye exam.",
+                      "Diabetes near goal. Hypertension improving. LDL above goal for diabetes "
+                      "(under 70).",
+                      "Increase atorvastatin to 40 mg at bedtime (high intensity). Diabetic eye "
+                      "exam referral. Revisit in 3 months.",
+                      "Take atorvastatin 40 mg at bedtime. Book the eye exam.",
                       (E11_9, I10, E78_5)),
             PastVisit(dt.date(2026, 9, 15), "Quarterly diabetes and blood pressure visit",
                       "Log averages 126/78. Eye exam done in August: no retinopathy. Feels "
                       "well.",
-                      "Heart regular, lungs clear, feet intact. Point-of-care A1c 7.1%.",
-                      "Type 2 diabetes at goal (under 7.5% for age). Hypertension at goal.",
+                      "Heart regular, lungs clear, feet intact. Point-of-care A1c 7.1%. LDL "
+                      "66 mg/dL.",
+                      "Type 2 diabetes at goal (under 7.5% for age). Hypertension at goal. LDL "
+                      "at goal on atorvastatin 40 mg.",
                       "Continue metformin, lisinopril and atorvastatin. Influenza vaccine "
                       "given. Revisit in November.",
                       "Same medicines. Next visit in about two months.",
@@ -340,16 +345,17 @@ HISTORY: dict[int, History] = {
                                  "20 mg (March 2026)."),
             Problem(E11_9, "2018", "Point-of-care A1c 7.1% in September 2026; goal under 7.5%. "
                                    "No retinopathy (August 2026)."),
-            Problem(E78_5, "2016", "LDL 92 mg/dL in June 2026 on atorvastatin 20 mg."),
+            Problem(E78_5, "2016", "LDL 66 mg/dL in September 2026 on atorvastatin 40 mg (goal "
+                                   "under 70 with diabetes); 92 on 20 mg in June."),
             Problem(Z87_891, "2005", "Quit smoking in 2005 after about 25 pack-years."),
         ),
         allergies=(
-            Allergy(rx("7980", "penicillin G"), "allergy", "low",
+            Allergy(rx("723", "amoxicillin"), "allergy", "low",
                     sct("247472004", "Hives"), "moderate",
                     "Itchy hives over the trunk within hours of the first dose.",
                     dt.date(1979, 6, 1),
-                    "Given for strep throat as a teenager. Has taken cephalexin since without a "
-                    "reaction."),
+                    "Given for strep throat at age 20. Treat as a penicillin allergy. Has taken "
+                    "cephalexin since without a reaction."),
         ),
         medications=(
             Medication(rx("861007", "metFORMIN HCl 500 MG Oral Tablet"),
@@ -361,9 +367,11 @@ HISTORY: dict[int, History] = {
                        dt.date(2015, 9, 3), DR_LINDQVIST,
                        "For hypertension; increased to 20 mg on 2026-03-10 by "
                        f"{DR_HALVORSEN}."),
-            Medication(rx("617310", "atorvastatin calcium 20 MG Oral Tablet"),
-                       "20 mg (1 tablet) by mouth at bedtime",
-                       dt.date(2016, 11, 8), DR_LINDQVIST, "For hyperlipidemia."),
+            Medication(rx("617311", "atorvastatin calcium 40 MG Oral Tablet"),
+                       "40 mg (1 tablet) by mouth at bedtime",
+                       dt.date(2016, 11, 8), DR_LINDQVIST,
+                       "For hyperlipidemia; increased from 20 mg to 40 mg on 2026-06-16 by "
+                       f"{DR_HALVORSEN} (LDL goal under 70 with diabetes)."),
         ),
         family=(
             Relative(role("FTH", "father"), "male",
@@ -497,8 +505,9 @@ HISTORY: dict[int, History] = {
                       (J45_40,)),
         ),
         problems=(
-            Problem(J45_40, "1990", "Childhood asthma; moderate persistent since 2015. Aspirin "
-                                    "causes wheezing: avoid NSAIDs."),
+            Problem(J45_40, "1990", "Childhood asthma, mild intermittent for years; moderate "
+                                    "persistent since late 2025, on a daily controller from "
+                                    "December 2025. Aspirin causes wheezing: avoid NSAIDs."),
             Problem(J30_2, "2000", "Spring pollen allergy; montelukast in season."),
         ),
         allergies=(
@@ -553,7 +562,7 @@ HISTORY: dict[int, History] = {
                       "advised. Mammogram due in April.",
                       "Acetaminophen up to 2 tablets three times a day for aches. Keep taking "
                       "anastrozole every day.",
-                      (Z85_3, Z79_811)),
+                      (C50_912, Z79_811)),
             PastVisit(dt.date(2026, 4, 21), "Follow-up after mammogram",
                       "Screening mammogram on 7 April 2026 (outside imaging): no evidence of "
                       "malignancy. Joint aches better with walking.",
@@ -561,7 +570,7 @@ HISTORY: dict[int, History] = {
                       "No recurrence. Aromatase-inhibitor arthralgia, improving.",
                       "Bone density scan ordered (on anastrozole). Continue current plan.",
                       "Book the bone density scan.",
-                      (Z85_3, Z79_811)),
+                      (C50_912, Z79_811)),
             PastVisit(dt.date(2026, 7, 28), "Bone density results",
                       "Bone density scan on 9 July 2026: osteopenia, lowest T-score -1.8 at "
                       "the left hip. No fractures. Little dairy in her diet.",
@@ -570,7 +579,7 @@ HISTORY: dict[int, History] = {
                       "Calcium 600 mg with vitamin D3 400 units twice daily, weight-bearing "
                       "exercise. Repeat the scan in two years.",
                       "Take calcium with vitamin D twice a day with meals.",
-                      (Z85_3, Z79_811)),
+                      (C50_912, Z79_811)),
             PastVisit(dt.date(2026, 10, 20), "Review of the oncology follow-up",
                       "Seen by her oncologist on 6 October 2026: no evidence of disease; "
                       "anastrozole extended to seven years in total (to September 2028).",
@@ -580,10 +589,10 @@ HISTORY: dict[int, History] = {
                       "Continue anastrozole, calcium and vitamin D. Mammogram April 2027. "
                       "Oncology every 6 months.",
                       "Same medicines. Next mammogram in April.",
-                      (Z85_3, Z79_811)),
+                      (C50_912, Z79_811)),
         ),
         problems=(
-            Problem(Z85_3, "2021-03", "Left breast invasive ductal carcinoma, stage IA, ER and "
+            Problem(C50_912, "2021-03", "Left breast invasive ductal carcinoma, stage IA, ER and "
                                       "PR positive, HER2 negative. Lumpectomy and sentinel node "
                                       "biopsy April 2021, then radiation. No recurrence."),
             Problem(Z92_3, "2021-06", "Whole-breast radiation to the left breast, completed "
@@ -632,7 +641,7 @@ HISTORY: dict[int, History] = {
                     "Left axilla, same operation; nodes negative."),
         ),
         height_in=Decimal("64"),
-        last_follow_up=(6, "Will book after her October oncology visit."),
+        last_follow_up=(6, "Will book after her next oncology visit, in April 2027."),
     ),
     6: History(  # David Nguyen, 39: migraine (restricted chart)
         visits=(
@@ -719,8 +728,9 @@ HISTORY: dict[int, History] = {
                       "Temperature 99.1 F. Diffuse wheeze, no crackles.",
                       "COPD exacerbation, moderate.",
                       "Prednisone 40 mg daily for 5 days and doxycycline for 5 days (completed). "
-                      "Albuterol every 4 hours while symptomatic. Revisit in 2 weeks if not "
-                      "better.",
+                      "Step up from tiotropium to tiotropium/olodaterol 2.5/2.5 mcg, 2 puffs "
+                      "once daily (LAMA + LABA after an exacerbation). Albuterol every 4 hours "
+                      "while symptomatic. Revisit in 2 weeks if not better.",
                       "Finish the prednisone and antibiotic. Go to the emergency department if "
                       "your breathing gets worse.",
                       (J44_1,)),
@@ -729,7 +739,7 @@ HISTORY: dict[int, History] = {
                       "twice a week.",
                       "Lungs: mildly prolonged expiration, no wheeze.",
                       "COPD, back to baseline. Knee osteoarthritis, stable.",
-                      "Continue tiotropium. Pulmonary rehabilitation referral.",
+                      "Continue tiotropium/olodaterol. Pulmonary rehabilitation referral.",
                       "Book pulmonary rehabilitation. Keep walking daily.",
                       (J44_9, M17_0)),
             PastVisit(dt.date(2026, 9, 8), "Knee pain follow-up and flu vaccine",
@@ -756,10 +766,12 @@ HISTORY: dict[int, History] = {
                     dt.date(2017, 3, 2), "No ACE inhibitors."),
         ),
         medications=(
-            Medication(rx("485032", "tiotropium 18 MCG Inhalation Powder"),
-                       "inhale the contents of 1 capsule (18 mcg) once daily with the inhaler "
-                       "device",
-                       dt.date(2016, 10, 4), DR_LINDQVIST, "COPD maintenance."),
+            Medication(rx("1651274", "tiotropium bromide 2.5 MCG / olodaterol 2.5 MCG per INHAL "
+                                     "Metered Dose Inhalation Spray, 60 ACTUAT"),
+                       "2 inhalations by mouth once daily",
+                       dt.date(2026, 2, 17), DR_HALVORSEN,
+                       "COPD maintenance, stepped up from tiotropium 18 mcg (since 2016-10-04) "
+                       "after the February exacerbation."),
             Medication(rx("801092", "albuterol 90 MCG/INHAL Metered Dose Inhaler, 60 ACTUAT, "
                                     "generic for Ventolin"),
                        "2 puffs by mouth every 4 to 6 hours as needed for shortness of breath",
@@ -849,7 +861,8 @@ def _vitals(reading: Reading, height_in: Decimal | None) -> tuple[fs.VitalIn, ..
             + measured("body-weight", reading.weight_lb, "[lb_av]")
             + measured("body-height", height_in, "[in_i]")
             + measured("body-temperature", reading.temperature_f, "[degF]")
-            + measured("oxygen-saturation", reading.spo2, "%"))
+            + measured("oxygen-saturation", reading.spo2, "%")
+            + measured("respiratory-rate", reading.respiratory_rate, "/min"))
 
 
 async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID, n: int,
@@ -892,8 +905,7 @@ async def _visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uuid.UUID
     db.add(M["encounter_follow_up"](
         id=sid(PA_FOLLOW_UP, n), encounter_id=encounter, patient_id=patient_id,
         interval_value=months, interval_unit="month", appointment_type_id=FOLLOW_UP_TYPE,
-        practitioner_id=DOCTOR, note=f"Revisit in {months} months for {visit.assessment[0].lower()}"
-                                     f"{visit.assessment[1:]}",
+        practitioner_id=DOCTOR, note=f"Revisit in {months} months: {visit.reason}.",
         status="booked" if booked else "declined", booked_appointment_id=booked,
         status_reason=declined, requested_by_user_id=DOCTOR_USER,
         requested_at=start + dt.timedelta(minutes=35)))
@@ -992,10 +1004,11 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
             note=a.note,
             reactions=(fs.ReactionIn(manifestations=(a.manifestation,), severity=a.severity,
                                      description=a.description, onset=_noon(a.onset)),)))
-    for m in h.medications:
+    started_at = {v.day: e for v, e in zip(h.visits, visits, strict=True)}
+    for m in h.medications:         # at the visit it started at, or where the list was taken
         await store.record_medication(db, fs.MedicationIn(
             patient_id=patient_id, medication=m.product, dosage_text=m.sig, note=m.note,
-            encounter_id=first))
+            encounter_id=started_at.get(m.started, first)))
     for r in h.family:
         await store.create_family_history(db, fs.FamilyHistoryIn(
             patient_id=patient_id, relationship=r.relationship, sex=r.sex,

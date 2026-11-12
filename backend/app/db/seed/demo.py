@@ -147,7 +147,7 @@ PATIENTS = (
            EmergencyContact("Susan", "Miller", "WIFE", "wife", "+12175550152", "female",
                             dt.date(1960, 2, 19)), history=True),
     _shown(3, "Linda", "Thompson", dt.date(1969, 3, 18), "female", 1,
-           (dt.time(10, 0), "FU", 2), "D", BLACK, NOT_HISPANIC, "Warehouse supervisor",
+           (dt.time(10, 0), "FU", 3), "D", BLACK, NOT_HISPANIC, "Warehouse supervisor",
            "Transportation and warehousing", "Example Logistics Inc. (synthetic)",
            EmergencyContact("Karen", "Thompson", "SIS", "sister", "+12175550153", "female",
                             dt.date(1972, 8, 4), "53 Example Court"),
