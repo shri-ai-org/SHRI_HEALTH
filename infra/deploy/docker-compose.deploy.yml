@@ -186,6 +186,9 @@ services:
       dockerfile: ../infra/deploy/nginx/Dockerfile
       args:
         SHRI_BASE_PATH: ${SHRI_BASE_PATH:-}
+        # The screens' build stamp (deploy.sh, from the checkout it deploys).
+        SHRI_BUILD_COMMIT: ${SHRI_BUILD_COMMIT:-}
+        SHRI_BUILD_DAY_VERSION: ${SHRI_BUILD_DAY_VERSION:-0}
         # The AI features the screens show, fixed at build time: "on" only with
         # SHRI_DEMO_AI_SCREENS=true on a demo host (deploy.sh), "off" otherwise.
         VITE_FEATURE_AI_NOTE_DRAFT: ${SHRI_WEB_AI:-off}

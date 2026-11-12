@@ -181,6 +181,13 @@ load_env() {
     # Our edge as this host reaches it (127.0.0.1), with the paths it serves (no base path).
     EDGE_URL="https://$SHRI_HOSTNAME:$SHRI_HTTPS_PORT"
     SHRI_RELEASE="$(git -C "$REPO" rev-parse --short=12 HEAD)"
+    # The screens' build stamp (front office and doctors' portal): the image has no git, so the
+    # commit and the day's version (that day's commits up to this one, India time, as the apps
+    # count them) come from this checkout.
+    export SHRI_BUILD_COMMIT="$SHRI_RELEASE"
+    SHRI_BUILD_DAY_VERSION="$(git -C "$REPO" rev-list --count \
+        --since="$(TZ=Asia/Kolkata date +%Y-%m-%d)T00:00:00+05:30" HEAD 2>/dev/null || echo 0)"
+    export SHRI_BUILD_DAY_VERSION
     SHRI_BUILD_VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$REPO/backend/pyproject.toml" | head -1)"
     mkdir -p "$SHRI_STATE_DIR" && chmod 700 "$SHRI_STATE_DIR"
     case "${TLS_MODE:-self-signed}" in
@@ -441,6 +448,11 @@ check() {
             DEMO_EVENTS_CHECK_ONLY=1 sh "$REPO/infra/keycloak/reset-demo-users.sh" \
             || die "the authenticator code is skipped, but sign-in events aren't stored in both realms"
     fi
+    # The screens' build stamp names this release, never "commit unknown".
+    for app in front-office clinician; do
+        $DC exec -T nginx sh -c "grep -q 'commit $SHRI_RELEASE' /srv/shri-web/$app/assets/*.js" \
+            || die "the $app screens don't show this release in their build stamp"
+    done
     # Nothing of ours listens beyond 127.0.0.1, except our edge on a host of our own.
     local mapping
     while read -r mapping; do

@@ -11,6 +11,9 @@ FROM node:24.22.0-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616
 # shared host's path (deploy.sh, README "Two ways to serve it"); each app reads its own base
 # setting (front-office: BASE_PATH, doctors-portal: PORTAL_BASE), so no app file changes.
 ARG SHRI_BASE_PATH=""
+# The build stamp: the image has no git, so deploy.sh passes the commit and the day's version.
+ARG SHRI_BUILD_COMMIT=""
+ARG SHRI_BUILD_DAY_VERSION="0"
 # The AI features the screens show (Vite reads VITE_* from the environment at build time; an
 # ARG is in the environment of the RUN steps below). "on" shows a feature, anything else hides it;
 # deploy.sh passes "on" only for SHRI_DEMO_AI_SCREENS=true on a demo host.
