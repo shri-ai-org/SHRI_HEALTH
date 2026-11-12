@@ -5,9 +5,18 @@
  *
  * The server decides when the session ends. Before this tab warns or ends the session, it re-reads
  * `GET /auth/session` (which never counts as activity), so work in another tab keeps it alive.
- * When the session has ended, the tab shows a sign-in prompt and starts a new login only when the
- * user asks: an automatic redirect could sign the same user back in through Keycloak on a shared
- * workstation, which would defeat the automatic sign-out.
+ * Nobody signed in (`not-signed-in`, the first read of a fresh visit): the tab goes straight to the
+ * sign-in form, with no page of its own before it (Thulasi on #85, 12 Nov). A session that ended
+ * here (`expired`, `signed-out`) keeps its prompt and starts a new login only when the user asks, so
+ * the user sees why, and a sign-out never looks as if it failed. A signed-in tab whose session
+ * disappears on a re-read counts as `expired`, never as `not-signed-in`.
+ *
+ * A guard against a redirect loop (Vimal on #304): the tab counts its trips to the sign-in form in
+ * `sessionStorage` (a count and a time only, no patient or user data). A browser that comes back
+ * still signed out twice in a row, each within a minute, stops being redirected and sees one line,
+ * "Sign-in didn't complete. Try again.", whose link starts the sign-in again. Normally nobody sees
+ * it. Without `sessionStorage` the tab just keeps redirecting: Keycloak always shows its form
+ * (`prompt=login`), so each trip stops there. The "not signed in" page itself never shows.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IdleTimeoutWarning } from '../design-system'
@@ -35,9 +44,57 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null)
 
-/** Full-page navigation: the server sends the browser to Keycloak (`GET /auth/login`). Only on a user's click. */
+/** Full-page navigation: the server sends the browser to Keycloak (`GET /auth/login`). */
 export function goToSignIn(): void {
   window.location.assign(`${API_BASE}/auth/login`)
+}
+
+/** This tab's recent trips to the sign-in form: `count:time` (ms since the epoch), nothing else. */
+const SIGN_IN_TRIES_KEY = 'shri.session.signInTries'
+/** A return later than this after the last trip starts a new count. */
+const SIGN_IN_TRY_WINDOW_MS = 60_000
+/** Back still signed out after this many trips in a row: stop redirecting. */
+const SIGN_IN_MAX_TRIES = 2
+
+/** True, and the trip counted, when this tab may go to sign in on its own now. */
+function mayAutoSignIn(): boolean {
+  try {
+    const [count = 0, at = 0] = (window.sessionStorage.getItem(SIGN_IN_TRIES_KEY) ?? '').split(':').map(Number)
+    const tries = at > 0 && Date.now() - at < SIGN_IN_TRY_WINDOW_MS ? count : 0
+    if (tries >= SIGN_IN_MAX_TRIES) return false
+    window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `${tries + 1}:${Date.now()}`)
+    return true
+  } catch {
+    return true // no storage: keep redirecting; Keycloak's form stops each trip (prompt=login)
+  }
+}
+
+/** A sign-in the user asked for (a link or button): a new count of one trip, then the form. */
+function signInAgain(): void {
+  try {
+    window.sessionStorage.setItem(SIGN_IN_TRIES_KEY, `1:${Date.now()}`)
+  } catch {
+    // no storage: nothing to count
+  }
+  goToSignIn()
+}
+
+/** This page load's answer from `mayAutoSignIn`, once asked, and whether it has left already. */
+let autoSignInDecision: boolean | undefined
+let autoSignInLeft = false
+
+/** For tests: forget this page load's answer, as a new page load would. */
+export function resetAutoSignInForTests(): void {
+  autoSignInDecision = undefined
+  autoSignInLeft = false
+}
+
+function forgetAutoSignIn(): void {
+  try {
+    window.sessionStorage.removeItem(SIGN_IN_TRIES_KEY)
+  } catch {
+    // nothing to forget
+  }
 }
 
 /** The idle warning shows this long before `idleExpiresAt` (13 of 15 minutes; SECURITY_MODEL §2.1). */
@@ -64,6 +121,7 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
   const statusRef = useRef<SessionState['status']>('loading')
 
   const signedIn = useCallback((read: SessionRead) => {
+    forgetAutoSignIn()
     setCsrfToken(read.session.csrfToken)
     if (read.clockOffsetMs !== null) setClockOffsetMs(read.clockOffsetMs)
     statusRef.current = 'signed-in'
@@ -86,8 +144,12 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
 
   const reload = useCallback(async () => {
     const result = await readSession()
-    if (result === null) end('not-signed-in')
-    else if (result !== 'unchanged') signedIn(result)
+    // A session that ended under a signed-in tab is `expired`, and a tab already showing why it
+    // was signed out keeps showing it: neither ever turns into the automatic redirect.
+    if (result === null) {
+      if (statusRef.current === 'signed-in') end('expired')
+      else if (statusRef.current !== 'signed-out') end('not-signed-in')
+    } else if (result !== 'unchanged') signedIn(result)
   }, [end, signedIn])
 
   // The first read decides what the page shows. A failed one shows "can't reach the server", not
@@ -214,7 +276,8 @@ export function SessionProvider({ children, signedOut, reloadDelayMs = 1000 }: S
           />
         </>
       ) : state.status === 'signed-out' ? (
-        (signedOut?.(state.reason) ?? <SignInPrompt reason={state.reason} />)
+        (signedOut?.(state.reason) ??
+        (state.reason === 'not-signed-in' ? <AutoSignIn /> : <SignInPrompt reason={state.reason} />))
       ) : state.status === 'unreachable' ? (
         <UnreachablePrompt onRetry={retryFirstRead} />
       ) : null}
@@ -251,8 +314,10 @@ function offsetFrom(headers: Headers): number | null {
   return Math.abs(offset) < 2000 ? 0 : offset
 }
 
-const PROMPT: Record<SignedOutReason, { title: string; text: string }> = {
-  'not-signed-in': { title: 'Sign in to Shri Health', text: "You're not signed in." },
+/** A session that ended here: why, and a sign-in on the user's click. Nobody signed in has no page. */
+type EndedReason = Exclude<SignedOutReason, 'not-signed-in'>
+
+const PROMPT: Record<EndedReason, { title: string; text: string }> = {
   expired: {
     title: 'You were signed out',
     text: 'For patient privacy, you were signed out after a period of inactivity or at the end of your session.',
@@ -260,15 +325,59 @@ const PROMPT: Record<SignedOutReason, { title: string; text: string }> = {
   'signed-out': { title: 'You have signed out', text: 'Sign in again to continue.' },
 }
 
-function SignInPrompt({ reason }: { reason: SignedOutReason }) {
+function SignInPrompt({ reason }: { reason: EndedReason }) {
   const { title, text } = PROMPT[reason]
   return (
     <main className="mx-auto mt-24 max-w-md px-4 text-center">
       <h1 className="text-xl font-semibold text-ink">{title}</h1>
       <p className="mt-2 text-ink-muted">{text}</p>
       <div className="mt-6">
-        <Button onClick={goToSignIn}>Sign in</Button>
+        <Button onClick={signInAgain}>Sign in</Button>
       </div>
+    </main>
+  )
+}
+
+/** Nobody signed in: straight to the sign-in form, once (see the guard above); else the prompt. */
+function AutoSignIn() {
+  // Decided once per page load: React's development double render must not count as a return.
+  autoSignInDecision ??= mayAutoSignIn()
+  const leaving = autoSignInDecision
+  useEffect(() => {
+    // Once per page load: React's development double effect must not send the browser twice.
+    if (leaving && !autoSignInLeft) {
+      autoSignInLeft = true
+      goToSignIn()
+    }
+  }, [leaving])
+  if (!leaving) return <SignInDidNotComplete />
+  return (
+    <main className="mx-auto mt-24 max-w-md px-4 text-center">
+      <p role="status" className="text-ink-muted">
+        Taking you to sign in…
+      </p>
+    </main>
+  )
+}
+
+/** Back still signed out twice in a row: one line, and a link that starts the sign-in again. */
+function SignInDidNotComplete() {
+  return (
+    <main className="mx-auto mt-24 max-w-md px-4 text-center">
+      <p className="text-ink">
+        Sign-in didn’t complete.{' '}
+        <a
+          href={`${API_BASE}/auth/login`}
+          onClick={(e) => {
+            e.preventDefault()
+            signInAgain()
+          }}
+          className="font-semibold text-primary-700 underline underline-offset-2"
+        >
+          Try again
+        </a>
+        .
+      </p>
     </main>
   )
 }

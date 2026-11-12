@@ -185,7 +185,11 @@ patient_id)` reads it back (name, NCPDP ID, phone, address, when chosen), or Non
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
 MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the
 prescriber isn't known), with the sig and a note; never signed, and the database never lets one
-be sent (`shri_erx_order_only`). The prescription helpers treat it as not found.
+be sent (`shri_erx_order_only`). The prescription helpers treat it as not found. It is recorded
+at the database's `now()` (`authoredOn`, the list's `recordedAt`), which can't change once written
+(`shri_medication_request_guard`); only the demo seed's import records one at its past visit's
+start, through the private `_record_medication(db, data, at)`, with a "synthetic demo import"
+Provenance.
 
 The prescription helpers (D97), on the same rules. A prescription is a MedicationRequest, intent
 `order`, written by the current user's practitioner:

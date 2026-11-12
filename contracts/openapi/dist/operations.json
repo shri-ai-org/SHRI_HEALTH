@@ -372,6 +372,17 @@
    "path": "/api/v1/cosign-rules",
    "permission": "cosign-rules:create"
   },
+  "createDifferential": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/differentials",
+   "permission": "chart-summaries:create"
+  },
   "createDownloadUrl": {
    "audit": {
     "action": "R",
@@ -455,6 +466,17 @@
    "method": "POST",
    "path": "/api/v1/messages",
    "permission": "messages:create"
+  },
+  "createMorningBrief": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/morning-briefs",
+   "permission": "chart-summaries:create"
   },
   "createNote": {
    "audit": {
@@ -765,6 +787,17 @@
    "path": "/api/v1/patients/{patientId}/coverages/{coverageId}",
    "permission": "coverages:read"
   },
+  "getDifferential": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/differentials/{differentialId}",
+   "permission": "chart-summaries:read"
+  },
   "getEligibilityCheck": {
    "audit": {
     "action": "R",
@@ -867,6 +900,17 @@
    "method": "GET",
    "path": "/api/v1/me",
    "permission": "authenticated"
+  },
+  "getMorningBrief": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/morning-briefs/{morningBriefId}",
+   "permission": "chart-summaries:read"
   },
   "getMyFavorites": {
    "audit": {
