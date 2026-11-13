@@ -16,6 +16,7 @@ import {
   addEncounterDiagnosis,
   removeEncounterDiagnosis,
   addNoteAddendum,
+  createAfterVisitSummary,
   getEncounter,
   createNote,
   getNote,
@@ -347,6 +348,20 @@ export async function searchPharmacies(query: string): Promise<RxPharmacy[]> {
   if (q.length < 2) return []
   const res = await listPharmacies(/^\d{5}$/.test(q) ? { postalCode: q, limit: 8 } : { q, limit: 8 })
   return res.status === 200 ? res.data.items.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, detail: pharmacyDetail(p.address, p.mailOrder) })) : []
+}
+
+/**
+ * The after-visit summary, made from the note just signed (createAfterVisitSummary, D98: MD and
+ * APP), so the front desk can print it at check-out (demo step 11). It runs in the background
+ * (202); nothing waits for it. A role that may not make one (403) is left alone; any other failure
+ * says so, and the summary is made again from the next signed version.
+ */
+function requestAfterVisitSummary(encounterId: string): void {
+  createAfterVisitSummary(encounterId, undefined, { 'Idempotency-Key': newIdempotencyKey() }).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) return
+    const copy = error instanceof ApiError ? problemCopy(error.problem) : null
+    useUI.getState().toast({ tone: 'caution', title: 'The after-visit summary was not made', detail: copy?.message ?? 'Check-out still works; tell the front desk there is no summary to print.' })
+  })
 }
 
 export const useClinical = create<NoteState>()((set, get) => {
@@ -794,7 +809,10 @@ export const useClinical = create<NoteState>()((set, get) => {
         signed = get().notes[encounterId].status
       }).then(
         // What the server made of it: signed, or waiting for the co-signer its rule names.
-        () => signed,
+        () => {
+          if (signed === 'signed') requestAfterVisitSummary(encounterId)
+          return signed
+        },
         (error: unknown) => {
           toastProblem(error, 'The note was not signed')
           return null
