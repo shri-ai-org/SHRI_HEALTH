@@ -85,7 +85,7 @@ export function CodedSearch({
           {searching ? 'Finding…' : 'Find'}
         </Button>
       </div>
-      {problem ? <p className="text-sm text-danger">{problem}</p> : null}
+      {problem ? <p className="text-sm text-critical-fg">{problem}</p> : null}
       {value.matches !== null ? (
         value.matches.length === 0 ? (
           <p className="text-sm text-ink-muted">No match in the drug list; it will be recorded as typed.</p>
@@ -105,7 +105,7 @@ export function CodedSearch({
           </>
         )
       ) : null}
-      <p className={typedOnly || value.matches?.length === 0 ? 'text-xs font-medium text-warning' : 'text-xs text-ink-muted'}>{note}</p>
+      <p className={typedOnly || value.matches?.length === 0 ? 'text-xs font-medium text-warning-fg' : 'text-xs text-ink-muted'}>{note}</p>
     </div>
   )
 }

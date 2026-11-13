@@ -91,7 +91,7 @@ test('a free-text allergy is kept, and the sheet says it raises no alert', async
   await page.getByRole('button', { name: 'Find add an allergy' }).click()
   await expect(allergies).toContainText(/No match in the drug list|None of these/, { timeout: 30_000 })
   if (await page.locator('#rooming-allergy-match').count()) await page.locator('#rooming-allergy-match').selectOption('')
-  await expect(allergies.locator('p.text-warning')).toContainText("doesn't trigger prescribing alerts")
+  await expect(allergies.locator('p.text-warning-fg')).toContainText("doesn't trigger prescribing alerts")
   await allergies.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(allergies.getByRole('listitem').filter({ hasText: 'cat dander' })).toBeVisible()
 })
