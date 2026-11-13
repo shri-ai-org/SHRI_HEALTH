@@ -116,6 +116,9 @@ services:
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
       FORWARDED_ALLOW_IPS: ${SHRI_NET_B:-172.31.251}.10  # Nginx's address on backend
+      # A demo server's AI is on: a feature never set counts as on, after every reset too; the
+      # admin's AI settings switch still turns it off (D118). The API ignores it in production.
+      SHRI_AI_ON_BY_DEFAULT: ${SHRI_DEMO:-false}
       # No access log from uvicorn: it writes the whole URL, so the sign-in callback's code and
       # state would be logged (D13, D105). Our Nginx logs every request already, without the
       # query string (shri.conf.template, log_format no_query). Uvicorn reads UVICORN_* (click).

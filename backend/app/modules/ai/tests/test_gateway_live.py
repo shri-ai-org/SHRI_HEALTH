@@ -67,7 +67,7 @@ def _gateway(model: StubModelClient | None = None) -> Gateway:
 async def test_the_switch_is_the_clinics_and_the_features(
         database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
     async with session(database, clinic) as s:
-        assert await REPO.switches(s, AMBIENT) == Switches(clinic=True, feature=False)
+        assert await REPO.switches(s, AMBIENT) == Switches(clinic=True, feature=None)
         with pytest.raises(Conflict) as off:                  # no row: the feature is off
             await ensure_enabled(s, REPO, AMBIENT)
         assert off.value.code == "feature-disabled"
@@ -75,7 +75,7 @@ async def test_the_switch_is_the_clinics_and_the_features(
         await s.commit()
     async with session(database, clinic) as s:
         await ensure_enabled(s, REPO, AMBIENT)
-        assert (await REPO.switches(s, AIFeature.CHART_SUMMARY)).feature is False
+        assert (await REPO.switches(s, AIFeature.CHART_SUMMARY)).feature is None
         await s.execute(text("UPDATE admin.tenant SET ai_enabled = false"))
         await s.commit()
     async with session(database, clinic) as s:
@@ -93,7 +93,32 @@ async def test_the_switch_is_the_clinics_and_the_features(
     # Another clinic's switch is its own.
     other = make_tenant(admin_engine)
     async with database.tenant_session(other, clinic["user"]) as s:
-        assert await REPO.switches(s, AMBIENT) == Switches(clinic=True, feature=False)
+        assert await REPO.switches(s, AMBIENT) == Switches(clinic=True, feature=None)
+
+
+async def test_on_a_demo_server_a_feature_never_set_is_on_until_switched_off(
+        database: Database, clinic: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    """D118: SHRI_AI_ON_BY_DEFAULT=true (a demo server) turns on what was never set; a stored
+    setting still wins, so the admin's switch turns it off; never in production."""
+    monkeypatch.setenv("SHRI_AI_ON_BY_DEFAULT", "true")
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    async with session(database, clinic) as s:
+        assert (await REPO.switches(s, AMBIENT)).feature is None
+        await ensure_enabled(s, REPO, AMBIENT)                  # no row: on, on a demo server
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        with pytest.raises(Conflict):                           # never in production
+            await ensure_enabled(s, REPO, AMBIENT)
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        await REPO.set_feature(s, AMBIENT, False, reason="Switched off by the admin")
+        await s.commit()
+    async with session(database, clinic) as s:
+        with pytest.raises(Conflict) as off:                    # the stored switch wins
+            await ensure_enabled(s, REPO, AMBIENT)
+        assert off.value.code == "feature-disabled"
+    monkeypatch.delenv("SHRI_AI_ON_BY_DEFAULT")
+    async with session(database, clinic) as s:                  # not a demo server: off
+        with pytest.raises(Conflict):
+            await ensure_enabled(s, REPO, AIFeature.CHART_SUMMARY)
 
 
 async def test_the_visit_workflow_works_with_ai_off(

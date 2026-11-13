@@ -53,6 +53,7 @@ from app.core.request_id import current_request_id
 from app.db.models.enums import AIConfidence, AIFeature, AIRequestStatus
 
 from . import budget
+from .config import features_on_by_default
 from .model_client import ModelClient, ModelError, ModelReply
 from .output import DROP, SchemaError, check_schema, prune
 from .prompts import NOT_DISCUSSED, NOTE_DRAFT_V2
@@ -124,7 +125,9 @@ def feature_disabled(feature: AIFeature) -> Conflict:
 
 async def ensure_enabled(db: AsyncSession, repo: AIRepository, feature: AIFeature) -> None:
     switches = await repo.switches(db, feature)
-    if not (switches.clinic and switches.feature):
+    feature_on = (switches.feature if switches.feature is not None
+                  else features_on_by_default())        # never set: on only on a demo server
+    if not (switches.clinic and feature_on):
         raise feature_disabled(feature)
 
 
