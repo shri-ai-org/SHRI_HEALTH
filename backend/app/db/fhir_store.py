@@ -67,6 +67,8 @@ from app.db.models.fhir.clinical import (
     Observation,
     ObservationCategory,
     ObservationComponent,
+    ObservationInterpretation,
+    ObservationReferenceRange,
     Procedure,
     ProcedureBodySite,
 )
@@ -99,6 +101,16 @@ from app.db.models.fhir.medication import (
     DetectedIssueImplicated,
     DetectedIssueMitigation,
     MedicationRequest,
+)
+from app.db.models.fhir.orders import (
+    DiagnosticReport,
+    DiagnosticReportBasedOn,
+    DiagnosticReportCategory,
+    DiagnosticReportPerformer,
+    DiagnosticReportResult,
+    ServiceRequest,
+    ServiceRequestCategory,
+    ServiceRequestReason,
 )
 from app.db.models.fhir.records import (
     Consent,
@@ -452,6 +464,53 @@ class VitalIn:
 
 
 @dataclass(frozen=True)
+class ResultIn:
+    """One result of a report: a LOINC analyte with a quantity (and its reference range and
+    flag), or narrative text (a radiology report's technique or findings, LOINC 18782-3)."""
+    code: Coded
+    value: Measured | None = None
+    text: str | None = None
+    low: Decimal | None = None  # the reference range, in the value's unit
+    high: Decimal | None = None
+    flag: str | None = None  # v3 ObservationInterpretation: H, L, N, A
+
+
+@dataclass(frozen=True)
+class OrderIn:
+    """A signed order for a test or a study (ServiceRequest, intent order), at a visit."""
+    patient_id: uuid.UUID
+    encounter_id: uuid.UUID
+    code: Coded
+    category: str  # laboratory | imaging (US Core's SNOMED CT category)
+    requester_practitioner_id: uuid.UUID
+    signed_at: datetime
+    reason: str | None = None
+    id: uuid.UUID | None = None
+
+
+#: ServiceRequest.category, as US Core codes it (SNOMED CT; not verifiable here, Q8).
+_ORDER_CATEGORIES = {"laboratory": ("108252007", "Laboratory procedure"),
+                     "imaging": ("363679005", "Imaging")}
+
+
+@dataclass(frozen=True)
+class ReportIn:
+    """A final report (DiagnosticReport, category LAB or RAD) with its results, for an order.
+    ``effective`` is the collection or study time, ``issued`` when it was reported."""
+    patient_id: uuid.UUID
+    encounter_id: uuid.UUID
+    order_id: uuid.UUID
+    category: str  # LAB | RAD (v2-0074)
+    code: Coded
+    effective: datetime
+    issued: datetime
+    performer_organization_id: uuid.UUID
+    results: tuple[ResultIn, ...]
+    conclusion: str | None = None
+    id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
 class ReactionIn:
     manifestations: tuple[Coded, ...]
     severity: str | None = None  # mild | moderate | severe
@@ -798,6 +857,10 @@ class FhirStore(Protocol):
                             encounter_id: uuid.UUID | None, vitals: tuple[VitalIn, ...], *,
                             effective_at: datetime | None = None) -> list[Written]: ...
 
+    async def record_order(self, db: AsyncSession, data: OrderIn) -> Written: ...
+
+    async def record_report(self, db: AsyncSession, data: ReportIn) -> Written: ...
+
     async def vital_entered_in_error(self, db: AsyncSession, observation_id: uuid.UUID,
                                      reason: Reason, *, if_version: int | None = None
                                      ) -> Written: ...
@@ -1051,7 +1114,8 @@ async def _locked[R: (Patient, RelatedPerson, Coverage, Encounter, Condition, Al
 
 type _Resource = (Patient | RelatedPerson | Coverage | Consent | Encounter | Condition
                   | AllergyIntolerance | Observation | MedicationRequest | DetectedIssue
-                  | Composition | FamilyMemberHistory | Procedure)
+                  | Composition | FamilyMemberHistory | Procedure | ServiceRequest
+                  | DiagnosticReport)
 
 
 async def _written(db: AsyncSession, row: _Resource) -> Written:
@@ -1232,7 +1296,7 @@ async def _user_id(db: AsyncSession) -> uuid.UUID | None:
 
 async def _new[R: (Patient, RelatedPerson, Coverage, Consent, Encounter, Condition, Observation,
                   AllergyIntolerance, MedicationRequest, DetectedIssue, Composition,
-                  FamilyMemberHistory, Procedure)](
+                  FamilyMemberHistory, Procedure, ServiceRequest, DiagnosticReport)](
         db: AsyncSession, row: R) -> R:
     """A new resource row records who created it (``app.current_user_id``)."""
     row.created_by_user_id = await _user_id(db)
@@ -1662,6 +1726,94 @@ class SqlFhirStore:
         written = await _written(db, obs)
         await _nullify_provenance(db, "Observation", written, reason)
         return written
+
+    # ------------------------------------------------------------- Results and reports
+    async def record_order(self, db: AsyncSession, data: OrderIn) -> Written:
+        """A completed, signed order for a test or study, written at its visit (the results
+        and reports seed; Vimal's shape on #85). It is never sent anywhere."""
+        await _not_merged(db, data.patient_id)
+        order = ServiceRequest(
+            status="completed", intent="order", priority="routine",
+            code_system=data.code.system, code_code=data.code.code,
+            code_display=data.code.display, subject_patient_id=data.patient_id,
+            encounter_id=data.encounter_id, authored_on=data.signed_at,
+            requester_practitioner_id=data.requester_practitioner_id,
+            ext_signed_at=data.signed_at,
+            ext_signed_by_practitioner_id=data.requester_practitioner_id)
+        if data.id is not None:
+            order.id = data.id
+        code, display = _ORDER_CATEGORIES[data.category]
+        order.category = [ServiceRequestCategory(category_system=systems.SNOMED,
+                                                 category_code=code, category_display=display)]
+        if data.reason:
+            order.reason = [ServiceRequestReason(rank=1, reason_code_text=data.reason)]
+        db.add(await _new(db, order))
+        await db.flush()
+        return await _written(db, order)
+
+    async def record_report(self, db: AsyncSession, data: ReportIn) -> Written:
+        """A final report and its results, in order: each result is an Observation (category
+        laboratory, or imaging for a radiology narrative) with its range and flag, linked
+        through ``diagnostic_report_result``; the report is based on its order and performed
+        by one organization. Collected (or studied) at ``effective``, reported at ``issued``,
+        never before it and never in the future."""
+        await _not_merged(db, data.patient_id)
+        if data.category not in ("LAB", "RAD"):
+            raise InvalidInput(f"unknown report category {data.category!r}", field="category")
+        if data.issued < data.effective:
+            raise InvalidInput("a report is issued after its collection", field="issued")
+        if data.issued > await _db_now(db):
+            raise InvalidInput("a report is never issued in the future", field="issued")
+        if not data.results:
+            raise InvalidInput("a report has at least one result", field="results")
+        observation_category = "laboratory" if data.category == "LAB" else "imaging"
+        rows = []
+        for r in data.results:
+            if (r.value is None) == (r.text is None):
+                raise InvalidInput(f"{r.code.code}: a quantity or a text", field="results")
+            obs = Observation(status="final", code_system=r.code.system, code_code=r.code.code,
+                              code_display=r.code.display, subject_patient_id=data.patient_id,
+                              encounter_id=data.encounter_id,
+                              effective_date_time=data.effective, issued=data.issued,
+                              value_string=r.text)
+            obs.category = [ObservationCategory(category_system=systems.OBSERVATION_CATEGORY,
+                                                category_code=observation_category)]
+            if r.value is not None:
+                obs.value_quantity_value = r.value.value
+                obs.value_quantity_unit = obs.value_quantity_code = r.value.unit
+                obs.value_quantity_system = systems.UCUM
+                if r.low is not None or r.high is not None:
+                    obs.reference_range = [ObservationReferenceRange(
+                        low_value=r.low, high_value=r.high,
+                        low_unit=r.value.unit if r.low is not None else None,
+                        low_system=systems.UCUM if r.low is not None else None,
+                        low_code=r.value.unit if r.low is not None else None,
+                        high_unit=r.value.unit if r.high is not None else None,
+                        high_system=systems.UCUM if r.high is not None else None,
+                        high_code=r.value.unit if r.high is not None else None)]
+            if r.flag:
+                obs.interpretation = [ObservationInterpretation(
+                    interpretation_system=systems.INTERPRETATION, interpretation_code=r.flag)]
+            db.add(await _new(db, obs))
+            rows.append(obs)
+        await db.flush()
+        report = DiagnosticReport(
+            status="final", code_system=data.code.system, code_code=data.code.code,
+            code_display=data.code.display, subject_patient_id=data.patient_id,
+            encounter_id=data.encounter_id, effective_date_time=data.effective,
+            issued=data.issued, conclusion=data.conclusion)
+        if data.id is not None:
+            report.id = data.id
+        report.category = [DiagnosticReportCategory(category_system=systems.V2_0074,
+                                                    category_code=data.category)]
+        report.based_on = [DiagnosticReportBasedOn(service_request_id=data.order_id)]
+        report.performer = [DiagnosticReportPerformer(
+            organization_id=data.performer_organization_id)]
+        report.result = [DiagnosticReportResult(observation_id=o.id, sequence=i)
+                         for i, o in enumerate(rows, start=1)]
+        db.add(await _new(db, report))
+        await db.flush()
+        return await _written(db, report)
 
     # ------------------------------------------------------------------------- Allergy
     async def create_allergy(self, db: AsyncSession, data: AllergyIn) -> Written:

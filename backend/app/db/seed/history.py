@@ -583,8 +583,8 @@ HISTORY: dict[int, History] = {
                       "anastrozole every day.",
                       (C50_912, Z79_811)),
             PastVisit(dt.date(2026, 4, 21), "Follow-up after mammogram",
-                      "Screening mammogram on 7 April 2026 (outside imaging): no evidence of "
-                      "malignancy. Joint aches better with walking.",
+                      "Diagnostic mammogram on 7 April 2026 (outside imaging): BI-RADS 2, no "
+                      "evidence of malignancy. Joint aches better with walking.",
                       "No breast masses or nodes. No edema of the left arm.",
                       "No recurrence. Aromatase-inhibitor arthralgia, improving.",
                       "Bone density scan ordered (on anastrozole). Continue current plan.",

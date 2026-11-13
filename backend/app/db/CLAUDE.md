@@ -182,6 +182,16 @@ row too, so the patient's version and `_history` move: `If-Match` and the return
 are the patient's. The same pharmacy again changes nothing. `preferred_pharmacy(db,
 patient_id)` reads it back (name, NCPDP ID, phone, address, when chosen), or None.
 
+`record_order` and `record_report` (Vimal's shape on #85, 13 Nov): a completed, signed order
+(ServiceRequest, intent `order`, US Core's SNOMED CT category `laboratory` or `imaging`) at a
+visit, and its final report (DiagnosticReport, v2-0074 `LAB` or `RAD`) based on it, performed by
+one organization, with its results in order through `diagnostic_report_result`. A lab result is
+an Observation (category `laboratory`) with a UCUM quantity, its reference range and an `H` or
+`L` flag; a radiology report keeps the impression in `conclusion` and the technique and findings
+as narrative Observations (LOINC 18782-3, `value_string`). No images, media or presented forms.
+A report is never issued before its collection or in the future. The demo seed writes the six
+history patients' studies with them (`seed/results.py`, one table).
+
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
 MedicationRequest with intent `plan`, `reportedBoolean` true and the patient as requester (the
 prescriber isn't known), with the sig and a note; never signed, and the database never lets one
@@ -595,6 +605,9 @@ stays, as the test's only allowed overlap.
 | 60 | `PA_REASON` (demo) | past visit's reason | #293 (past visits) |
 | 61 | `A_REASON` (demo) | demo-day appointment's reason | #293 (past visits) |
 | 62 | `AI_FEATURE` (demo) | the demo clinic's AI feature switch | Vimal's run check on #85 |
+| 63 | `LAB_ORDER` (results) | a history study's order (ServiceRequest) | the labs and reports seed |
+| 64 | `LAB_REPORT` (results) | its report (DiagnosticReport) | the labs and reports seed |
+| 65 | `RESULT_ORG` (results) | the lab and the radiology group | the labs and reports seed |
 
 ## Rules that never bend
 
