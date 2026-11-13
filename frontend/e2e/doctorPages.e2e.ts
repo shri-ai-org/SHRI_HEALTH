@@ -12,8 +12,14 @@ const SAMPLE = /Indostates|Coimbatore|Rajsrinivas|21-Sep-2026/
 
 test('the home shows the signed-in doctor, today and the clinic, not sample data', async ({ page }) => {
   await page.goto(`${DOCTORS}/`)
+  // The signed-in doctor's name as the API gives it (the seed names the demo doctor, D112), and
+  // the greeting's rule: "Dr." and the surname alone for a "Dr." name, else the whole name.
+  const me = (await (await page.request.get(`${DOCTORS}/api/v1/me`)).json()) as { user: { displayName: string } }
+  const name = me.user.displayName
+  const short = /^Dr\.?\s/.test(name) ? `Dr. ${name.split(' ').slice(-1)[0]}` : name
+  const escaped = short.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   // The first visit compiles the home on a cold dev server; reading the day takes a few calls.
-  await expect(page.getByText(/Good (morning|afternoon|evening), Dev MD/).first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(new RegExp(`Good (morning|afternoon|evening), ${escaped}`)).first()).toBeVisible({ timeout: 30_000 })
   // Today in the clinic's own zone, read from the API (D40), never a fixed zone.
   const facilities = (await (await page.request.get(`${DOCTORS}/api/v1/booking/facilities`)).json()) as { items: { timeZone: string }[] }
   const timeZone = facilities.items[0].timeZone
