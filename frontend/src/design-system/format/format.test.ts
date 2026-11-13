@@ -52,7 +52,7 @@ describe('dates', () => {
   })
 
   it('shows instants in the facility time zone on a 12-hour clock', () => {
-    expect(formatTime('2026-11-03T14:30:00Z', 'America/Chicago')).toBe('8:30 AM CST')
+    expect(formatTime('2026-11-03T16:30:00Z', 'America/Los_Angeles')).toBe('8:30 AM PST')
     expect(formatTime('2026-07-03T21:05:00Z', 'America/New_York')).toBe('5:05 PM EDT')
     expect(formatTime('2026-07-03T21:05:00Z', 'America/New_York', { withZone: false })).toBe('5:05 PM')
     expect(formatDateTime('2026-11-03T14:30:00Z', 'America/Los_Angeles')).toBe('11/03/2026, 6:30 AM PST')
@@ -78,9 +78,9 @@ describe('dates', () => {
   })
 
   it('handles daylight saving changes and zones without them', () => {
-    // Chicago: DST ends 1 Nov 2026 at 2:00 AM.
-    expect(formatTime('2026-11-01T06:30:00Z', 'America/Chicago')).toBe('1:30 AM CDT')
-    expect(formatTime('2026-11-01T07:30:00Z', 'America/Chicago')).toBe('1:30 AM CST')
+    // San Jose: DST ends 1 Nov 2026 at 2:00 AM.
+    expect(formatTime('2026-11-01T08:30:00Z', 'America/Los_Angeles')).toBe('1:30 AM PDT')
+    expect(formatTime('2026-11-01T09:30:00Z', 'America/Los_Angeles')).toBe('1:30 AM PST')
     expect(formatTime('2026-07-03T21:05:00Z', 'America/Phoenix')).toBe('2:05 PM MST')
     expect(formatTime('2026-07-03T21:05:00Z', 'Pacific/Honolulu')).toBe('11:05 AM HST')
   })

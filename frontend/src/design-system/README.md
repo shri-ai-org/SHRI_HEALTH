@@ -36,7 +36,7 @@ The API sends contract formats; screens show U.S. formats. Always convert with t
 |---|---|---|---|
 | Calendar date (birth date) | `1984-07-19` | `07/19/1984` | `formatDate`, `parseUsDate`, `DateInput` |
 | Partial date (surgery, onset) | `2011`, `2011-05` or `2011-05-14` | `2011`, `05/2011`, `05/14/2011`: only what is known, never an invented day | `formatPartialDate`, `parsePartialDate` |
-| Instant (appointment time) | `2026-11-03T14:30:00Z` (UTC) | `8:30 AM CST`, in the **facility's** time zone from `timeZone` | `formatTime`, `formatDateTime`, `todayIn` |
+| Instant (appointment time) | `2026-11-03T16:30:00Z` (UTC) | `8:30 AM PST`, in the **facility's** time zone from `timeZone` | `formatTime`, `formatDateTime`, `todayIn` |
 | Age | never sent | derived on screen | `ageInYears` |
 | Money | `{ value: "1234.50", currency: "USD" }` | `$1,234.50` (string maths, no floats) | `formatMoney`, `parseMoneyInput`, `MoneyInput` (negatives only with `allowNegative`, for endpoints that document them) |
 
