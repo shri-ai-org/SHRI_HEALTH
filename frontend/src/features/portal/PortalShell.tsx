@@ -30,7 +30,11 @@ const HEALTH_SUMMARY = [
 const ACCOUNT = [
   { to: '/demographics', label: 'Demographics' },
   { to: '/e-signature', label: 'E-Signature' },
-]
+].filter((i) => pathEnabled(i.to))
+
+/** Messages are sample data until B8b: with the real API there is no inbox to count (M4). */
+const MESSAGES = pathEnabled('/messages')
+const TEST_RESULTS = pathEnabled('/test-results')
 
 const TOP = [
   { to: '/test-results', label: 'Test Results', icon: FlaskConical },
@@ -56,8 +60,8 @@ export function PortalShell({ children }: { children: ReactNode }) {
   const { path } = useRouter()
   const { session, signOut } = useSession()
   const api = usePortalApi()
-  const inbox = useResource(() => api.listMessages('inbox'), [path])
-  const unread = inbox.status === 'ready' ? inbox.data.items.filter((m) => !m.read).length : 0
+  const inbox = useResource(() => (MESSAGES ? api.listMessages('inbox') : Promise.resolve(null)), [path])
+  const unread = inbox.status === 'ready' && inbox.data ? inbox.data.items.filter((m) => !m.read).length : 0
   const [open, setOpen] = useState<'none' | 'health' | 'account' | 'mobile'>('none')
 
   // Menus close when the page changes (state adjusted during render, not in an effect).
@@ -101,9 +105,11 @@ export function PortalShell({ children }: { children: ReactNode }) {
 
           <nav aria-label="Main" className="hidden flex-1 xl:block">
             <ul className="flex items-center gap-0.5">
-              <li>
-                <TopLink to="/test-results" label="Test Results" current={under(path, '/test-results')} />
-              </li>
+              {TEST_RESULTS ? (
+                <li>
+                  <TopLink to="/test-results" label="Test Results" current={under(path, '/test-results')} />
+                </li>
+              ) : null}
               <li className="relative">
                 <button
                   type="button"
@@ -171,7 +177,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
 
       <footer className="border-t-4 border-(--accent) bg-surface-1">
         <div className="mx-auto max-w-7xl px-4 py-4 text-xs text-ink-subtle">
-          <strong className="text-danger">For a medical emergency, call 911.</strong> Messages are not for urgent needs.{' '}
+          <strong className="text-danger">For a medical emergency, call 911.</strong>{MESSAGES ? ' Messages are not for urgent needs.' : ''}{' '}
           <SourceCodeLink className="text-ink-muted" />
         </div>
       </footer>
@@ -264,7 +270,7 @@ function MobileNav({ path, unread, onClose, onSignOut }: { path: string; unread:
   const api = usePortalApi()
   const ref = useDismiss(onClose)
   const [group, setGroup] = useState<'records' | 'messages' | null>(under(path, '/messages') ? 'messages' : null)
-  const records = [{ to: '/test-results', label: 'Test Results' }, ...HEALTH_SUMMARY]
+  const records = [...(TEST_RESULTS ? [{ to: '/test-results', label: 'Test Results' }] : []), ...HEALTH_SUMMARY]
   const row = 'flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-base'
   return (
     <div className="fixed inset-0 z-40 xl:hidden">
@@ -291,23 +297,25 @@ function MobileNav({ path, unread, onClose, onSignOut }: { path: string; unread:
           <li>
             <MobileTop to="/appointments" label="Appointments" icon={CalendarDays} current={under(path, '/appointments')} />
           </li>
-          <li>
-            <button type="button" aria-expanded={group === 'messages'} onClick={() => setGroup((g) => (g === 'messages' ? null : 'messages'))} className={cn(row, 'justify-between text-ink hover:bg-surface-2')}>
-              <span className="flex items-center gap-3">
-                <Mail aria-hidden="true" size={20} /> Messages {unread ? <CountBadge count={unread} /> : null}
-              </span>
-              <ChevronDown aria-hidden="true" size={16} className={group === 'messages' ? 'rotate-180' : ''} />
-            </button>
-            {group === 'messages' ? (
-              <ul className="ml-8 space-y-0.5">
-                {(['inbox', 'sent', 'trash'] as const).map((f) => (
-                  <li key={f}>
-                    <MenuLink to={`/messages/${f}`} label={f[0]?.toUpperCase() + f.slice(1)} current={path === `/messages/${f}`} />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </li>
+          {MESSAGES ? (
+            <li>
+              <button type="button" aria-expanded={group === 'messages'} onClick={() => setGroup((g) => (g === 'messages' ? null : 'messages'))} className={cn(row, 'justify-between text-ink hover:bg-surface-2')}>
+                <span className="flex items-center gap-3">
+                  <Mail aria-hidden="true" size={20} /> Messages {unread ? <CountBadge count={unread} /> : null}
+                </span>
+                <ChevronDown aria-hidden="true" size={16} className={group === 'messages' ? 'rotate-180' : ''} />
+              </button>
+              {group === 'messages' ? (
+                <ul className="ml-8 space-y-0.5">
+                  {(['inbox', 'sent', 'trash'] as const).map((f) => (
+                    <li key={f}>
+                      <MenuLink to={`/messages/${f}`} label={f[0]?.toUpperCase() + f.slice(1)} current={path === `/messages/${f}`} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ) : null}
           {TOP.filter((t) => !['/test-results', '/appointments', '/messages/inbox'].includes(t.to)).map((t) => (
             <li key={t.to}>
               <MobileTop to={t.to} label={t.label} icon={t.icon} current={under(path, t.to)} />
