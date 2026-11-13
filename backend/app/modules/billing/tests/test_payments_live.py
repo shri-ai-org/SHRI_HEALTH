@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import os
 import uuid
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -328,14 +329,8 @@ def test_a_visit_is_paid_once_until_its_payment_is_refunded(
     db.commit()
     body = {"amount": {"value": "25.00", "currency": "USD"}, "method": "cash",
             "appointmentId": str(visit.id)}
-    key = str(uuid.uuid4())
-    first = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
-                              headers={"Idempotency-Key": key})
+    first = _pay(client("fd"), patient.id, body)
     assert first.status_code == 201
-
-    replay = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
-                               headers={"Idempotency-Key": key})
-    assert (replay.status_code, replay.json()["id"]) == (201, first.json()["id"])
 
     second = _pay(client("fd"), patient.id, body)
     assert second.status_code == 409
@@ -362,6 +357,30 @@ def test_a_visit_is_paid_once_until_its_payment_is_refunded(
             "receipt_file_id FROM admin.patient_payment WHERE id = :first"),
             {"id": uuid.uuid4(), "first": first.json()["id"]})
     assert _pay(client("fd"), patient.id, body).status_code == 201
+
+
+# The stored answer is encrypted (core's Transit), so this needs OpenBao; it skips without it, as
+# the patients and eligibility replays do; CI requires it.
+@pytest.mark.skipif(not os.environ.get("OPENBAO_TRANSIT_ADDR")
+                    and os.environ.get("REQUIRE_OPENBAO") != "1",
+                    reason="OPENBAO_TRANSIT_ADDR not set (the stored response is encrypted)")
+def test_a_replay_with_the_same_key_gets_the_first_201_not_a_409(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session],
+        admin: Engine) -> None:
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Owusu", "Efua")
+    visit = _booked(db, patient)
+    db.commit()
+    body = {"amount": {"value": "25.00", "currency": "USD"}, "method": "cash",
+            "appointmentId": str(visit.id)}
+    key = str(uuid.uuid4())
+    first = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
+                              headers={"Idempotency-Key": key})
+    replay = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
+                               headers={"Idempotency-Key": key})
+    assert first.status_code == replay.status_code == 201
+    assert replay.json()["id"] == first.json()["id"]
+    assert len(_payments(admin, patient.id)) == 1
 
 
 def test_two_desks_paying_one_visit_at_once_record_one_payment(
