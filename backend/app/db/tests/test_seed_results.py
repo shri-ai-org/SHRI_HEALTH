@@ -14,6 +14,8 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A
+from app.db import fhir_store as fs
+from app.db.models import systems
 from app.db.seed import demo, history, results
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE
@@ -32,7 +34,7 @@ def test_each_study_is_ordered_at_a_visit_done_after_it_and_reported_before_the_
         assert s.ordered_at in days, (s.patient, s.code)
         order = next(v.start for v in history.HISTORY[s.patient].visits if v.day == s.ordered_at)
         later = [d for d in days if d > s.ordered_at]
-        assert results.performed(s) >= order, (s.patient, s.code)
+        assert results.performed(s) >= order + results.SIGNED_AFTER, (s.patient, s.code)
         assert results.issued(s) > results.performed(s)
         if later:                                        # reported before the next visit
             assert results.issued(s).date() < later[0], (s.patient, s.code)
@@ -155,3 +157,77 @@ def test_the_seed_writes_every_study_once_and_hides_the_restricted_chart_on_fhir
         c.execute(text("RESET ROLE"))
     assert sid(demo.PATIENT, 6) not in seen               # David Nguyen: restricted (D22)
     assert seen[sid(demo.PATIENT, 2)] == expected[(2, "LAB")]
+
+
+def test_every_code_has_a_short_name_for_the_screen_and_keeps_its_loinc_name() -> None:
+    """Vimal's A6: the screens show the text, a clinical short name; the coding keeps the code
+    and NLM's long name."""
+    assert set(results.SHORT) == set(results.LOINC)
+    assert results.loinc("24331-1") == fs.Coded(
+        systems.LOINC, "24331-1", "Lipid 1996 panel - Serum or Plasma", "Lipid panel")
+    assert results.SHORT["13457-7"] == "LDL cholesterol (calculated)"
+    assert results.SHORT["98979-8"] == "eGFR (CKD-EPI 2021)"
+    assert results.SHORT["30679-5"] == "MR lumbar spine without contrast"
+    assert all(len(name) <= 40 for name in results.SHORT.values())
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_the_short_names_are_stored_as_text_with_the_loinc_coding(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load()
+    with admin_engine.connect() as c:
+        for table, code, short in (("diagnostic_report", "24331-1", "Lipid panel"),
+                                   ("service_request", "24331-1", "Lipid panel"),
+                                   ("observation", "13457-7", "LDL cholesterol (calculated)"),
+                                   ("diagnostic_report", "30679-5",
+                                    "MR lumbar spine without contrast")):
+            names = {tuple(r) for r in c.execute(text(
+                f"SELECT code_system, code_display, code_text FROM clinical.{table} "  # noqa: S608
+                "WHERE code_code = :c AND subject_patient_id::text LIKE '5eed0017-%'"),
+                {"c": code})}                         # the seeded patients' rows
+            assert names == {("http://loinc.org", results.LOINC[code], short)}
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_a_rerun_over_past_visits_at_other_times_writes_nothing(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Thulasi's finding on #342: a database seeded before the San Jose move has the past
+    visits at other times. History and results find them by their bookings' fixed IDs, so an
+    additive rerun adds nothing and hits no duplicate key."""
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load()
+
+    def counts() -> tuple[int, ...]:
+        with admin_engine.connect() as c:
+            return tuple(c.execute(text(
+                f"SELECT count(*) FROM clinical.{t}")).scalar_one()  # noqa: S608
+                for t in ("appointment", "encounter", "service_request", "diagnostic_report",
+                          "observation", "condition", "related_person"))
+
+    before = counts()
+    with admin_engine.begin() as c:                  # every past visit two hours later
+        c.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))  # the triggers'
+        c.execute(text("UPDATE clinical.appointment SET start = start + interval '2 hours', "
+                       "\"end\" = \"end\" + interval '2 hours' WHERE id::text LIKE '5eed0035-%'"))
+        c.execute(text("UPDATE clinical.encounter SET period_start = period_start + interval "
+                       "'2 hours', period_end = period_end + interval '2 hours' "
+                       "WHERE appointment_id::text LIKE '5eed0035-%'"))
+
+    async def again() -> tuple[int, int]:
+        engine = _as_migrator()
+        try:
+            return await history.load_history(engine), await results.load_results(engine)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(again()) == (0, 0)
+    assert counts() == before

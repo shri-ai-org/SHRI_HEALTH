@@ -292,12 +292,18 @@ def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
     assert f"{provider[2]} {provider[1]}" == accounts["demo.doctor"][1]
 
 
-# ======================================================================= the all-day schedule
+# ======================================================================= the clinic-hours schedule
 ZONES = ("America/Los_Angeles", "America/New_York")
+DAILY_IDS = [sid(demo.DAILY_RULE, (i * 10 + j) * 10 + d)
+             for i in range(1, len(starter.PROVIDERS) + 1) for j in (1, 2)
+             for d in range(1, len(demo.DAYS_OF_WEEK) + 1)]
+WEEKEND_IDS = [sid(demo.DAILY_RULE, (i * 10 + j) * 10 + d)
+               for i in range(1, len(starter.PROVIDERS) + 1) for j in (1, 2)
+               for d in range(len(demo.DAYS_OF_WEEK) + 1, 8)]
 
 
-def _all_day_rules(admin_engine: Engine, zone: str) -> list[Any]:
-    """The facility's demo all-day rules, as the scheduling module reads availability."""
+def _daily_rules(admin_engine: Engine, zone: str) -> list[Any]:
+    """The facility's demo clinic-hours rules, as the scheduling module reads availability."""
     from app.modules.scheduling.reference import AvailabilityRule, since_midnight
 
     with admin_engine.connect() as c:
@@ -307,8 +313,8 @@ def _all_day_rules(admin_engine: Engine, zone: str) -> list[Any]:
             "FROM admin.schedule_availability_rule r "
             "JOIN clinical.schedule s ON s.id = r.schedule_id "
             "JOIN admin.facility f ON f.id = s.ext_facility_id "
-            "WHERE f.timezone = :z AND r.start_time = '00:00' AND r.end_time = '23:59'"),
-            {"z": zone}).all()
+            "WHERE f.timezone = :z AND r.id = ANY(:ids)"),
+            {"z": zone, "ids": DAILY_IDS}).all()
     return [AvailabilityRule(r.schedule_id, r.provider_ref, str(r.day_of_week),
                              since_midnight(r.start_time), since_midnight(r.end_time),
                              r.slot_minutes, r.location_id, r.effective_from, r.effective_to,
@@ -318,22 +324,23 @@ def _all_day_rules(admin_engine: Engine, zone: str) -> list[Any]:
 def _free(admin_engine: Engine, zone: str, day: dt.date, now: dt.datetime) -> list[Any]:
     from app.modules.scheduling.slots import free_slots
 
-    return free_slots(_all_day_rules(admin_engine, zone), [], [], day, zone, None, None,
+    return free_slots(_daily_rules(admin_engine, zone), [], [], day, zone, None, None,
                       not_before=now)
 
 
-def test_every_provider_has_weekly_all_day_rules_with_no_end_date(
+def test_every_provider_has_weekday_clinic_hours_with_no_end_date(
         migrator_engine: Engine, admin_engine: Engine) -> None:
     _seed(migrator_engine)
     with admin_engine.connect() as c:
         rows = c.execute(text(
-            "SELECT r.schedule_id, r.day_of_week, r.effective_from, r.effective_to "
-            "FROM admin.schedule_availability_rule r WHERE r.start_time = '00:00' "
-            "AND r.end_time = '23:59'")).all()
-    assert len(rows) == len(starter.PROVIDERS) * 2 * 7       # each provider, facility and day
-    assert {(r.effective_from, r.effective_to) for r in rows} == {(starter.EFFECTIVE_FROM, None)}
-    for zone in ZONES:                                       # weekends included
-        assert {r.day_of_week for r in _all_day_rules(admin_engine, zone)} == set(demo.DAYS_OF_WEEK)
+            "SELECT r.day_of_week, r.start_time, r.end_time, r.effective_from, r.effective_to "
+            "FROM admin.schedule_availability_rule r WHERE r.id = ANY(:ids)"),
+            {"ids": DAILY_IDS + WEEKEND_IDS}).all()
+    assert len(rows) == len(starter.PROVIDERS) * 2 * 5       # each provider, facility, weekday
+    assert {(r.start_time, r.end_time, r.effective_from, r.effective_to) for r in rows} == {
+        (dt.time(8, 0), dt.time(17, 0), starter.EFFECTIVE_FROM, None)}
+    for zone in ZONES:
+        assert {r.day_of_week for r in _daily_rules(admin_engine, zone)} == set(demo.DAYS_OF_WEEK)
 
 
 @pytest.mark.parametrize("now", [
@@ -343,54 +350,91 @@ def test_every_provider_has_weekly_all_day_rules_with_no_end_date(
     dt.datetime(2026, 11, 20, 4, 59, 30, tzinfo=dt.UTC),      # 23:59:30 in New York
     dt.datetime(2026, 11, 20, 5, 0, 30, tzinfo=dt.UTC),       # 00:00:30 in New York
 ])
-def test_a_revisit_14_days_out_has_free_times_whatever_the_hour(
+def test_a_revisit_14_days_out_has_free_times_in_clinic_hours_only(
         migrator_engine: Engine, admin_engine: Engine, now: dt.datetime) -> None:
     _seed(migrator_engine)
     for zone in ZONES:
-        today = now.astimezone(ZoneInfo(zone)).date()
+        today = now.astimezone(ZoneInfo(zone)).date()           # a Thursday or Friday
         later = _free(admin_engine, zone, today + dt.timedelta(days=14), now)
         assert {s.provider_id for s in later} == {r.provider_id for r in
-                                                  _all_day_rules(admin_engine, zone)}
-        assert len(later) >= 70 * len(starter.PROVIDERS)     # 00:00 to 23:40, every 20 min
-    tomorrow = _free(admin_engine, "America/Los_Angeles", dt.date(2026, 11, 21), now)
-    assert tomorrow                                          # just before midnight too
+                                                  _daily_rules(admin_engine, zone)}
+        assert len(later) >= 27 * len(starter.PROVIDERS)     # 08:00 to 16:40, every 20 min
+        local = {s.start.astimezone(ZoneInfo(zone)).time() for s in later}
+        assert min(local) == dt.time(8, 0) and max(local) == dt.time(16, 40)
 
 
-@pytest.mark.parametrize(("now", "day", "hours"), [
-    (dt.datetime(2027, 2, 28, 18, 0, tzinfo=dt.UTC), dt.date(2027, 3, 14), 22),  # spring forward
-    (dt.datetime(2026, 10, 18, 18, 0, tzinfo=dt.UTC), dt.date(2026, 11, 1), 24),  # fall back
+def test_the_first_free_time_today_is_08_00_and_none_after_hours_or_at_weekends(
+        migrator_engine: Engine, admin_engine: Engine) -> None:
+    """Vimal's A3: at 05:00 in San Jose the first free time is 08:00 there, not 05:20."""
+    _seed(migrator_engine)
+    sj = "America/Los_Angeles"
+    now = dt.datetime(2026, 11, 20, 13, 0, tzinfo=dt.UTC)      # Friday, 05:00 in San Jose
+    first = min(s.start for s in _free(admin_engine, sj, dt.date(2026, 11, 20), now))
+    assert first.astimezone(ZoneInfo(sj)).time() == dt.time(8, 0)
+    late = dt.datetime(2026, 11, 21, 0, 50, tzinfo=dt.UTC)     # Friday, 16:50 in San Jose
+    assert _free(admin_engine, sj, dt.date(2026, 11, 20), late) == []
+    for weekend in (dt.date(2026, 11, 21), dt.date(2026, 11, 22)):
+        assert _free(admin_engine, sj, weekend, now) == []
+
+
+@pytest.mark.parametrize(("now", "day"), [
+    (dt.datetime(2027, 2, 28, 18, 0, tzinfo=dt.UTC), dt.date(2027, 3, 15)),   # after spring forward
+    (dt.datetime(2026, 10, 18, 18, 0, tzinfo=dt.UTC), dt.date(2026, 11, 2)),  # after fall back
 ])
-def test_a_daylight_saving_day_14_days_out_is_still_all_day_local(
-        migrator_engine: Engine, admin_engine: Engine, now: dt.datetime, day: dt.date,
-        hours: int) -> None:
-    """The rules are local times, so a day with 23 or 25 hours keeps 00:00 to 23:59 there."""
+def test_the_weekday_after_a_daylight_saving_change_keeps_clinic_hours_local(
+        migrator_engine: Engine, admin_engine: Engine, now: dt.datetime, day: dt.date) -> None:
+    """The rules are local times, so the Monday after a change still opens at 08:00 there,
+    although its UTC time moved by an hour."""
     _seed(migrator_engine)
     for zone in ZONES:
         free = _free(admin_engine, zone, day, now)
         local = [s.start.astimezone(ZoneInfo(zone)) for s in free]
-        assert min(local).time() == dt.time(0, 0) and max(local).time() == dt.time(23, 20)
-        span = max(s.start for s in free) - min(s.start for s in free)
-        assert span == dt.timedelta(hours=hours, minutes=20)
+        assert min(local).time() == dt.time(8, 0) and max(local).time() == dt.time(16, 40)
+        week_before = _free(admin_engine, zone, day - dt.timedelta(days=7), now)
+        assert min(s.start for s in free) - min(s.start for s in week_before) != \
+            dt.timedelta(days=7)                                # the UTC offset changed
 
 
-def test_a_database_seeded_before_gets_the_open_ended_rules(
+def test_a_database_seeded_before_moves_to_clinic_hours(
         migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The earlier seed's 8-day window, made by the same rows: a rerun moves them to the
-    weekly rules with no end date, adds nothing, and a second rerun changes nothing."""
+    """The earlier seeds' rows, all day, seven days, in an 8-day window: a rerun moves the
+    weekday rows to clinic hours with no end date, removes the weekend rows and their links,
+    adds nothing else, and a second rerun changes nothing."""
     monkeypatch.setattr("app.db.tests.test_seed.COUNTED", COUNTED)
     _seed(migrator_engine)
+    fresh = _snapshot(admin_engine)
     with admin_engine.begin() as c:
-        c.execute(text("UPDATE admin.schedule_availability_rule SET effective_from = "
-                       "'2026-11-04', effective_to = '2026-11-11' WHERE start_time = '00:00' "
-                       "AND end_time = '23:59'"))
+        c.execute(text("UPDATE admin.schedule_availability_rule SET start_time = '00:00', "
+                       "end_time = '23:59', effective_from = '2026-11-04', "
+                       "effective_to = '2026-11-11' WHERE id = ANY(:ids)"), {"ids": DAILY_IDS})
+        for monday, weekend in zip(DAILY_IDS[::5], zip(WEEKEND_IDS[::2], WEEKEND_IDS[1::2],
+                                                       strict=True), strict=True):
+            for k, rule in enumerate(weekend):
+                c.execute(text(
+                    "INSERT INTO admin.schedule_availability_rule (id, tenant_id, schedule_id, "
+                    "day_of_week, start_time, end_time, slot_minutes, location_id, "
+                    "effective_from, effective_to) SELECT :new, tenant_id, schedule_id, :day, "
+                    "'00:00', '23:59', slot_minutes, location_id, effective_from, effective_to "
+                    "FROM admin.schedule_availability_rule WHERE id = :monday"),
+                    {"new": rule, "day": ("sat", "sun")[k], "monday": monday})
+                c.execute(text(
+                    "INSERT INTO admin.availability_rule_appointment_type "
+                    "(tenant_id, rule_id, appointment_type_id) SELECT tenant_id, :new, "
+                    "appointment_type_id FROM admin.availability_rule_appointment_type "
+                    "WHERE rule_id = :monday"), {"new": rule, "monday": monday})
     _seed(migrator_engine)
-    first = _snapshot(admin_engine)
+    moved = _snapshot(admin_engine)
+    assert {t: v[0] for t, v in moved.items()} == {t: v[0] for t, v in fresh.items()}  # counts
     with admin_engine.connect() as c:
         assert c.execute(text(
-            "SELECT count(*) FROM admin.schedule_availability_rule WHERE start_time = '00:00' "
-            "AND end_time = '23:59' AND effective_to IS NOT NULL")).scalar_one() == 0
+            "SELECT count(*) FROM admin.schedule_availability_rule WHERE id = ANY(:ids) AND "
+            "(start_time, end_time) = ('08:00', '17:00') AND effective_to IS NULL"),
+            {"ids": DAILY_IDS}).scalar_one() == len(DAILY_IDS)
+        assert c.execute(text(
+            "SELECT count(*) FROM admin.schedule_availability_rule WHERE id = ANY(:w) "
+            "OR end_time = '23:59'"), {"w": WEEKEND_IDS}).scalar_one() == 0
     _seed(migrator_engine)
-    assert _snapshot(admin_engine) == first
+    assert _snapshot(admin_engine) == moved
 
 
 def test_the_starters_office_hours_stay(migrator_engine: Engine, admin_engine: Engine) -> None:

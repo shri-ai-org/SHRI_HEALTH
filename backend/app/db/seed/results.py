@@ -36,7 +36,7 @@ from app.core.db import TENANT_ID_INFO_KEY
 from app.core.deps import CLINIC_A
 from app.db import fhir_store as fs
 from app.db.models import MAPPERS, systems
-from app.db.seed.demo import CLINIC_ZONE, PATIENT, PATIENTS
+from app.db.seed.demo import CLINIC_ZONE, PAST_APPOINTMENT, PATIENT, PATIENTS
 from app.db.seed.history import DOCTOR, DOCTOR_USER, HISTORY, _as_user, _exists
 from app.db.seed.starter import sid
 
@@ -84,7 +84,7 @@ LOINC = {
     "777-3": "Platelets [#/volume] in Blood by Automated count",
     "711-2": "Eosinophils [#/volume] in Blood by Automated count",
     "713-8": "Eosinophils/Leukocytes in Blood by Automated count",
-    "4537-7": "Erythrocyte sedimentation rate",
+    "4537-7": "Erythrocyte [Sedimentation Rate] in Blood by Westergren method",
     "1988-5": "C reactive protein [Mass/volume] in Serum or Plasma",
     "3016-3": "Thyrotropin [Units/volume] in Serum or Plasma",
     "6875-9": "Cancer Ag 15-3 [Units/volume] in Serum or Plasma",
@@ -105,8 +105,70 @@ LOINC = {
     "38268-9": "DXA Skeletal system Views for bone density",
     "36310-1": "XR Knee - bilateral 3 Views",
 }
-#: Erythrocyte sedimentation rate by Westergren (4537-7's full name, shortened above for the
-#: screen; the code is NLM's "Erythrocyte [Sedimentation Rate] in Blood by Westergren method").
+#: The clinical short name of each code, the CodeableConcept's `text`, which the screens show
+#: (Vimal's A6 on #85); the coding keeps the LOINC code and NLM's long name above as `display`.
+SHORT = {
+    "4548-4": "Hemoglobin A1c",
+    "24331-1": "Lipid panel",
+    "2093-3": "Total cholesterol",
+    "2085-9": "HDL cholesterol",
+    "13457-7": "LDL cholesterol (calculated)",
+    "2571-8": "Triglycerides",
+    "24323-8": "Comprehensive metabolic panel",
+    "24321-2": "Basic metabolic panel",
+    "2345-7": "Glucose",
+    "3094-0": "Urea nitrogen (BUN)",
+    "2160-0": "Creatinine",
+    "2951-2": "Sodium",
+    "2823-3": "Potassium",
+    "2075-0": "Chloride",
+    "2028-9": "Carbon dioxide (CO2)",
+    "17861-6": "Calcium",
+    "2885-2": "Total protein",
+    "1751-7": "Albumin",
+    "1975-2": "Total bilirubin",
+    "6768-6": "Alkaline phosphatase",
+    "1742-6": "ALT",
+    "1920-8": "AST",
+    "98979-8": "eGFR (CKD-EPI 2021)",
+    "9318-7": "Urine albumin/creatinine ratio",
+    "58410-2": "Complete blood count",
+    "57021-8": "Complete blood count with differential",
+    "6690-2": "White blood cells",
+    "789-8": "Red blood cells",
+    "718-7": "Hemoglobin",
+    "4544-3": "Hematocrit",
+    "787-2": "MCV",
+    "777-3": "Platelets",
+    "711-2": "Eosinophils (absolute)",
+    "713-8": "Eosinophils (%)",
+    "4537-7": "ESR (Westergren)",
+    "1988-5": "C-reactive protein",
+    "3016-3": "TSH",
+    "6875-9": "CA 15-3",
+    "2039-6": "CEA",
+    "81459-0": "Spirometry",
+    "20150-9": "FEV1",
+    "19870-5": "FVC",
+    "19926-5": "FEV1/FVC",
+    "20152-5": "FEV1 % predicted",
+    "20155-8": "FEV1 after bronchodilator",
+    "69970-2": "FEV1/FVC after bronchodilator",
+    "19935-6": "Peak expiratory flow",
+    "18782-3": "Report text",
+    "36643-5": "XR chest, 2 views",
+    "30679-5": "MR lumbar spine without contrast",
+    "30657-1": "MR brain without contrast",
+    "26346-7": "Mammogram, bilateral, diagnostic",
+    "38268-9": "DXA bone density",
+    "36310-1": "XR knees, bilateral, 3 views",
+}
+
+
+def loinc(code: str) -> fs.Coded:
+    """The coding with NLM's long name as display, and the short name as the text."""
+    return fs.Coded(systems.LOINC, code, LOINC[code], SHORT[code])
+
 
 #: (unit, low, high) per analyte and sex ("F"/"M"; "" for both): adult reference ranges.
 RANGES: dict[tuple[str, str], tuple[str, str | None, str | None]] = {
@@ -191,6 +253,8 @@ def _spiro(fev1: str, fvc: str, ratio: str, predicted: str, fev1_post: str, rati
 
 D, T = dt.date, dt.time
 MORNING = T(10, 0)   # the visit starts at 09:30; blood is drawn after the visit
+#: The order is signed this long after the visit starts; nothing is collected before it.
+SIGNED_AFTER = dt.timedelta(minutes=20)
 #: The studies, by patient. Robert Miller's A1c, LDL and potassium match his signed notes (A1c
 #: 7.9, 7.2, 7.1%; March's 7.4% was point-of-care at the visit; LDL 92 before and 66 after the
 #: June atorvastatin increase); James Wilson's peak flows match his (410, 500, 530 L/min);
@@ -251,7 +315,7 @@ STUDIES: tuple[Study, ...] = (
           _cbc("7.4", "5.0", "15.1", "44.5", "89", "245") + (("711-2", "0.52"), ("713-8", "7.0"))),
     Study(4, D(2025, 12, 2), "81459-0", (D(2025, 12, 2), T(10, 30)), "Asthma, not controlled",
           _spiro("3.02", "4.38", "69", "76", "3.48", "76")),
-    Study(4, D(2025, 12, 2), "19935-6", (D(2025, 12, 2), T(9, 40)), "Asthma",
+    Study(4, D(2025, 12, 2), "19935-6", (D(2025, 12, 2), MORNING), "Asthma",
           (("19935-6", "410"),)),
     Study(4, D(2025, 12, 2), "36643-5", (D(2025, 12, 2), T(14, 0)),
           "Asthma with recurrent wheeze",
@@ -260,11 +324,11 @@ STUDIES: tuple[Study, ...] = (
                     "pneumothorax. Normal heart size and mediastinal contours. No "
                     "hyperinflation."),
           impression="Normal chest radiograph."),
-    Study(4, D(2026, 3, 31), "19935-6", (D(2026, 3, 31), T(9, 40)), "Asthma on controller",
+    Study(4, D(2026, 3, 31), "19935-6", (D(2026, 3, 31), MORNING), "Asthma on controller",
           (("19935-6", "500"),)),
     Study(4, D(2026, 8, 11), "81459-0", (D(2026, 8, 11), T(10, 30)), "Asthma on controller",
           _spiro("3.52", "4.45", "79", "88", "3.66", "82")),
-    Study(4, D(2026, 8, 11), "19935-6", (D(2026, 8, 11), T(9, 40)), "Asthma on controller",
+    Study(4, D(2026, 8, 11), "19935-6", (D(2026, 8, 11), MORNING), "Asthma on controller",
           (("19935-6", "530"),)),
     # ---------------------------------- 5 Patricia Davis, 61: breast cancer survivor, anastrozole
     Study(5, D(2026, 1, 13), "58410-2", (D(2026, 1, 13), MORNING), "Oncology follow-up",
@@ -359,20 +423,23 @@ def _result(n: int, code: str, value: str) -> fs.ResultIn:
     v = Decimal(value)
     flag = ("H" if high is not None and v > Decimal(high)
             else "L" if low is not None and v < Decimal(low) else None)
-    return fs.ResultIn(fs.Coded(systems.LOINC, code, LOINC[code]), fs.Measured(v, unit),
+    return fs.ResultIn(loinc(code), fs.Measured(v, unit),
                        low=Decimal(low) if low is not None else None,
                        high=Decimal(high) if high is not None else None, flag=flag)
 
 
 def _narrative(text_: str) -> fs.ResultIn:
-    return fs.ResultIn(fs.Coded(systems.LOINC, "18782-3", LOINC["18782-3"]), text=text_)
+    return fs.ResultIn(loinc("18782-3"), text=text_)
 
 
 async def _visit(db: AsyncSession, n: int, day: dt.date) -> uuid.UUID:
-    start = next(v.start for v in HISTORY[n].visits if v.day == day)
+    """The past visit's encounter, found through its booking's fixed ID (history's numbering),
+    never its start time, which moved with the clinic (#329)."""
+    i = next(i for i, v in enumerate(HISTORY[n].visits, start=1) if v.day == day)
     found: uuid.UUID = (await db.execute(text(
-        "SELECT id FROM clinical.encounter WHERE subject_patient_id = :p AND period_start = :s"),
-        {"p": sid(PATIENT, n), "s": start})).scalar_one()
+        "SELECT id FROM clinical.encounter WHERE appointment_id = :a "
+        "AND status <> 'entered-in-error'"),
+        {"a": sid(PAST_APPOINTMENT, n * 10 + i)})).scalar_one()
     return found
 
 
@@ -402,16 +469,16 @@ async def load_results(engine: AsyncEngine) -> int:
                                if v.day == s.ordered_at)
             await store.record_order(db, fs.OrderIn(
                 id=sid(LAB_ORDER, k), patient_id=sid(PATIENT, s.patient),
-                encounter_id=encounter, code=fs.Coded(systems.LOINC, s.code, LOINC[s.code]),
+                encounter_id=encounter, code=loinc(s.code),
                 category="imaging" if s.category == "RAD" else "laboratory",
                 requester_practitioner_id=DOCTOR,
-                signed_at=order_start + dt.timedelta(minutes=20), reason=s.reason))
+                signed_at=order_start + SIGNED_AFTER, reason=s.reason))
             results = (tuple(_narrative(t) for t in s.findings) if s.findings
                        else tuple(_result(s.patient, c, v) for c, v in s.values))
             await store.record_report(db, fs.ReportIn(
                 id=sid(LAB_REPORT, k), patient_id=sid(PATIENT, s.patient),
                 encounter_id=encounter, order_id=sid(LAB_ORDER, k), category=s.category,
-                code=fs.Coded(systems.LOINC, s.code, LOINC[s.code]), effective=performed(s),
+                code=loinc(s.code), effective=performed(s),
                 issued=issued(s), performer_organization_id=RADIOLOGY if s.findings else LAB,
                 results=results, conclusion=s.impression))
             written.add(s.patient)

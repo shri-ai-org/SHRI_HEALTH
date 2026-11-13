@@ -14,12 +14,12 @@ test. The test server uses real sign-in, so this script doesn't run against it y
 **After a reset** (``python -m app.db.seed reset`` on an empty database, or ``deploy.sh reset``):
 the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code releases loaded
 (``python -m app.db.terminology icd10cm …`` and ``… rxnorm …``); without them they fail with
-"no codes loaded". The seed's all-day schedules give free times from today, so the visit is
-booked today, at the first free time at least 5 minutes ahead and not before 09:00 there (the
-all-day rules make 00:00 the first free time, which reads as a midnight visit). The revisit is
-booked exactly 14 days after the visit, at the first free time from 09:00, in the facility's
-time zone, with the same provider; it fails, and says
-so, if that day has no free time (the demo seed's weekly all-day rules have no end date).
+"no codes loaded". The seed's clinic hours (08:00 to 17:00 on weekdays, in each facility's time
+zone) give free times from today, so the visit is booked today, at the first free time at least
+5 minutes ahead and not before 08:00 there. The revisit is booked exactly 14 days after the
+visit, at the first free time from 08:00, in the facility's time zone, with the same provider;
+it fails, and says so, if that day has no free time (the demo seed's weekly rules have no end
+date).
 
 **Step 8, the seeded charts.** It reads the demo seed's own patients, so it needs the demo
 layer and its history (a reset does both). It opens the restricted chart with a break-glass
@@ -33,8 +33,9 @@ signed with ``SESSION_SECRET``, which every server sets; a laptop sets a random 
 step 7 answers ``503 Downloads are not configured``. Nothing else differs.
 
 **Time of day.** Check-in is same-day only in the facility's time zone: late in the evening
-there, when no free time is left that day, step 2 fails and says so. Run it after midnight
-there.
+there, on a weekend or after the day's clinic hours (the last free time is 16:40), step 2 fails
+with "no free time left today". Run it on a weekday there, after midnight (13:30 IST in
+November) and before 16:40.
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm"
 RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
 #: The revisit is booked exactly this many days after the visit, in the facility's time zone.
 REVISIT_DAYS = 14
-DAY_STARTS = dt.time(9)   # the earliest time booked, in the facility's time zone
+DAY_STARTS = dt.time(8)   # clinic hours start, in the facility's time zone
 STEPS = {1: "register the patient", 2: "book", 3: "check in", 4: "room",
          5: "doctor: diagnosis and signed note", 6: "prescribe and send",
          7: "check-out: follow-up, summary, revisit",
@@ -220,8 +221,9 @@ def book(c: Client, v: Visit) -> str:
         if start:
             break
     if start is None:
-        raise StepFailed("no free time left today at any facility (check-in is same-day only, "
-                         "in the facility's time zone): run it again after midnight there")
+        raise StepFailed("no free time left today at any facility (clinic hours are 08:00 to "
+                         "17:00 on weekdays in the facility's time zone, and check-in is "
+                         "same-day only): run it again on a weekday, before 16:40 there")
     js = c.call("fd", "POST", "/appointments", {
         "patientId": v.patient, "providerId": v.provider, "facilityId": v.facility,
         "appointmentTypeId": v.visit_type, "startAt": start,
@@ -327,7 +329,7 @@ def check_out(c: Client, v: Visit) -> str:
     start = _free_time(c, v, revisit_day, dt.datetime.now(dt.UTC))
     if start is None:
         raise StepFailed(f"no free time on {revisit_day}, {REVISIT_DAYS} days out, for the "
-                         "visit's provider (the demo seed's weekly all-day rules give some)")
+                         "visit's provider (the demo seed's weekly clinic hours give some)")
     c.call("fd", "POST", "/appointments", {
         "patientId": v.patient, "providerId": v.provider, "facilityId": v.facility,
         "appointmentTypeId": v.visit_type, "startAt": start,
