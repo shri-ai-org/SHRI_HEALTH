@@ -36,7 +36,8 @@ export const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_
 
 /**
  * The screens whose data still comes from the in-memory sample (B8b and P1: test results,
- * messages, prescriptions, documents, reports, document templates and the e-signature). With the
+ * messages, prescriptions, documents, reports, document templates and the e-signature), and
+ * Demographics, whose read isn't served yet. With the
  * real API they are hidden from the menus, the home page and the router, as the doctors' portal
  * hides screens without a backend, so a patient never sees sample records (M4). They return when
  * their contracts and services land; nothing is deleted.
@@ -49,6 +50,9 @@ export const SAMPLE_ONLY_PATHS = [
   '/reports',
   '/document-templates',
   '/e-signature',
+  // Not sample data, but its read (getPortalProfile, GET /portal/me) isn't served yet: hidden until
+  // it is, so the patient never meets "Couldn't load your profile" (final audit, 13 Nov).
+  '/demographics',
 ]
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`)

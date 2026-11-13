@@ -13,7 +13,7 @@ describe('pathEnabled', () => {
   })
 
   it('keeps the real-API screens and the education links', () => {
-    for (const p of ['/', '/appointments', '/appointments/schedule', '/health-issues', '/health-trends', '/allergies', '/demographics', '/patient-education', '/visit-summaries/x']) {
+    for (const p of ['/', '/appointments', '/appointments/schedule', '/health-issues', '/health-trends', '/allergies', '/patient-education', '/visit-summaries/x']) {
       expect(pathEnabled(p, true)).toBe(true)
     }
   })

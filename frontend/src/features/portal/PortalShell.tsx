@@ -131,7 +131,8 @@ export function PortalShell({ children }: { children: ReactNode }) {
                   </DropMenu>
                 ) : null}
               </li>
-              {TOP.slice(1).map((t) => (
+              {/* Test Results has its own link above (when shown); everything else here, by path, not position. */}
+              {TOP.filter((t) => t.to !== '/test-results').map((t) => (
                 <li key={t.to}>
                   <TopLink to={t.to} label={t.label} current={under(path, t.match ?? t.to)} badge={t.label === 'Messages' ? unread : 0} />
                 </li>
