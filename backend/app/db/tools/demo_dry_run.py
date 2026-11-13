@@ -14,7 +14,7 @@ test. The test server uses real sign-in, so this script doesn't run against it y
 **After a reset** (``python -m app.db.seed reset`` on an empty database, or ``deploy.sh reset``):
 the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code releases loaded
 (``python -m app.db.terminology icd10cm …`` and ``… rxnorm …``); without them they fail with
-"no codes loaded". The seed's clinic hours (08:00 to 17:00 on weekdays, in each facility's time
+"no codes loaded". The seed's clinic hours (08:00 to 17:00 every day, in each facility's time
 zone) give free times from today, so the visit is booked today, at the first free time at least
 5 minutes ahead and not before 08:00 there. The revisit is booked exactly 14 days after the
 visit, at the first free time from 08:00, in the facility's time zone, with the same provider;
@@ -33,9 +33,8 @@ signed with ``SESSION_SECRET``, which every server sets; a laptop sets a random 
 step 7 answers ``503 Downloads are not configured``. Nothing else differs.
 
 **Time of day.** Check-in is same-day only in the facility's time zone: late in the evening
-there, on a weekend or after the day's clinic hours (the last free time is 16:40), step 2 fails
-with "no free time left today". Run it on a weekday there, after midnight (13:30 IST in
-November) and before 16:40.
+there, after the day's clinic hours (the last free time is 16:40), step 2 fails with "no free
+time left today". Run it after midnight there (13:30 IST in November) and before 16:40.
 """
 from __future__ import annotations
 
@@ -222,8 +221,8 @@ def book(c: Client, v: Visit) -> str:
             break
     if start is None:
         raise StepFailed("no free time left today at any facility (clinic hours are 08:00 to "
-                         "17:00 on weekdays in the facility's time zone, and check-in is "
-                         "same-day only): run it again on a weekday, before 16:40 there")
+                         "17:00 in the facility's time zone, and check-in is same-day only): "
+                         "run it again after midnight there, before 16:40")
     js = c.call("fd", "POST", "/appointments", {
         "patientId": v.patient, "providerId": v.provider, "facilityId": v.facility,
         "appointmentTypeId": v.visit_type, "startAt": start,
