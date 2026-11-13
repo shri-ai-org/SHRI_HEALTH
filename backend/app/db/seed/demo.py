@@ -24,10 +24,12 @@ from __future__ import annotations
 import datetime as dt
 import os
 import random
+import re
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -53,15 +55,23 @@ AI_FEATURE = 62
 
 #: The main office's time zone in November (America/Chicago, UTC-6 then).
 CHICAGO = dt.timezone(dt.timedelta(hours=-6))
+DEMO_DAY_SETTING = "SHRI_DEMO_DAY"
 
 
-def _demo_day() -> dt.date:
+def _demo_day(now: dt.datetime | None = None) -> dt.date:
     """SHRI_DEMO_DAY (YYYY-MM-DD) when set; otherwise the reset day in the clinic's time zone, so
     a rehearsal on any day has the demo patients booked that day (Vimal's run check on #85). The
-    demo itself is Friday 20 November 2026: set it for that reset, or reset that day."""
-    if value := os.environ.get("SHRI_DEMO_DAY", "").strip():
-        return dt.date.fromisoformat(value)
-    return dt.datetime.now(CHICAGO).date()
+    demo itself is Friday 20 November 2026: set it for that reset, or reset that day. The day
+    changes at midnight in Chicago, 11:30 IST."""
+    if value := os.environ.get(DEMO_DAY_SETTING, "").strip():
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ValueError(value)
+            return dt.date.fromisoformat(value)
+        except ValueError:
+            raise ValueError(f"{DEMO_DAY_SETTING} must be a date as YYYY-MM-DD (for example "
+                             f"2026-11-20), not {value!r}") from None
+    return (now or dt.datetime.now(dt.UTC)).astimezone(ZoneInfo("America/Chicago")).date()
 
 
 #: The day the demo patients are booked, at the main office.

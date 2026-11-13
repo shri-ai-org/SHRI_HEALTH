@@ -459,20 +459,37 @@ def test_no_two_seed_kinds_share_a_number() -> None:
     assert shared == {21: ["USER_ROLE", "PHARMACY"]}
 
 
-def test_the_demo_day_is_the_reset_day_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Vimal's run check on #85: rehearsals before the 20th see the demo patients that day."""
-    monkeypatch.setenv("SHRI_DEMO_DAY", "2026-11-20")
-    assert demo._demo_day() == dt.date(2026, 11, 20)
+def test_the_demo_day_is_the_reset_day_in_chicago_unless_set(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vimal's run check on #85: rehearsals before the 20th see the demo patients that day. The
+    day turns at midnight in Chicago (06:00 UTC in November, 11:30 IST), never at UTC's."""
+    monkeypatch.delenv("SHRI_DEMO_DAY", raising=False)
+    before = dt.datetime(2026, 11, 13, 5, 59, 59, tzinfo=dt.UTC)       # 23:59:59 in Chicago
+    after = dt.datetime(2026, 11, 13, 6, 0, 0, tzinfo=dt.UTC)          # 00:00:00 there
+    assert demo._demo_day(before) == dt.date(2026, 11, 12)
+    assert demo._demo_day(after) == dt.date(2026, 11, 13)
+    summer = dt.datetime(2026, 7, 1, 5, 0, tzinfo=dt.UTC)              # CDT: midnight is 05:00
+    assert demo._demo_day(summer) == dt.date(2026, 7, 1)
+    monkeypatch.setenv("SHRI_DEMO_DAY", " 2026-11-20 ")
+    assert demo._demo_day(before) == dt.date(2026, 11, 20)              # the setting wins
     monkeypatch.setenv("SHRI_DEMO_DAY", " ")
-    assert demo._demo_day() == dt.datetime.now(demo.CHICAGO).date()
-    monkeypatch.setenv("SHRI_DEMO_DAY", "20 Nov")
-    with pytest.raises(ValueError):
+    assert demo._demo_day(after) == dt.date(2026, 11, 13)               # blank: the default
+
+
+@pytest.mark.parametrize("value", ["20 Nov", "2026-11-31", "20261120", "2026-11-20T00:00",
+                                   "2026-W47-5"])
+def test_an_invalid_demo_day_is_refused_with_the_format(
+        monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("SHRI_DEMO_DAY", value)
+    with pytest.raises(ValueError, match=r"SHRI_DEMO_DAY must be a date as YYYY-MM-DD"):
         demo._demo_day()
 
 
 def test_the_demo_clinic_has_both_ai_features_on(migrator_engine: Engine,
                                                 admin_engine: Engine) -> None:
-    """A feature without a row is off (modules/ai), so a reset without these leaves the AI off."""
+    """A feature without a row is off (modules/ai), so a reset without these leaves the AI off.
+    A second run changes nothing."""
+    _seed(migrator_engine)
     _seed(migrator_engine)
     with admin_engine.connect() as c:
         rows = c.execute(text("SELECT feature, is_enabled FROM admin.ai_feature_setting "
