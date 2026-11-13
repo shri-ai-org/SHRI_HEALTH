@@ -47,7 +47,7 @@ const MOVED = new Set(['S-06-01', 'S-06-11'])
  */
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 const NO_SERVICE_PREFIXES = ['S-08-', 'S-09-', 'S-13-', 'S-15-', 'S-16-', 'S-18-', 'S-27-']
-const NO_SERVICE = new Set(['S-28-09', 'S-06-09', 'S-06-12', 'S-06-13', 'S-05-04', 'S-05-05', 'S-05-06', 'S-05-10'])
+const NO_SERVICE = new Set(['S-28-09', 'S-06-09', 'S-05-04', 'S-05-05', 'S-05-06', 'S-05-10'])
 /** False for a screen that would show sample data with the API. */
 function routedWithApi(id: string): boolean {
   return !NO_SERVICE.has(id) && !NO_SERVICE_PREFIXES.some((p) => id.startsWith(p))

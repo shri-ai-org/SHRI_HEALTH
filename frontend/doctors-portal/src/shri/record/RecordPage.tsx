@@ -32,6 +32,7 @@ import { useDischargeFlow } from '../state/dischargeFlow'
 import { useShri } from '../state/store'
 import { Pill, PillTag } from '../ui/primitives'
 
+import { ApiReportCard, ApiResultsCard } from './ApiResults'
 import { InsightsCard } from './InsightsCard'
 import { PatientReportCard } from './PatientReportCard'
 import { RecordFrame } from './RecordFrame'
@@ -112,7 +113,8 @@ function Hub({ patient: p }: { patient: Patient }) {
     <>
       {/* The first screen: the scan, the vitals and the AI's flags, and how the results fall — none of them below the fold. */}
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-[5fr_4fr_4fr]">
-        <ReportCard patient={p} />
+        {/* SHRI_HEALTH: with the API, the latest imaging report's impression as text (no images behind it). */}
+        {REAL_API ? <ApiReportCard patient={p} /> : <ReportCard patient={p} />}
         <div className="flex min-w-0 flex-col gap-[16px]">
           <VitalsCard patient={p} />
           {/* Beside the other two it takes the row's height without setting it, and scrolls inside; never below a readable 260px. */}
@@ -122,7 +124,7 @@ function Hub({ patient: p }: { patient: Patient }) {
         </div>
         {/* Test results as tall as its content (capped, scrolling inside), and the patient's notes in the rest of the column. */}
         <div className="flex min-w-0 flex-col gap-[16px]">
-          <ResultsCard patient={p} className="lg:max-h-[340px]" />
+          {REAL_API ? <ApiResultsCard patient={p} className="lg:max-h-[340px]" /> : <ResultsCard patient={p} className="lg:max-h-[340px]" />}
           <div className="flex min-h-0 flex-col lg:h-0 lg:min-h-[240px] lg:grow">
             <NotesCard patient={p} className="min-h-0 flex-1" />
           </div>
@@ -131,7 +133,7 @@ function Hub({ patient: p }: { patient: Patient }) {
 
       {/* Below: the one trend that matters, and the patient's report. */}
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2">
-        {/* SHRI_HEALTH: with the API the trend is the patient's vitals (listPatientVitals); test results have no service yet. */}
+        {/* SHRI_HEALTH: with the API the trend is the patient's vitals (listPatientVitals); lab results have no series yet. */}
         <TrendCard series={REAL_API ? [] : series} vitals={REAL_API ? vitalsFor(p.id).history : vitalsHistoryFor(p.id)} />
         <PatientReportCard patient={p} />
       </div>
