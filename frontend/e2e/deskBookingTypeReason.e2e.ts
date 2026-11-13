@@ -40,10 +40,11 @@ test('the desk books with a chosen visit type and reason, not in one tap', async
   await page.getByLabel('Visit type').selectOption(wanted.id)
   await page.getByLabel('Reason for the visit').fill('Cough for a week')
   await book.click()
-  await expect(book).toHaveCount(0, { timeout: 15_000 })
 
-  const after = await ok<Booked>(await request.get('/api/v1/appointments', { params: { patientId: patient.id, dateFrom: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), dateTo: new Date(Date.now() + 25 * 86_400_000).toISOString().slice(0, 10) } }))
-  expect(after.items).toHaveLength(1)
+  // The booking, once the server has it (the bar closes as the time leaves the free list).
+  const range = { patientId: patient.id, dateFrom: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), dateTo: new Date(Date.now() + 25 * 86_400_000).toISOString().slice(0, 10) }
+  let after: Booked = { items: [] }
+  await expect.poll(async () => (after = await ok<Booked>(await request.get('/api/v1/appointments', { params: range }))).items.length, { timeout: 15_000 }).toBe(1)
   const [appt] = after.items
   expect(appt.appointmentType?.id ?? appt.appointmentTypeId).toBe(wanted.id)
   expect(appt.reasonForVisit).toBe('Cough for a week')
