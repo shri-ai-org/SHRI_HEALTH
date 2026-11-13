@@ -143,3 +143,47 @@ def test_bad_parameters_and_no_patient_session(portal_app: Any,
     for path in ("problems", "allergies", "vitals"):        # a staff session isn't a patient's
         refused = portal_app.get(f"{API}/{path}", headers={"X-Dev-User": "md"})
         assert refused.status_code in (401, 403), (path, refused.status_code)
+
+
+def _hold(chart: PortalChart, user: uuid.UUID, problem: uuid.UUID, *, lift: bool = False) -> None:
+    """A clinician's hold on the problem (D90), or its lifting, written as the migrator would."""
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    try:
+        with admin.begin() as c:
+            c.execute(text("SELECT set_config('app.current_tenant_id', :t, true)"),
+                      {"t": str(chart.practice.clinic)})
+            if lift:
+                c.execute(text("UPDATE admin.release_hold SET lifted_at = now(), "
+                               "lifted_by_user_id = :u WHERE condition_id = :c "
+                               "AND lifted_at IS NULL"), {"u": user, "c": problem})
+            else:
+                c.execute(text("INSERT INTO admin.release_hold (id, tenant_id, patient_id, "
+                               "condition_id, reason, held_by_user_id) VALUES (:i, :t, :p, :c, "
+                               "'patient-request', :u)"),
+                          {"i": uuid.uuid4(), "t": chart.practice.clinic, "p": chart.a,
+                           "c": problem, "u": user})
+    finally:
+        admin.dispose()
+
+
+def test_a_held_problem_is_listed_as_held_with_its_id_only(portal_app: Any,
+                                                         portal_chart: PortalChart) -> None:
+    seeded = _seed(portal_chart)
+    user = _clinician(portal_chart)
+    _hold(portal_chart, user, seeded["problem"])
+    me = portal_client(portal_app, portal_chart, portal_chart.a)
+    listed = me.get(f"{API}/problems")
+    assert listed.status_code == 200, listed.text
+    held = {"id": str(seeded["problem"]), "releaseStatus": "held"}
+    assert listed.json()["items"] == [held]            # no name, status, dates or reason
+    assert me.get(f"{API}/problems/{seeded['problem']}").json() == held
+    assert "patient-request" not in listed.text
+    # Another patient never sees it, held or not.
+    other = portal_client(portal_app, portal_chart, portal_chart.b)
+    assert other.get(f"{API}/problems").json()["items"] == []
+    assert other.get(f"{API}/problems/{seeded['problem']}").status_code == 404
+    # Lifted: the problem is back, in full.
+    _hold(portal_chart, user, seeded["problem"], lift=True)
+    (problem,) = me.get(f"{API}/problems").json()["items"]
+    assert problem["releaseStatus"] == "available"
+    assert problem["display"] == "Essential (primary) hypertension"

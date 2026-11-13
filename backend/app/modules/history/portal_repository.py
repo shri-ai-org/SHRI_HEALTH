@@ -4,11 +4,13 @@ listPortalVitals).
 
 Everything runs in core's ``portal_db`` session: role ``shri_portal`` with the session's patient
 set, so the own-chart policies (migration 0011) show this patient's rows only, never an
-entered-in-error one, and never a problem a clinician holds (D90): a held problem doesn't exist
-here, so the list leaves it out rather than showing it as held (``shri_portal`` can't read the
-holds themselves; a follow-up for Anand, noted on the PR). Each query also names the session's
-patient, so the rule holds twice. Only clinical tables are read: the portal has no grant on
-``admin.app_user``, so nobody's name is shown, as the contract's shapes say.
+entered-in-error one, and never the content of a problem a clinician holds (D90): the held
+problem itself is hidden from ``shri_portal``, so it is listed from ``admin.portal_held_items()``
+(the session patient's held items: type, ID and date only, never the reason or the clinician) as
+``releaseStatus: held`` with its ID only, as the contract says. Each query also names the
+session's patient, so the rule holds twice. Only clinical tables and that function are read:
+the portal has no grant on ``admin.app_user``, so nobody's name is shown, as the contract's
+shapes say.
 """
 from __future__ import annotations
 
@@ -28,17 +30,27 @@ from . import portal_schemas as ps
 from .repository import partial_date
 
 _PROBLEMS = text("""
-SELECT c.id, c.clinical_status, c.code_display, c.code_text,
-       c.onset_date_time, c.onset_period_start, c.onset_period_end,
-       c.abatement_date_time, c.abatement_period_start, c.abatement_period_end,
-       coalesce(c.recorded_date, c.created_at) AS recorded_at
-FROM clinical.condition c
-WHERE c.subject_patient_id = :patient
-  AND c.verification_status IS DISTINCT FROM 'entered-in-error'
-  AND EXISTS (SELECT 1 FROM clinical.condition_category k
-               WHERE k.condition_id = c.id AND k.category_code = 'problem-list-item')
-  AND (CAST(:id AS uuid) IS NULL OR c.id = :id)
-ORDER BY coalesce(c.recorded_date, c.created_at) DESC, c.id
+WITH shown AS (
+  SELECT c.id, 'available' AS release_status, c.clinical_status, c.code_display, c.code_text,
+         c.onset_date_time, c.onset_period_start, c.onset_period_end,
+         c.abatement_date_time, c.abatement_period_start, c.abatement_period_end,
+         coalesce(c.recorded_date, c.created_at) AS recorded_at,
+         coalesce(c.recorded_date, c.created_at) AS sort_at
+  FROM clinical.condition c
+  WHERE c.subject_patient_id = :patient
+    AND c.verification_status IS DISTINCT FROM 'entered-in-error'
+    AND EXISTS (SELECT 1 FROM clinical.condition_category k
+                 WHERE k.condition_id = c.id AND k.category_code = 'problem-list-item')
+  UNION ALL
+  -- Held problems (D90): the ID only, ordered by their date, which is never shown.
+  SELECT h.item_id, 'held', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+         NULL, h.item_date
+  FROM admin.portal_held_items() h
+  WHERE h.item_type = 'Condition'
+)
+SELECT * FROM shown
+WHERE (CAST(:id AS uuid) IS NULL OR id = :id)
+ORDER BY sort_at DESC NULLS LAST, id
 LIMIT :limit OFFSET :offset
 """)
 
@@ -115,7 +127,8 @@ class SqlPortalHistoryReads:
         rows = [dict(x) for x in (await db.execute(_PROBLEMS, {
             "patient": patient_id, "id": problem_id, "limit": limit, "offset": offset})
             ).mappings()]
-        return [ps.PortalProblem(
+        return [ps.PortalProblem(id=r["id"], release_status="held")
+                if r["release_status"] == "held" else ps.PortalProblem(
             id=r["id"], release_status="available", display=_display(r),
             clinical_status=(r["clinical_status"] if r["clinical_status"] in PROBLEM_STATUSES
                              else None),
