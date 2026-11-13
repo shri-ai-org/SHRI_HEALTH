@@ -171,11 +171,13 @@ def test_a_held_problem_is_listed_as_held_with_its_id_only(portal_app: Any,
     seeded = _seed(portal_chart)
     user = _clinician(portal_chart)
     _hold(portal_chart, user, seeded["problem"])
+    _hold(portal_chart, user, seeded["asthma"])        # entered-in-error: never listed, held or not
     me = portal_client(portal_app, portal_chart, portal_chart.a)
     listed = me.get(f"{API}/problems")
     assert listed.status_code == 200, listed.text
     held = {"id": str(seeded["problem"]), "releaseStatus": "held"}
     assert listed.json()["items"] == [held]            # no name, status, dates or reason
+    assert me.get(f"{API}/problems/{seeded['asthma']}").status_code == 404
     assert me.get(f"{API}/problems/{seeded['problem']}").json() == held
     assert "patient-request" not in listed.text
     # Another patient never sees it, held or not.

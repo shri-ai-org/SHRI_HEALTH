@@ -5,12 +5,13 @@ listPortalVitals).
 Everything runs in core's ``portal_db`` session: role ``shri_portal`` with the session's patient
 set, so the own-chart policies (migration 0011) show this patient's rows only, never an
 entered-in-error one, and never the content of a problem a clinician holds (D90): the held
-problem itself is hidden from ``shri_portal``, so it is listed from ``admin.portal_held_items()``
-(the session patient's held items: type, ID and date only, never the reason or the clinician) as
-``releaseStatus: held`` with its ID only, as the contract says. Each query also names the
-session's patient, so the rule holds twice. Only clinical tables and that function are read:
-the portal has no grant on ``admin.app_user``, so nobody's name is shown, as the contract's
-shapes say.
+problem itself is hidden from ``shri_portal``, so it is listed from
+``admin.portal_held_records()`` (0022: the session patient's held items under the portal's own
+visibility rules; type, ID, patient and whether the hold is active, never the reason or the
+clinician) as ``releaseStatus: held`` with its ID only, after the visible ones, as the contract
+says. Each query also names the session's patient, so the rule holds twice. Only clinical
+tables and that function are read: the portal has no grant on ``admin.app_user``, so nobody's
+name is shown, as the contract's shapes say.
 """
 from __future__ import annotations
 
@@ -42,11 +43,13 @@ WITH shown AS (
     AND EXISTS (SELECT 1 FROM clinical.condition_category k
                  WHERE k.condition_id = c.id AND k.category_code = 'problem-list-item')
   UNION ALL
-  -- Held problems (D90): the ID only, ordered by their date, which is never shown.
+  -- Held problems (D90): the ID only, after the visible ones. portal_held_records() (0022)
+  -- returns only problems the portal would show once released (on the problem list, never
+  -- entered-in-error), for the session patient, never the reason or the clinician.
   SELECT h.item_id, 'held', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-         NULL, h.item_date
-  FROM admin.portal_held_items() h
-  WHERE h.item_type = 'Condition'
+         NULL, CAST(NULL AS timestamptz)
+  FROM admin.portal_held_records() h
+  WHERE h.item_type = 'Condition' AND h.hold_active AND h.patient_id = :patient
 )
 SELECT * FROM shown
 WHERE (CAST(:id AS uuid) IS NULL OR id = :id)
