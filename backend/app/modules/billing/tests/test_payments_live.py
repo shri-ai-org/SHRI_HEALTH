@@ -27,6 +27,7 @@ from app.core.config import Settings
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USER_HEADER, DEV_USERS, CurrentUser, current_user
 from app.db.models import MAPPERS
 from app.db.tests import builders as b
+from app.db.tests.audit_coverage import audit_problems, audit_rows, phi_in
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -263,3 +264,36 @@ def test_a_rolled_back_request_leaves_no_payment(
     with admin.connect() as c:
         assert c.execute(text("SELECT count(*) FROM admin.binary_object WHERE id = :i"),
                          {"i": uuid.UUID(orphan.name)}).scalar_one() == 0
+
+
+def _phi(patient: Any) -> list[str]:
+    """What identifies the test patient: names, birth date, MRN, phone, street."""
+    return ["Okonjo", "Ngozi", patient.birth_date.isoformat(), patient.identifier[0].value,
+            "010-2000", "12 Elm St"]
+
+
+def test_a_payment_is_audited_with_its_patient_and_no_patient_data(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session], admin: Engine,
+        clinics: dict[UUID, UUID]) -> None:
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Okonjo", "Ngozi")
+    db.commit()
+    phi = _phi(patient)
+
+    paid = _pay(client("fd"), patient.id, {"amount": {"value": "30.00", "currency": "USD"},
+                                           "method": "cash", "note": "Copay"})
+
+    assert paid.status_code == 201, paid.text
+    assert audit_problems(admin, paid, "recordPayment", tenant=clinics[CLINIC_A],
+                          patient=patient.id) == []
+    refused = [
+        _pay(client("fd"), patient.id, {"amount": {"value": "-1.00", "currency": "USD"},
+                                        "method": "cash"}),                     # 422
+        _pay(client("fd"), patient.id, {"amount": {"value": "5.00", "currency": "EUR"},
+                                        "method": "cash"}),                     # USD only
+        _pay(client("fd-b"), patient.id, {"amount": {"value": "5.00", "currency": "USD"},
+                                          "method": "cash"}),                   # 404
+    ]
+    assert [r.status_code for r in refused] == [422, 422, 404], [r.text for r in refused]
+    reasons = [r.reason for x in [paid, *refused] for r in audit_rows(admin, x)]
+    assert phi_in([r.text for r in refused] + reasons, phi) == []
