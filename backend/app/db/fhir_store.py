@@ -1735,7 +1735,8 @@ class SqlFhirStore:
         order = ServiceRequest(
             status="completed", intent="order", priority="routine",
             code_system=data.code.system, code_code=data.code.code,
-            code_display=data.code.display, subject_patient_id=data.patient_id,
+            code_display=data.code.display, code_text=data.code.text,
+            subject_patient_id=data.patient_id,
             encounter_id=data.encounter_id, authored_on=data.signed_at,
             requester_practitioner_id=data.requester_practitioner_id,
             ext_signed_at=data.signed_at,
@@ -1772,7 +1773,8 @@ class SqlFhirStore:
             if (r.value is None) == (r.text is None):
                 raise InvalidInput(f"{r.code.code}: a quantity or a text", field="results")
             obs = Observation(status="final", code_system=r.code.system, code_code=r.code.code,
-                              code_display=r.code.display, subject_patient_id=data.patient_id,
+                              code_display=r.code.display, code_text=r.code.text,
+                              subject_patient_id=data.patient_id,
                               encounter_id=data.encounter_id,
                               effective_date_time=data.effective, issued=data.issued,
                               value_string=r.text)
@@ -1799,8 +1801,9 @@ class SqlFhirStore:
         await db.flush()
         report = DiagnosticReport(
             status="final", code_system=data.code.system, code_code=data.code.code,
-            code_display=data.code.display, subject_patient_id=data.patient_id,
-            encounter_id=data.encounter_id, effective_date_time=data.effective,
+            code_display=data.code.display, code_text=data.code.text,
+            subject_patient_id=data.patient_id, encounter_id=data.encounter_id,
+            effective_date_time=data.effective,
             issued=data.issued, conclusion=data.conclusion)
         if data.id is not None:
             report.id = data.id

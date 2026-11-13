@@ -527,8 +527,9 @@ pin in `terminology/fetch.py`, in a reviewed PR.
   `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
   container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
   (Thulasi). RDS has its own backups (D30).
-- `demo_dry_run` books from 09:00 facility time, since the all-day demo schedules make 00:00
-  the first free time.
+- `demo_dry_run` books from 08:00 facility time, the start of the demo seed's clinic hours
+  (08:00 to 17:00 on weekdays); on a weekend or after 16:40 there it stops with "no free time
+  left today".
 
 ## The demo seed's fixed IDs (`app/db/seed`)
 
@@ -583,7 +584,7 @@ stays, as the test's only allowed overlap.
 | 38 | `DEMO_USER` (demo) | demo staff user | main (demo layer) |
 | 39 | `DEMO_USER_ROLE` (demo) | demo staff user's role | main (demo layer) |
 | 40 | `PORTAL_ACCOUNT` (demo) | portal account | main (demo layer) |
-| 41 | `ALL_DAY_RULE` (demo) | all-day availability rule | main (demo layer) |
+| 41 | `DAILY_RULE` (demo) | clinic-hours availability rule, weekdays (was `ALL_DAY_RULE`, all day) | main (demo layer) |
 | 42 | `ERX_ENDPOINT` (demo) | simulated pharmacy connection | main (demo layer) |
 | 43 | `CLEARINGHOUSE_ENDPOINT` (demo) | simulated clearinghouse connection | main (#287) |
 | 44 | `P_EMAIL` (demo) | patient email | #293 (registration, booking) |

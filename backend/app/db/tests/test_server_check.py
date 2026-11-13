@@ -84,3 +84,18 @@ def test_an_at_least_check_takes_more_but_not_fewer() -> None:
     check = sc.Check("visits", "SELECT 1", "6", at_least=True)
     assert check.passes("7") and check.passes("6")
     assert not check.passes("5") and not check.passes(None) and not check.passes("x")
+
+
+def test_a_failed_seed_line_says_a_reset_is_needed() -> None:
+    """After an additive `up` over a database seeded before the San Jose move, the zone lines
+    fail and say what fixes them; a passing line says nothing more."""
+    zone = next(c for c in sc.demo_checks() if c.name == "the demo clinic's time zone")
+    assert sc.line(zone, "America/Los_Angeles") == (
+        "PASS  the demo clinic's time zone: America/Los_Angeles")
+    assert sc.line(zone, "America/Denver") == (
+        "FAIL  the demo clinic's time zone: America/Denver (expected America/Los_Angeles); "
+        "reset needed: deploy.sh reset, after 13:30 IST (up only adds missing rows; Anand's seed)")
+    visits = next(c for c in sc.demo_checks() if c.name.startswith("visits today"))
+    none_today = sc.line(visits, "0")
+    assert "(expected at least 6); reset needed" in none_today
+    assert sc.line(sc.Check("x", "SELECT 1", "1"), "2") == "FAIL  x: 2 (expected 1)"

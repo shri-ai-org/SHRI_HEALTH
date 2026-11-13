@@ -26,6 +26,11 @@ HEAD = "0021"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
+#: What a failed demo line needs. The seed's rows come back only with a reset: `deploy.sh up`
+#: adds missing rows and never changes existing ones (the zone, today's visits).
+RESET = "reset needed: deploy.sh reset, after 13:30 IST (up only adds missing rows; Anand's seed)"
+AI_FIX = "switch it on in the AI settings as demo.admin, or reset (D118)"
+CODES = "load the codes: deploy.sh reset loads them (python -m app.db.terminology all)"
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,7 @@ class Check:
     sql: str
     expected: str
     at_least: bool = False   # a count that may be higher (live work adds to it)
+    fix: str = ""            # what to do when it fails, printed with the FAIL line
 
     def passes(self, got: str | None) -> bool:
         if got is None:
@@ -108,49 +114,52 @@ def demo_checks() -> list[Check]:
     return [
         Check("both AI features on in the demo clinic",
               "SELECT count(*) FROM admin.ai_feature_setting WHERE tenant_id = " + clinic +
-              " AND is_enabled AND feature IN ('ambient-documentation', 'chart-summary')", "2"),
+              " AND is_enabled AND feature IN ('ambient-documentation', 'chart-summary')", "2",
+              fix=AI_FIX),
         Check("the demo clinic's time zone", "SELECT timezone FROM admin.tenant WHERE id = " +
-              clinic, zone),
+              clinic, zone, fix=RESET),
         Check("the demo clinic's main office's time zone",
-              f"SELECT timezone FROM admin.facility WHERE id = '{FACILITY_A}'", zone),
-        Check("no facility in Chicago",
-              "SELECT count(*) FROM admin.facility WHERE timezone ILIKE '%chicago%'", "0"),
+              f"SELECT timezone FROM admin.facility WHERE id = '{FACILITY_A}'", zone, fix=RESET),
+        Check("no demo-clinic facility outside Pacific or Eastern time (the old Central zone)",
+              "SELECT count(*) FROM admin.facility WHERE tenant_id = " + clinic +
+              " AND timezone NOT IN ('America/Los_Angeles', 'America/New_York')", "0", fix=RESET),
         Check("visits today with demo.doctor (the clinic's day)",
               "SELECT count(DISTINCT a.id) FROM clinical.appointment a JOIN "
               "clinical.appointment_participant x ON x.appointment_id = a.id WHERE "
               f"a.tenant_id = {clinic} AND a.status = 'booked' AND x.actor_practitioner_id = "
               f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = "
-              f"(now() AT TIME ZONE '{zone}')::date", "6", at_least=True),
+              f"(now() AT TIME ZONE '{zone}')::date", "6", at_least=True, fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
-              str(len(demo.SHOWN_PATIENTS))),
+              str(len(demo.SHOWN_PATIENTS)), fix=RESET),
         Check("portal accounts active on their charts",
               "SELECT count(*) FROM admin.portal_account WHERE status = 'active' AND "
-              f"(keycloak_user_id::text, patient_id::text) IN ({pairs})", str(len(accounts))),
+              f"(keycloak_user_id::text, patient_id::text) IN ({pairs})", str(len(accounts)),
+              fix=RESET),
         Check("David Nguyen's chart restricted",
               "SELECT 'R' = ANY(meta_security) FROM clinical.patient WHERE id = "
-              f"'{sid(demo.PATIENT, 6)}'", "True"),
+              f"'{sid(demo.PATIENT, 6)}'", "True", fix=RESET),
         Check("the MRN counter is ahead of every MRN",
               "SELECT c.next_value > coalesce(max(substring(i.value FROM '[0-9]+$')::int), 0) "
               "FROM admin.mrn_counter c LEFT JOIN clinical.identifier i ON i.system = c.system "
               f"AND i.type_code = 'MR' WHERE c.tenant_id = {clinic} GROUP BY c.next_value",
-              "True"),
+              "True", fix="stop registering patients and tell Anand (the MRN counter, D41)"),
         Check("ICD-10-CM codes loaded",
               "SELECT count(*) FROM admin.concept c JOIN admin.code_system s ON s.id = "
               "c.code_system_id WHERE s.uri = 'http://hl7.org/fhir/sid/icd-10-cm'", "90000",
-              at_least=True),
+              at_least=True, fix=CODES),
         Check("RxNorm codes loaded",
               "SELECT count(*) FROM admin.concept c JOIN admin.code_system s ON s.id = "
               "c.code_system_id WHERE s.uri = 'http://www.nlm.nih.gov/research/umls/rxnorm'",
-              "30000", at_least=True),
+              "30000", at_least=True, fix=CODES),
         Check("history patients short of their lab reports",
               short_of(studies("LAB"), "diagnostic_report_category", "LAB",
-                       "AND r.status = 'final' "), "0"),
+                       "AND r.status = 'final' "), "0", fix=RESET),
         Check("history patients short of their imaging reports",
               short_of(studies("RAD"), "diagnostic_report_category", "RAD",
-                       "AND r.status = 'final' "), "0"),
+                       "AND r.status = 'final' "), "0", fix=RESET),
         Check("history patients short of their vital signs",
-              short_of(vitals, "observation_category", "vital-signs"), "0"),
+              short_of(vitals, "observation_category", "vital-signs"), "0", fix=RESET),
         Check("the alert scenarios (James aspirin; Robert amoxicillin and metformin)",
               "SELECT (SELECT count(*) FROM clinical.allergy_intolerance WHERE patient_id = "
               f"'{sid(demo.PATIENT, 4)}' AND code_code = '1191' AND clinical_status = 'active') "
@@ -158,7 +167,7 @@ def demo_checks() -> list[Check]:
               f"'{sid(demo.PATIENT, 2)}' AND code_code = '723' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 2)}' AND medication_codeable_concept_code = '861007' "
-              "AND status = 'active')", "3"),
+              "AND status = 'active')", "3", fix=RESET),
     ]
 
 
@@ -173,6 +182,15 @@ def run(conn: Connection, todo: Sequence[Check]) -> list[tuple[Check, str | None
         except Exception:   # noqa: BLE001 - a missing table or extension is a failed check
             results.append((check, None))
     return results
+
+
+def line(check: Check, got: str | None) -> str:
+    """The check's output line: PASS, or FAIL with what was expected and what to do."""
+    if check.passes(got):
+        return f"PASS  {check.name}: {got}"
+    want = f"at least {check.expected}" if check.at_least else check.expected
+    return (f"FAIL  {check.name}: {got if got is not None else 'error'} (expected {want})"
+            + (f"; {check.fix}" if check.fix else ""))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -199,13 +217,9 @@ def main(argv: list[str] | None = None) -> int:
             results = run(conn, todo + (demo_checks() if args.demo else []))
     finally:
         engine.dispose()
-    failed = 0
+    failed = sum(not check.passes(got) for check, got in results)
     for check, got in results:
-        ok = check.passes(got)
-        failed += not ok
-        want = f"at least {check.expected}" if check.at_least else check.expected
-        print(f"{'PASS' if ok else 'FAIL'}  {check.name}: {got if got is not None else 'error'}"
-              + ("" if ok else f" (expected {want})"))
+        print(line(check, got))
     print(f"{len(results) - failed} of {len(results)} passed")
     return 1 if failed else 0
 

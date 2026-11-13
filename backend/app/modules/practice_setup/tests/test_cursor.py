@@ -28,7 +28,7 @@ def test_round_trip(kind: Any) -> None:
 
 
 def test_an_offset_time_keeps_its_instant() -> None:
-    at = datetime(2026, 10, 26, 8, 0, tzinfo=timezone(timedelta(hours=-5)))
+    at = datetime(2026, 10, 26, 8, 0, tzinfo=timezone(timedelta(hours=-8)))
     position = Position(kind="providers", key=at, id=uuid4())
     assert decode(encode(position), "providers").key == at
 

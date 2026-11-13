@@ -26,8 +26,9 @@ Every record goes through ``app.db.fhir_store``, the same helpers the API uses, 
 versions and history rows are as the screens expect. It runs after the demo layer, as
 shri_migrator with the demo clinic and the demo doctor (demo.doctor) as the current user, in
 one transaction. Fictional data only, the same every run: a patient whose emergency contact, or
-whose first past visit (at its fixed start time), already exists is skipped, so a second run
-changes nothing; a reset starts from an empty database. New rows get the helpers' own IDs; no
+whose first past visit (its booking's fixed ID), already exists is skipped, so a second run
+changes nothing, even on a database seeded before the visit times moved (the San Jose move,
+#329); a reset starts from an empty database. New rows get the helpers' own IDs; no
 existing ID changes.
 
 ICD-10-CM (FY2026) and RxNorm (2 Nov 2026) codes are the pinned releases' and were checked
@@ -1087,9 +1088,9 @@ async def load_history(engine: AsyncEngine) -> int:
                 await _emergency_contact(store, db, p)
                 written.add(p.n)
             h = HISTORY.get(p.n)
-            if h is not None and not await _exists(
-                    db, "SELECT 1 FROM clinical.encounter WHERE subject_patient_id = :p "
-                        "AND period_start = :at", p=patient_id, at=h.visits[0].start):
+            if h is not None and not await _exists(       # the first past visit's fixed ID
+                    db, "SELECT 1 FROM clinical.appointment WHERE id = :a",
+                    a=sid(PAST_APPOINTMENT, p.n * 10 + 1)):
                 await _patient_history(store, db, p, h)
                 written.add(p.n)
         await _as_user(db, ADMIN_USER)       # who restricts a chart (ADM)

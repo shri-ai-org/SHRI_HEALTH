@@ -15,9 +15,9 @@ user ID, and a ``user_role`` row at the main office for its role, against migrat
 platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
 the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
 
-Every demo provider is also bookable all day, every day (``_all_day_schedules``): weekly
-recurring rules with no end date, so a rehearsal, the demo or a revisit weeks ahead always has
-free times. The seed's environment guard is unchanged.
+Every demo provider is also bookable in clinic hours, 08:00 to 17:00 on weekdays
+(``_daily_schedules``): weekly recurring rules with no end date, so a weekday rehearsal, the
+demo or a revisit weeks ahead has free times. The seed's environment guard is unchanged.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
@@ -44,7 +44,7 @@ M = MAPPERS
 # Kinds of fixed ID, after the starter layer's.
 PHARMACY, CONSENT_REQUIREMENT, PATIENT, P_NAME, P_TELECOM, P_ADDRESS, P_MRN, P_LANGUAGE, \
     COVERAGE, C_PAYOR, C_MEMBER, C_GROUP, APPOINTMENT, A_PATIENT, A_PROVIDER, \
-    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, ALL_DAY_RULE, \
+    P_PHARMACY, A_LOCATION, DEMO_USER, DEMO_USER_ROLE, PORTAL_ACCOUNT, DAILY_RULE, \
     ERX_ENDPOINT, CLEARINGHOUSE_ENDPOINT = range(21, 44)
 P_EMAIL, P_RACE, P_ETHNICITY, P_EMPLOYER, P_PCP, C_PLAN, C_COPAY, BOOKING_SETTING, \
     BOOKABLE_TYPE = range(44, 53)
@@ -489,18 +489,21 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
     db.flush()
 
 
-#: Every demo provider is bookable all day, every day, in each facility's own time zone (Vimal,
-#: 2 Nov and 5 Nov): one weekly rule per weekday, 00:00 to 23:59 local (never 24:00, which the
-#: database refuses, #204), on top of the starter's office hours (free times are keyed by start
-#: and provider, so the two never double up). The rules start with the starter's and have no end
-#: date, so any day, and a revisit weeks ahead, has free times. The same IDs as the earlier
-#: 8-day window, so a database seeded before is moved to these rules, with nothing left over.
-ALL_DAY = (dt.time(0, 0), dt.time(23, 59))
-ALL_DAY_SLOT_MINUTES = 20
-DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+#: Every demo provider is bookable in clinic hours, 08:00 to 17:00 on weekdays, in each facility's
+#: own time zone (Vimal's A3 on #85, 13 Nov: the all-day hours of 2 and 5 Nov made the first free
+#: time 05:20 AM). One weekly rule per weekday, on top of the starter's 09:00 to 17:00 (free times
+#: are keyed by start and provider, so the two never double up). The rules start with the
+#: starter's and have no end date, so a revisit weeks ahead has free times. Monday to Friday keep
+#: the IDs of the earlier all-day rules, so a database seeded before is moved to clinic hours; its
+#: Saturday and Sunday rules (the next two IDs) are removed with their visit-type links, so nothing
+#: is left over.
+CLINIC_HOURS = (dt.time(8, 0), dt.time(17, 0))
+DAILY_SLOT_MINUTES = 20
+DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri")
+WEEKEND = ("sat", "sun")                    # all-day rules of earlier seeds, removed
 
 
-def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
+def _daily_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
     starter._set_clinic(db, CLINIC_A)
     link = M["availability_rule_appointment_type"]
     for i in range(1, len(starter.PROVIDERS) + 1):
@@ -509,14 +512,14 @@ def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
             schedule = db.get_one(M["schedule"], sid(SCHEDULE, n))  # the starter layer's
             facility = db.get_one(M["facility"], schedule.ext_facility_id)
             values = {"tenant_id": CLINIC_A, "schedule_id": schedule.id,
-                      "start_time": ALL_DAY[0], "end_time": ALL_DAY[1],
-                      "slot_minutes": ALL_DAY_SLOT_MINUTES, "location_id": facility.location_id,
+                      "start_time": CLINIC_HOURS[0], "end_time": CLINIC_HOURS[1],
+                      "slot_minutes": DAILY_SLOT_MINUTES, "location_id": facility.location_id,
                       "effective_from": starter.EFFECTIVE_FROM, "effective_to": None}
             for d, day in enumerate(DAYS_OF_WEEK, start=1):
-                rule = db.get(M["schedule_availability_rule"], sid(ALL_DAY_RULE, n * 10 + d))
+                rule = db.get(M["schedule_availability_rule"], sid(DAILY_RULE, n * 10 + d))
                 if rule is None:
                     rule = M["schedule_availability_rule"](
-                        id=sid(ALL_DAY_RULE, n * 10 + d), day_of_week=day, **values)
+                        id=sid(DAILY_RULE, n * 10 + d), day_of_week=day, **values)
                     db.add(rule)
                 else:                           # only what differs, so a rerun is a no-op
                     for name, value in values.items():
@@ -527,6 +530,11 @@ def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
                                       .where(link.rule_id == rule.id)).scalars())
                 db.add_all(link(tenant_id=CLINIC_A, rule_id=rule.id, appointment_type_id=v)
                            for v in visits.values() if v not in have)
+            gone = [sid(DAILY_RULE, n * 10 + d) for d in
+                    range(len(DAYS_OF_WEEK) + 1, len(DAYS_OF_WEEK) + len(WEEKEND) + 1)]
+            db.execute(delete(link).where(link.rule_id.in_(gone)))
+            db.execute(delete(M["schedule_availability_rule"])
+                       .where(M["schedule_availability_rule"].id.in_(gone)))
     db.flush()
 
 
@@ -555,5 +563,5 @@ def load_demo(db: Session) -> None:
     _demo_users(db)
     _online_booking(db, visits)
     _ai_features(db)
-    _all_day_schedules(db, visits)
+    _daily_schedules(db, visits)
     db.flush()
