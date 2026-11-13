@@ -11155,6 +11155,185 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/lab-results:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listLabResults
+      summary: List a patient's lab results
+      description: A patient's lab reports (FHIR `DiagnosticReport`, category `LAB`), newest first by collection time, each with its analytes (`Observation`, category `laboratory`). Only final, amended, corrected and appended reports are shown (final, amended and corrected analytes); never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).
+      tags:
+        - orders
+      x-owner: thulasi
+      x-permission: results:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of lab results.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabResultList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                        code:
+                          codings:
+                            - system: http://loinc.org
+                              code: 4548-4
+                              display: Hemoglobin A1c/Hemoglobin.total in Blood
+                        status: final
+                        collectedAt: '2026-10-27T16:10:00Z'
+                        issuedAt: '2026-10-27T21:40:00Z'
+                        performer: Example Reference Laboratory (synthetic)
+                        observations:
+                          - id: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
+                            code:
+                              codings:
+                                - system: http://loinc.org
+                                  code: 4548-4
+                                  display: Hemoglobin A1c/Hemoglobin.total in Blood
+                            status: final
+                            value:
+                              value: 7.2
+                              unit: '%'
+                            referenceRange:
+                              low:
+                                value: 4
+                                unit: '%'
+                              high:
+                                value: 5.6
+                                unit: '%'
+                            interpretation: H
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `results:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/imaging-reports:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: listImagingReports
+      summary: List a patient's imaging reports
+      description: 'A patient''s imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the radiologist''s impression and the full report as text. Text only: no images or image links. Only final, amended, corrected and appended reports are shown; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).'
+      tags:
+        - orders
+      x-owner: thulasi
+      x-permission: results:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of imaging reports.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImagingReportList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                      - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                        code:
+                          codings:
+                            - system: http://loinc.org
+                              code: 36643-5
+                              display: XR Chest 2 Views
+                        status: final
+                        studiedAt: '2026-09-15T17:20:00Z'
+                        issuedAt: '2026-09-15T19:05:00Z'
+                        performer: Example Radiology Group (synthetic)
+                        impression: No acute cardiopulmonary abnormality.
+                        text: 'Technique: PA and lateral views of the chest. Findings: The lungs are clear. The heart is normal in size. Impression: No acute cardiopulmonary abnormality.'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `results:read`); `break-glass-required` (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /patients/{patientId}/allergies:
     parameters:
       - name: patientId
@@ -29423,6 +29602,229 @@ components:
           maxLength: 2000
           description: Free-text note. Send `null` to clear it.
           x-phi: clinical
+    ReportStatus:
+      description: The report's status (FHIR DiagnosticReport.status). Only final, amended, corrected and appended reports are shown; registered, partial, preliminary, cancelled and entered-in-error ones never are (D24).
+      type: string
+      enum:
+        - final
+        - amended
+        - corrected
+        - appended
+      x-phi: clinical
+    ObservationStatus:
+      description: The analyte's status (FHIR Observation.status). Only final, amended and corrected analytes are shown.
+      type: string
+      enum:
+        - final
+        - amended
+        - corrected
+      x-phi: clinical
+    ReferenceRange:
+      description: A reference range, as numbers in the result's unit or as text.
+      type: object
+      additionalProperties: false
+      properties:
+        low:
+          $ref: '#/components/schemas/Quantity'
+          description: The range's low end.
+          x-phi: clinical
+        high:
+          $ref: '#/components/schemas/Quantity'
+          description: The range's high end.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 200
+          description: The range as text, when the lab gives no numbers.
+          x-phi: clinical
+    LabObservation:
+      description: One analyte of a lab report (FHIR `Observation`, category `laboratory`).
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - status
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The observation's ID.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The analyte (LOINC).
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/ObservationStatus'
+          description: The analyte's status.
+          x-phi: clinical
+        value:
+          $ref: '#/components/schemas/Quantity'
+          description: The measured value with its UCUM unit. Absent when the result is text.
+          x-phi: clinical
+        valueText:
+          type: string
+          maxLength: 2000
+          description: A result given as text (for example "Negative"). Absent when the result is a quantity.
+          x-phi: clinical
+        referenceRange:
+          $ref: '#/components/schemas/ReferenceRange'
+          description: The lab's reference range, when it gives one.
+          x-phi: clinical
+        interpretation:
+          type: string
+          enum:
+            - H
+            - L
+            - 'N'
+            - A
+            - HH
+            - LL
+          description: High, low, normal, abnormal, critically high or low (HL7 v3 ObservationInterpretation).
+          x-phi: clinical
+    LabResult:
+      description: A lab report (FHIR `DiagnosticReport`, category `LAB`) with its analytes.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - patientId
+        - code
+        - status
+        - observations
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The report's ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit the result belongs to, when there is one.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The test or panel (LOINC).
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+          description: The report's status.
+          x-phi: clinical
+        collectedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the specimen was collected (shown in the facility's time zone).
+          x-phi: clinical
+        issuedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the lab issued the report.
+          x-phi: clinical
+        performer:
+          type: string
+          maxLength: 200
+          description: The lab that performed it.
+          x-phi: none
+        conclusion:
+          type: string
+          maxLength: 4000
+          description: The lab's comment on the whole report, when there is one.
+          x-phi: clinical
+        observations:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/LabObservation'
+          description: The report's analytes, in the lab's order.
+          x-phi: clinical
+    LabResultList:
+      description: A patient's lab results, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/LabResult'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ImagingReport:
+      description: An imaging report (FHIR `DiagnosticReport`, category `RAD`), text only.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - patientId
+        - code
+        - status
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The report's ID.
+          x-phi: internal-id
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient's ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: '#/components/schemas/Id'
+          description: The visit the study belongs to, when there is one.
+          x-phi: internal-id
+        code:
+          $ref: '#/components/schemas/CodeableConcept'
+          description: The study (LOINC).
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+          description: The report's status.
+          x-phi: clinical
+        studiedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the study was done (shown in the facility's time zone).
+          x-phi: clinical
+        issuedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the report was issued.
+          x-phi: clinical
+        performer:
+          type: string
+          maxLength: 200
+          description: The radiology group that read it.
+          x-phi: none
+        impression:
+          type: string
+          maxLength: 4000
+          description: The radiologist's impression.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 20000
+          description: The full report as plain text (technique, findings, impression).
+          x-phi: clinical
+    ImagingReportList:
+      description: A patient's imaging reports, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ImagingReport'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
     AllergyReaction:
       description: A reaction to the substance.
       type: object
