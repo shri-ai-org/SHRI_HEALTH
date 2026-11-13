@@ -4,6 +4,7 @@ import { Avatar } from '../ui/Avatar'
 import { useDismiss } from '../../hooks/useDismiss'
 import { useCurrentUser } from '../../../shri-health/user'
 import { useSession } from '../../../../src/api/session'
+import { AiSettingsSwitch } from '../../../shri-health/AiSettingsSwitch'
 
 /** Who is signed in at this desk (DESIGN_SYSTEM §8.6 identity), and **Sign out**: it ends our
  *  session and the Keycloak session, then goes straight to the sign-in form, so the next person
@@ -42,12 +43,14 @@ export function UserMenu() {
         <div
           role="menu"
           aria-label="Account"
-          className="absolute right-0 top-[calc(100%+6px)] z-40 w-60 overflow-hidden rounded-xl border border-border-soft bg-surface-1 py-1 shadow-card-lg"
+          className="absolute right-0 top-[calc(100%+6px)] z-40 w-72 overflow-hidden rounded-xl border border-border-soft bg-surface-1 py-1 shadow-card-lg"
         >
           <div className="px-3 py-2">
             <div className="truncate text-sm font-medium text-ink">{user.name}</div>
             <div className="truncate text-xs text-ink-subtle">{user.role}</div>
           </div>
+          <div className="border-t border-border-soft" />
+          <AiSettingsSwitch />
           <div className="border-t border-border-soft" />
           <button
             type="button"

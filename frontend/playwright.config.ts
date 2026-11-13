@@ -11,6 +11,8 @@ export const doctorsPort = 5191
 export const frontOfficePort = 5192
 /** The patient portal's dev server, signed in as SHRI_E2E_PORTAL_PATIENT (when it is set). */
 export const portalPort = 5193
+/** The front office's dev server, signed in as the development administrator (the AI switch). */
+export const frontOfficeAdminPort = 5195
 const portalPatient = process.env.SHRI_E2E_PORTAL_PATIENT
 
 export default defineConfig({
@@ -54,6 +56,14 @@ export default defineConfig({
       url: `http://localhost:${frontOfficePort}`,
       reuseExistingServer: !process.env.CI,
       env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
+    },
+    {
+      // The front office as the development administrator (adm), for the clinic's AI switch
+      // (e2e/aiSwitch.e2e.ts).
+      command: `npm run dev -w front-office -- --port ${frontOfficeAdminPort} --strictPort`,
+      url: `http://localhost:${frontOfficeAdminPort}`,
+      reuseExistingServer: !process.env.CI,
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'adm' },
     },
     // The patient portal as a synthetic patient whose clinic books online (e2e/portalBooking.e2e.ts),
     // only when SHRI_E2E_PORTAL_PATIENT names one; without it the portal tests skip.
