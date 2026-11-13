@@ -71,6 +71,8 @@ export interface Problem {
   mergedIntoId?: Id;
   /** The restricted patient, for `break-glass-required`. */
   patientId?: Id;
+  /** The visit's existing payment, for `invalid-state-transition` on `recordPayment` (one copay per visit). */
+  paymentId?: Id;
   /**
      * The AI feature that is switched off, for `feature-disabled`.
      * @maxLength 64
