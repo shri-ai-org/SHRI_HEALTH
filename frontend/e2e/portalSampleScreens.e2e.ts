@@ -20,6 +20,7 @@ const HIDDEN = [
   ['/billing', 'Billing'],
   ['/video-consult', 'Video Consult'],
   ['/immunizations', 'Immunization'],
+  ['/demographics', 'Demographics'],
 ] as const
 
 test.skip(!process.env.SHRI_E2E_PORTAL_PATIENT, 'needs SHRI_E2E_PORTAL_PATIENT: a portal patient on the real API')
@@ -27,6 +28,8 @@ test.skip(!process.env.SHRI_E2E_PORTAL_PATIENT, 'needs SHRI_E2E_PORTAL_PATIENT: 
 test('no sample-data screen is reachable in the portal', async ({ page }) => {
   await page.goto(`${PORTAL}/`)
   await expect(page.getByRole('link', { name: /Appointments/ }).first()).toBeVisible()
+  // The main menu keeps Appointments (it used to drop it with Test Results hidden).
+  await expect(page.getByRole('navigation', { name: 'Main' }).first().getByRole('link', { name: 'Appointments', exact: true })).toBeVisible()
   const main = page.getByRole('navigation', { name: 'Main' }).first()
   const body = page.locator('body')
   for (const [, label] of HIDDEN) {
