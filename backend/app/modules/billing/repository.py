@@ -78,6 +78,13 @@ class PaymentRepository(Protocol):
 
     async def insert_payment(self, db: AsyncSession, payment: NewPayment) -> None: ...
 
+    async def visit_payment(self, db: AsyncSession, appointment_id: UUID | None,
+                            encounter_id: UUID | None) -> UUID | None:
+        """Locks the visit's row (its appointment, else the unscheduled encounter) until the
+        transaction ends, then returns the visit's payment that stands (not a refund and not
+        refunded), or None. Two desks recording one visit's copay wait for each other here."""
+        ...
+
 
 _PATIENT = text("""
 SELECT p.id,
@@ -94,6 +101,27 @@ _ENCOUNTER = text("""
 SELECT subject_patient_id, appointment_id FROM clinical.encounter WHERE id = :id
 """)
 _PRACTICE = text("SELECT name, timezone FROM admin.tenant")
+# The visit is its appointment: the one given, else the encounter's. An unscheduled encounter
+# (no appointment) is locked itself. FOR UPDATE needs shri_app's UPDATE, which both tables grant.
+_LOCK_APPOINTMENT = text("""
+SELECT id FROM clinical.appointment
+WHERE id = coalesce(CAST(:appointment_id AS uuid),
+                    (SELECT appointment_id FROM clinical.encounter
+                      WHERE id = CAST(:encounter_id AS uuid)))
+FOR UPDATE
+""")
+_LOCK_ENCOUNTER = text("SELECT id FROM clinical.encounter WHERE id = :id FOR UPDATE")
+_VISIT_PAYMENT = text("""
+SELECT p.id FROM admin.patient_payment p
+WHERE NOT p.is_refund
+  AND NOT EXISTS (SELECT 1 FROM admin.patient_payment r WHERE r.refund_of_payment_id = p.id)
+  AND (p.appointment_id = CAST(:appointment_id AS uuid)
+       OR p.encounter_id = CAST(:encounter_id AS uuid)
+       OR p.encounter_id IN (SELECT e.id FROM clinical.encounter e
+                              WHERE e.appointment_id = CAST(:appointment_id AS uuid)))
+ORDER BY p.collected_at, p.id
+LIMIT 1
+""")
 _INSERT = text("""
 INSERT INTO admin.patient_payment
     (id, tenant_id, patient_id, appointment_id, encounter_id, amount, method, collected_at,
@@ -142,3 +170,14 @@ class SqlPaymentRepository:
             "method": payment.method, "collected_at": payment.collected_at,
             "user_id": payment.collected_by_user_id, "receipt_file_id": payment.receipt_file_id,
             "check_number": payment.check_number, "note": payment.note})
+
+    async def visit_payment(self, db: AsyncSession, appointment_id: UUID | None,
+                            encounter_id: UUID | None) -> UUID | None:
+        visit: UUID | None = (await db.execute(_LOCK_APPOINTMENT, {
+            "appointment_id": appointment_id, "encounter_id": encounter_id})
+        ).scalar_one_or_none()
+        if visit is None and encounter_id is not None:
+            await db.execute(_LOCK_ENCOUNTER, {"id": encounter_id})
+        found: UUID | None = (await db.execute(_VISIT_PAYMENT, {
+            "appointment_id": visit, "encounter_id": encounter_id})).scalar_one_or_none()
+        return found

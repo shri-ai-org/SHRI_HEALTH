@@ -75,6 +75,16 @@ class FakeRepository:
     async def insert_payment(self, db: Any, payment: NewPayment) -> None:
         self.world.payments.append(payment)
 
+    async def visit_payment(self, db: Any, appointment_id: UUID | None,
+                            encounter_id: UUID | None) -> UUID | None:
+        """No refunds here (the API records none), so any payment of the visit stands."""
+        link = self.world.encounters.get(self._clinic(db), {}).get(encounter_id) \
+            if encounter_id else None
+        visit = appointment_id or (link.appointment_id if link else None)
+        return next((p.id for p in self.world.payments
+                     if (visit and p.appointment_id == visit)
+                     or (encounter_id and p.encounter_id == encounter_id)), None)
+
 
 class MemoryFileStore:
     def __init__(self) -> None:
