@@ -34,7 +34,7 @@ def test_each_study_is_ordered_at_a_visit_done_after_it_and_reported_before_the_
         assert s.ordered_at in days, (s.patient, s.code)
         order = next(v.start for v in history.HISTORY[s.patient].visits if v.day == s.ordered_at)
         later = [d for d in days if d > s.ordered_at]
-        assert results.performed(s) >= order, (s.patient, s.code)
+        assert results.performed(s) >= order + results.SIGNED_AFTER, (s.patient, s.code)
         assert results.issued(s) > results.performed(s)
         if later:                                        # reported before the next visit
             assert results.issued(s).date() < later[0], (s.patient, s.code)

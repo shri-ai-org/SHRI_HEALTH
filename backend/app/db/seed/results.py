@@ -253,6 +253,8 @@ def _spiro(fev1: str, fvc: str, ratio: str, predicted: str, fev1_post: str, rati
 
 D, T = dt.date, dt.time
 MORNING = T(10, 0)   # the visit starts at 09:30; blood is drawn after the visit
+#: The order is signed this long after the visit starts; nothing is collected before it.
+SIGNED_AFTER = dt.timedelta(minutes=20)
 #: The studies, by patient. Robert Miller's A1c, LDL and potassium match his signed notes (A1c
 #: 7.9, 7.2, 7.1%; March's 7.4% was point-of-care at the visit; LDL 92 before and 66 after the
 #: June atorvastatin increase); James Wilson's peak flows match his (410, 500, 530 L/min);
@@ -313,7 +315,7 @@ STUDIES: tuple[Study, ...] = (
           _cbc("7.4", "5.0", "15.1", "44.5", "89", "245") + (("711-2", "0.52"), ("713-8", "7.0"))),
     Study(4, D(2025, 12, 2), "81459-0", (D(2025, 12, 2), T(10, 30)), "Asthma, not controlled",
           _spiro("3.02", "4.38", "69", "76", "3.48", "76")),
-    Study(4, D(2025, 12, 2), "19935-6", (D(2025, 12, 2), T(9, 40)), "Asthma",
+    Study(4, D(2025, 12, 2), "19935-6", (D(2025, 12, 2), MORNING), "Asthma",
           (("19935-6", "410"),)),
     Study(4, D(2025, 12, 2), "36643-5", (D(2025, 12, 2), T(14, 0)),
           "Asthma with recurrent wheeze",
@@ -322,11 +324,11 @@ STUDIES: tuple[Study, ...] = (
                     "pneumothorax. Normal heart size and mediastinal contours. No "
                     "hyperinflation."),
           impression="Normal chest radiograph."),
-    Study(4, D(2026, 3, 31), "19935-6", (D(2026, 3, 31), T(9, 40)), "Asthma on controller",
+    Study(4, D(2026, 3, 31), "19935-6", (D(2026, 3, 31), MORNING), "Asthma on controller",
           (("19935-6", "500"),)),
     Study(4, D(2026, 8, 11), "81459-0", (D(2026, 8, 11), T(10, 30)), "Asthma on controller",
           _spiro("3.52", "4.45", "79", "88", "3.66", "82")),
-    Study(4, D(2026, 8, 11), "19935-6", (D(2026, 8, 11), T(9, 40)), "Asthma on controller",
+    Study(4, D(2026, 8, 11), "19935-6", (D(2026, 8, 11), MORNING), "Asthma on controller",
           (("19935-6", "530"),)),
     # ---------------------------------- 5 Patricia Davis, 61: breast cancer survivor, anastrozole
     Study(5, D(2026, 1, 13), "58410-2", (D(2026, 1, 13), MORNING), "Oncology follow-up",
@@ -470,7 +472,7 @@ async def load_results(engine: AsyncEngine) -> int:
                 encounter_id=encounter, code=loinc(s.code),
                 category="imaging" if s.category == "RAD" else "laboratory",
                 requester_practitioner_id=DOCTOR,
-                signed_at=order_start + dt.timedelta(minutes=20), reason=s.reason))
+                signed_at=order_start + SIGNED_AFTER, reason=s.reason))
             results = (tuple(_narrative(t) for t in s.findings) if s.findings
                        else tuple(_result(s.patient, c, v) for c, v in s.values))
             await store.record_report(db, fs.ReportIn(
