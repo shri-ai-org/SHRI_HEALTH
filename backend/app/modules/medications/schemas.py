@@ -194,6 +194,7 @@ class Prescription(Out):
     pharmacy_id: UUID | None = None
     note_to_pharmacy: str | None = None
     prescriber_id: UUID | None = None
+    prescriber_display_name: str | None = Field(default=None, max_length=200)
     signed_at: datetime | None = None
     transmission: Transmission
     safety_checked_at: datetime | None = None

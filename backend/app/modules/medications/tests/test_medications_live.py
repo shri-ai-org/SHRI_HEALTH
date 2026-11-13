@@ -241,6 +241,9 @@ def test_draft_check_override_sign_and_send(client: Any, practice: Practice,
     body = signed.json()
     assert (body["status"], body["transmission"]["status"], body["prescriberId"]) == (
         "active", "queued", str(rx.md.id))
+    # The signer's name for the banner (T2): the linked practitioner's official name.
+    assert body["prescriberDisplayName"] == "Avery401 Lindqvist58"
+    assert "prescriberDisplayName" not in draft
     assert signed.headers["ETag"] == '"2"'
     again = _sign(client, draft["id"], '"1"', key)  # the same key: the stored answer, once
     assert again.status_code == 200 and again.json() == body

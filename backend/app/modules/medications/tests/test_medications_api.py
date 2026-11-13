@@ -255,6 +255,7 @@ def test_create_a_draft(as_user: Client, world: World) -> None:
                                                                 [])
     assert rx["quantity"] == {"value": 30.0, "unit": "capsule"} and rx["encounterId"] == str(visit)
     assert "safetyCheckedAt" not in rx and "signedAt" not in rx
+    assert "prescriberDisplayName" not in rx                          # a draft has no signer
     assert response.headers["ETag"] == '"1"'
     assert response.headers["Location"] == f"{API}/prescriptions/{rx['id']}"
     assert world.audited == [[patient]]
@@ -480,6 +481,7 @@ def test_sign_and_send(as_user: Client, world: World, app: FastAPI) -> None:
     body = response.json()
     assert (body["status"], body["transmission"]["status"]) == ("active", "queued")
     assert body["prescriberId"] == str(DEV_USERS["md"].id) and body["signedAt"]
+    assert body["prescriberDisplayName"] == "Dr. Avery Lindqvist MD"
     assert response.headers["ETag"] == '"2"'
     assert world.sent == [UUID(rx["id"])]
     assert [e[0] for e in world.events] == ["prescription.signed",

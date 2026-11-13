@@ -121,6 +121,7 @@ class PrescriptionRow:
     updated_at: datetime
     alerts: tuple[AlertRow, ...]
     transmission: TransmissionRow | None
+    signer_name: str | None = None  # the signer's name for screens (T2), once signed
 
 
 @dataclass(frozen=True)
@@ -293,6 +294,16 @@ SELECT m.id, m.subject_patient_id, m.encounter_id, e.ext_facility_id AS facility
        m.dispense_request_performer_pharmacy_id AS pharmacy_id,
        m.ext_note_to_pharmacist AS note_to_pharmacy, m.ext_dea_schedule AS dea_schedule,
        m.ext_signed_by_user_id AS signed_by, m.ext_signed_at AS signed_at,
+       -- The signer's name as notes show their signers: the practitioner's official name, else
+       -- the user's display name (staff, not patient data). Only once signed.
+       CASE WHEN m.ext_signed_by_user_id IS NOT NULL THEN coalesce(
+         (SELECT nullif(concat_ws(' ', array_to_string(n.prefix, ' '),
+                                  array_to_string(n.given, ' '), n.family,
+                                  array_to_string(n.suffix, ' ')), '')
+            FROM clinical.human_name n WHERE n.practitioner_id = m.ext_signed_by_practitioner_id
+           ORDER BY (n.use = 'official') DESC, n.created_at, n.id LIMIT 1),
+         (SELECT u.display_name FROM admin.app_user u WHERE u.id = m.ext_signed_by_user_id))
+       END AS signer_name,
        m.meta_version_id AS version, m.ext_safety_checked_at,
        CASE WHEN m.ext_safety_checked_version = m.meta_version_id
             THEN m.ext_safety_checked_at END AS safety_checked_at,
@@ -565,7 +576,8 @@ class SqlMedicationRepository:
             safety_checked_at=r.safety_checked_at, created_at=r.created_at,
             updated_at=r.updated_at, alerts=alerts,
             transmission=TransmissionRow(t.status, t.updated_at, t.error_message)
-            if t is not None else None)
+            if t is not None else None,
+            signer_name=" ".join(r.signer_name.split()) or None if r.signer_name else None)
 
     async def encounter_prescriptions(self, db: AsyncSession, encounter_id: UUID, *,
                                       limit: int, offset: int) -> list[UUID]:

@@ -319,6 +319,7 @@ class FakeRepository:
         now = self.world.tick()
         signer = next(iter(self.world.practitioners))
         self.world.put(replace(row, status="active", signed_at=now, signed_by=signer,
+                               signer_name="Dr. Avery Lindqvist MD",
                                version=row.version + 1, updated_at=now,
                                transmission=TransmissionRow("queued", now, None)))
         return fs.Written(row.id, row.version + 1, now)
