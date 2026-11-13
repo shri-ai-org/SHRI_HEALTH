@@ -413,7 +413,7 @@ check() {
     # The screens: each app's page with its assets under the base path, a screen route falls back
     # to it, and the security headers apply there too (an add_header in a location replaces the
     # server's).
-    local page app path
+    local page app path src
     # The patient portal's base is fixed at /portal/ (frontend/vite.portal.config.ts), so it is
     # served on a host of its own only; under a base path its assets would point outside.
     for app in "/ /patients $B/assets/" "/clinician/ /clinician/op-queue $B/clinician/assets/" \
@@ -423,6 +423,14 @@ check() {
         case "$page" in *'<div id="root"'*) ;; *) die "$1 does not serve its screens" ;; esac
         case "$page" in *"\"$3"*) ;; *) die "$1's assets are not under $3" ;; esac
         [ "$("${curl[@]}" "$E$2")" = "$page" ] || die "the screen route $2 does not get $1's index.html"
+        # Every script the page loads is served as JavaScript, not the page's fallback HTML (a file
+        # left out of the image, such as public/theme-init.js, falls back to index.html).
+        for src in $(printf '%s' "$page" | grep -o '<script[^>]* src="[^"]*"' | sed 's/.* src="\([^"]*\)"/\1/'); do
+            case "$("${curl[@]}" -o /dev/null -w '%{content_type}' "$E${src#"$B"}")" in
+                *javascript*) ;;
+                *) die "$1 loads $src, which is not served as JavaScript" ;;
+            esac
+        done
         headers="$("${curl[@]}" -o /dev/null -D - "$E$1")"
         for h in "content-security-policy: default-src 'self'" "x-frame-options: DENY" \
                  "strict-transport-security: $SHRI_HSTS" "cache-control: no-store"; do
