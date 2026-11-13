@@ -53,16 +53,17 @@ PAST_APPOINTMENT, PA_PATIENT, PA_PROVIDER, PA_LOCATION, PA_STEP, PA_ROOM, PA_FOL
     PA_REASON, A_REASON = range(53, 62)
 AI_FEATURE = 62
 
-#: The main office's time zone in November (America/Chicago, UTC-6 then).
-CHICAGO = dt.timezone(dt.timedelta(hours=-6))
+#: The demo clinic's zone: its main office's (San Jose, America/Los_Angeles), from the starter.
+CLINIC_ZONE = ZoneInfo(starter.PRACTICES[0].facilities[0][3])
 DEMO_DAY_SETTING = "SHRI_DEMO_DAY"
 
 
 def _demo_day(now: dt.datetime | None = None) -> dt.date:
-    """SHRI_DEMO_DAY (YYYY-MM-DD) when set; otherwise the reset day in the clinic's time zone, so
-    a rehearsal on any day has the demo patients booked that day (Vimal's run check on #85). The
-    demo itself is Friday 20 November 2026: set it for that reset, or reset that day. The day
-    changes at midnight in Chicago, 11:30 IST."""
+    """SHRI_DEMO_DAY (YYYY-MM-DD, a day in the clinic's zone) when set; otherwise the reset day
+    in the clinic's zone, so a rehearsal on any day has the demo patients booked that day
+    (Vimal's run check on #85). The demo itself is Friday 20 November 2026: set it for that
+    reset, or reset that day. The clinic's day starts at midnight in San Jose, 13:30 IST in
+    November."""
     if value := os.environ.get(DEMO_DAY_SETTING, "").strip():
         try:
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
@@ -71,7 +72,7 @@ def _demo_day(now: dt.datetime | None = None) -> dt.date:
         except ValueError:
             raise ValueError(f"{DEMO_DAY_SETTING} must be a date as YYYY-MM-DD (for example "
                              f"2026-11-20), not {value!r}") from None
-    return (now or dt.datetime.now(dt.UTC)).astimezone(ZoneInfo("America/Chicago")).date()
+    return (now or dt.datetime.now(dt.UTC)).astimezone(CLINIC_ZONE).date()
 
 
 #: The day the demo patients are booked, at the main office.
@@ -152,7 +153,7 @@ def _shown(n: int, given: str, family: str, born: dt.date, gender: str, payer: i
            emergency: EmergencyContact, *, history: bool = False,
            restricted: bool = False) -> DemoPatient:
     return DemoPatient(
-        n, given, family, born, gender, f"+1217555{100 + n:04d}", f"{n}{n} Sample Avenue",
+        n, given, family, born, gender, f"+1408555{100 + n:04d}", f"{n}{n} Sample Avenue",
         payer, visit, f"{given}.{family}@example.com".lower(), marital, race, ethnicity,
         occupation, industry, employer, 3, emergency, history, restricted)
 
@@ -163,70 +164,76 @@ def _shown(n: int, given: str, family: str, born: dt.date, gender: str, payer: i
 #: insurance and no clinical history, by design. Every person, address, phone and employer is
 #: fictional; the birth dates give the ages Vimal asked for on the demo day.
 PATIENTS = (
-    DemoPatient(1, "Kaia401", "Lindgren118", dt.date(1990, 3, 14), "female", "+12175550142",
+    DemoPatient(1, "Kaia401", "Lindgren118", dt.date(1990, 3, 14), "female", "+14085550142",
                 "42 Sample Avenue", 1, (dt.time(9, 0), "NEW", 3)),
     _shown(2, "Robert", "Miller", dt.date(1958, 7, 2), "male", 2, (dt.time(9, 40), "FU", 3),
            "M", WHITE, NOT_HISPANIC, "Hardware store sales associate (part time)",
            "Retail trade", "Example Hardware Co. (synthetic)",
-           EmergencyContact("Susan", "Miller", "WIFE", "wife", "+12175550152", "female",
+           EmergencyContact("Susan", "Miller", "WIFE", "wife", "+14085550152", "female",
                             dt.date(1960, 2, 19)), history=True),
     _shown(3, "Linda", "Thompson", dt.date(1969, 3, 18), "female", 1,
            (dt.time(10, 0), "FU", 3), "D", BLACK, NOT_HISPANIC, "Warehouse supervisor",
            "Transportation and warehousing", "Example Logistics Inc. (synthetic)",
-           EmergencyContact("Karen", "Thompson", "SIS", "sister", "+12175550153", "female",
+           EmergencyContact("Karen", "Thompson", "SIS", "sister", "+14085550153", "female",
                             dt.date(1972, 8, 4), "53 Example Court"),
            history=True),
     _shown(4, "James", "Wilson", dt.date(1981, 8, 9), "male", 1,
            (dt.time(10, 20), "ANNUAL", 3), "M", WHITE, NOT_HISPANIC, "High school teacher",
            "Educational services", "Example Unified School District (synthetic)",
-           EmergencyContact("Megan", "Wilson", "WIFE", "wife", "+12175550154", "female",
+           EmergencyContact("Megan", "Wilson", "WIFE", "wife", "+14085550154", "female",
                             dt.date(1983, 1, 27)), history=True),
-    _shown(5, "Patricia", "Davis", dt.date(1965, 2, 11), "female", 1, None, "W", WHITE,
+    _shown(5, "Patricia", "Davis", dt.date(1965, 2, 11), "female", 1,
+           (dt.time(11, 0), "FU", 3), "W", WHITE,
            NOT_HISPANIC, "Accountant", "Finance and insurance",
            "Example Accounting Partners (synthetic)",
-           EmergencyContact("Emily", "Davis", "DAU", "daughter", "+12175550155", "female",
+           EmergencyContact("Emily", "Davis", "DAU", "daughter", "+14085550155", "female",
                             dt.date(1991, 5, 6), "55 Example Court"), history=True),
-    _shown(6, "David", "Nguyen", dt.date(1987, 5, 27), "male", 3, None, "S", ASIAN,
+    _shown(6, "David", "Nguyen", dt.date(1987, 5, 27), "male", 3,
+           (dt.time(11, 20), "FU", 3), "S", ASIAN,
            NOT_HISPANIC, "Software developer", "Information",
            "Example Software Studio (synthetic)",
-           EmergencyContact("Linh", "Nguyen", "MTH", "mother", "+12175550156", "female",
+           EmergencyContact("Linh", "Nguyen", "MTH", "mother", "+14085550156", "female",
                             dt.date(1962, 11, 12), "56 Example Court"), history=True,
            restricted=True),
-    _shown(7, "Maria", "Gonzalez", dt.date(1954, 10, 3), "female", 2, None, "W", WHITE,
+    _shown(7, "Maria", "Gonzalez", dt.date(1954, 10, 3), "female", 2,
+           (dt.time(11, 40), "FU", 3), "W", WHITE,
            HISPANIC, "Library aide (part time, retired teacher)", "Information",
            "Example Community Library (synthetic)",
-           EmergencyContact("Carlos", "Gonzalez", "SON", "son", "+12175550157", "male",
+           EmergencyContact("Carlos", "Gonzalez", "SON", "son", "+14085550157", "male",
                             dt.date(1979, 7, 15), "57 Example Court"), history=True),
     _shown(8, "Emily", "Carter", dt.date(1992, 6, 14), "female", 1, None, "M", WHITE,
            NOT_HISPANIC, "Registered nurse", "Health care and social assistance",
            "Example Regional Hospital (synthetic)",
-           EmergencyContact("Ryan", "Carter", "HUSB", "husband", "+12175550158", "male",
+           EmergencyContact("Ryan", "Carter", "HUSB", "husband", "+14085550158", "male",
                             dt.date(1990, 10, 2))),
     _shown(9, "Daniel", "Brooks", dt.date(1974, 1, 22), "male", 1, None, "M", BLACK,
            NOT_HISPANIC, "Electrician", "Construction", "Example Electric LLC (synthetic)",
-           EmergencyContact("Angela", "Brooks", "WIFE", "wife", "+12175550159", "female",
+           EmergencyContact("Angela", "Brooks", "WIFE", "wife", "+14085550159", "female",
                             dt.date(1976, 4, 23))),
     _shown(10, "Sofia", "Ramirez", dt.date(1985, 9, 30), "female", 3, None, "S", WHITE,
            HISPANIC, "Restaurant manager", "Accommodation and food services",
            "Example Family Restaurant (synthetic)",
-           EmergencyContact("Rosa", "Ramirez", "MTH", "mother", "+12175550160", "female",
+           EmergencyContact("Rosa", "Ramirez", "MTH", "mother", "+14085550160", "female",
                             dt.date(1961, 3, 8), "60 Example Court")),
     _shown(11, "Michael", "Chen", dt.date(1963, 4, 5), "male", 1, None, "M", ASIAN,
            NOT_HISPANIC, "Civil engineer", "Professional, scientific and technical services",
            "Example Engineering Group (synthetic)",
-           EmergencyContact("Grace", "Chen", "WIFE", "wife", "+12175550161", "female",
+           EmergencyContact("Grace", "Chen", "WIFE", "wife", "+14085550161", "female",
                             dt.date(1965, 9, 14))),
     _shown(12, "Aisha", "Johnson", dt.date(1997, 3, 19), "female", 3, None, "S", BLACK,
            NOT_HISPANIC, "Graduate student", "Educational services",
            "Example State University (synthetic)",
-           EmergencyContact("Denise", "Johnson", "MTH", "mother", "+12175550162", "female",
+           EmergencyContact("Denise", "Johnson", "MTH", "mother", "+14085550162", "female",
                             dt.date(1970, 12, 1), "62 Example Court")),
 )
 #: The reason for visit on the demo day's bookings of the history patients (the booking's note,
 #: which rooming shows and the MA can change).
 DEMO_DAY_REASONS = {2: "Diabetes and blood pressure follow-up",
                     3: "Back pain follow-up",
-                    4: "Annual physical; asthma check"}
+                    4: "Annual physical; asthma check",
+                    5: "Breast cancer survivorship follow-up",
+                    6: "Migraine follow-up",
+                    7: "COPD and knee pain follow-up"}
 #: The patients the demo screens show (the completeness check's list): every patient above but
 #: the demo visit's new patient, whom the front desk and rooming complete live.
 SHOWN_PATIENTS = tuple(p for p in PATIENTS if p.emergency is not None)
@@ -247,6 +254,19 @@ _FAMILY = ("Abernathy", "Brightwater", "Castellan", "Dunmore", "Elsworth", "Fair
            "Thistlewood")
 
 
+#: Home towns in Santa Clara County, California (real city names and ZIP codes; the streets are
+#: invented). The shown patients live in San Jose; the bulk patients take one by their number,
+#: so their names, drawn from the fixed seed, never change.
+PLACES = (("San Jose", "95112"), ("San Jose", "95125"), ("San Jose", "95126"),
+          ("Santa Clara", "95050"), ("Sunnyvale", "94086"), ("Campbell", "95008"),
+          ("Milpitas", "95035"), ("Cupertino", "95014"))
+
+
+def home_place(n: int) -> tuple[str, str]:
+    """A patient's (city, ZIP): San Jose for the shown patients, the table by number otherwise."""
+    return PLACES[n % 3] if n < POPULATION_FIRST else PLACES[n % len(PLACES)]
+
+
 def population() -> tuple[DemoPatient, ...]:
     """The 500 patients, the same on every run: a fixed seed, never the clock or chance."""
     rng = random.Random(20261120)  # noqa: S311 (the same people every run, not a secret)
@@ -257,7 +277,7 @@ def population() -> tuple[DemoPatient, ...]:
         out.append(DemoPatient(
             n, f"{rng.choice(_GIVEN)}{rng.randrange(100, 1000)}",
             f"{rng.choice(_FAMILY)}{rng.randrange(10, 1000)}", born, gender,
-            f"+1217555{rng.randrange(100, 200):04d}",     # the fictional 555-01xx range
+            f"+1408555{rng.randrange(100, 200):04d}",     # the fictional 555-01xx range
             f"{rng.randrange(1, 999)} Sample Avenue", rng.choice((1, 2, 3, None)), None))
     return tuple(out)
 
@@ -265,8 +285,8 @@ def population() -> tuple[DemoPatient, ...]:
 def _payers(db: Session) -> None:
     starter._set_clinic(db, None)
     _ensure(db, "pharmacy", PHARMACY_ID, ncpdp_id="9999991", name="Demo Pharmacy (synthetic)",
-            phone="+12175550190", address_line="90 Sample Avenue", city="Springfield",
-            state="IL", postal_code="62704", is_mail_order=False, is_active=True)
+            phone="+14085550190", address_line="1450 Meridian Avenue", city="San Jose",
+            state="CA", postal_code="95125", is_mail_order=False, is_active=True)
     for n, name, kind in PAYERS:
         _ensure(db, "payer", sid(PAYER, n), name=name, payer_type=kind)
     starter._set_clinic(db, CLINIC_A)
@@ -320,8 +340,9 @@ def _patient(db: Session, p: DemoPatient) -> Any:
     pt.ext_race_text = p.race[1] if p.race else None
     pt.ext_ethnicity_text = p.ethnicity[1] if p.ethnicity else None
     pt.ext_occupation_text, pt.ext_industry_text = p.occupation, p.industry
-    pt.address = [M["address"](id=sid(P_ADDRESS, p.n), line=[p.street], city="Springfield",
-                               state="IL", postal_code="62704", country="US", use="home")]
+    city, zip_code = home_place(p.n)
+    pt.address = [M["address"](id=sid(P_ADDRESS, p.n), line=[p.street], city=city, state="CA",
+                               postal_code=zip_code, country="US", use="home")]
     pt.communication = [M["patient_communication"](id=sid(P_LANGUAGE, p.n),
                                                    language_system=systems.LANGUAGE,
                                                    language_code="en-US", preferred=True)]
@@ -333,10 +354,10 @@ def _patient(db: Session, p: DemoPatient) -> Any:
                                                level="ombCategory", code=value[0]))
     if p.employer:
         db.add(M["employer"](id=sid(P_EMPLOYER, p.n), patient_id=pt.id, name=p.employer,
-                             phone=f"+1217555{170 + p.n:04d}",
+                             phone=f"+1408555{170 + p.n:04d}",
                              address_lines=[f"{p.n * 100} Example Business Park"],
-                             address_city="Springfield", address_state="IL",
-                             address_postal_code="62703", address_country="US"))
+                             address_city="San Jose", address_state="CA",
+                             address_postal_code="95134", address_country="US"))
     if p.pcp:
         db.add(M["patient_general_practitioner"](
             id=sid(P_PCP, p.n), patient_id=pt.id,
@@ -443,7 +464,7 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
         return
     at, code, provider = p.visit
     minutes = next(m for c, _, m, _, _, _ in starter.VISIT_TYPES if c == code)
-    start = dt.datetime.combine(DEMO_DAY, at, CHICAGO).astimezone(dt.UTC)
+    start = dt.datetime.combine(DEMO_DAY, at, CLINIC_ZONE).astimezone(dt.UTC)
     n = provider * 10 + 1                               # the provider's main-office schedule
     appt = M["appointment"](
         id=sid(APPOINTMENT, p.n), tenant_id=CLINIC_A, status="booked",

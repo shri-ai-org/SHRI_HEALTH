@@ -67,7 +67,7 @@ def _site(db: Session, name: str, code: str, org_id: UUID, *, active: bool = Tru
     db.add(site)
     db.flush()
     fac = M["facility"](tenant_id=db.info["tenant_id"], location_id=site.id, code=code,
-                        name=name, timezone="America/Chicago", is_active=active)
+                        name=name, timezone="America/Los_Angeles", is_active=active)
     db.add(fac)
     db.flush()
     return fac
@@ -98,8 +98,8 @@ def _clinic(admin: Engine, app_engine: Engine, tag: str, payers: list[UUID],
     ctx = b.practice(db)  # organization, site, facility "Main office", Dr. Rivera with a user
     main = ctx["facility"]
     db.add_all([
-        M["address"](location_id=main.location_id, line=["200 Test Avenue"], city="Springfield",
-                     state="IL", postal_code="62702", country="US", use="work"),
+        M["address"](location_id=main.location_id, line=["200 Test Avenue"], city="San Jose",
+                     state="CA", postal_code="95126", country="US", use="work"),
         M["contact_point"](location_id=main.location_id, system="phone", value="+12175550110",
                            rank=1),
     ])
@@ -119,7 +119,7 @@ def _clinic(admin: Engine, app_engine: Engine, tag: str, payers: list[UUID],
                                          specialty_display="Neurology"),
         M["practitioner_qualification"](practitioner_id=rivera.id, code_system=systems.V2_0360,
                                         code_code="MD", identifier_value="TEST-LIC-0042",
-                                        ext_state="IL", issuer_display="Test Medical Board",
+                                        ext_state="CA", issuer_display="Test Medical Board",
                                         period_start=date(2015, 7, 1)),
         M["contact_point"](practitioner_id=rivera.id, system="phone", value="+12175550120",
                            use="work", rank=1),
@@ -346,8 +346,8 @@ def test_two_clinics_enroll_with_the_same_payer(world: dict[str, Any],
 def test_facilities_with_their_site(client: Any, world: dict[str, Any]) -> None:
     items = {f["id"]: f for f in _get(client, "adm", "/api/v1/facilities")["items"]}
     main = items[str(world["a"]["main"])]
-    assert main["address"] == {"lines": ["200 Test Avenue"], "city": "Springfield",
-                               "state": "IL", "postalCode": "62702", "country": "US"}
+    assert main["address"] == {"lines": ["200 Test Avenue"], "city": "San Jose",
+                               "state": "CA", "postalCode": "95126", "country": "US"}
     assert main["phone"] == "+12175550110"
     assert (main["code"], main["timeZone"], main["placeOfServiceCode"],
             main["billingLocation"], main["active"]) == ("MAIN", "America/New_York", "11",
@@ -368,7 +368,7 @@ def test_providers_with_their_child_rows(client: Any, world: dict[str, Any]) -> 
     assert len(rivera["npi"]) == 10
     assert rivera["qualifications"] == [{
         "code": {"system": systems.V2_0360, "code": "MD"}, "licenseNumber": "TEST-LIC-0042",
-        "state": "IL", "issuer": "Test Medical Board", "startDate": "2015-07-01"}]
+        "state": "CA", "issuer": "Test Medical Board", "startDate": "2015-07-01"}]
     assert rivera["specialties"] == [{"system": systems.NUCC, "code": "2084N0400X",
                                       "display": "Neurology"}]
     assert rivera["facilityIds"] == [str(a["main"])]

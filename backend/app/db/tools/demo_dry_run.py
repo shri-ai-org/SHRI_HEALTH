@@ -180,7 +180,7 @@ def _free_time(c: Client, v: Visit, day: dt.date, after: dt.datetime) -> str | N
 
 
 def _visit_day(v: Visit) -> dt.date:
-    """The visit's day in the facility's time zone: after 18:00 in Chicago its UTC date is
+    """The visit's day in the facility's time zone: after 16:00 in San Jose (PST) its UTC date is
     already the next day, and the status board and the revisit count in facility days."""
     return dt.datetime.fromisoformat(v.start.replace("Z", "+00:00")).astimezone(
         ZoneInfo(v.zone)).date()

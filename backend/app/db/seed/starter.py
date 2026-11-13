@@ -59,10 +59,12 @@ class Practice:
 
 
 PRACTICES = (
-    Practice(CLINIC_A, "riverbend", "Riverbend Family Medicine (synthetic)", "America/Chicago",
-             "RFM", MRN_SYSTEM,
-             ((FACILITY_A, "MAIN", "Riverbend main office (synthetic)", "America/Chicago",
-               ("100 Sample Avenue", "Springfield", "IL", "62704")),
+    # The demo clinic is in San Jose, California (team decision, 13 Nov): IANA zone names
+    # only, never a fixed offset. The street number is invented, on a real San Jose street.
+    Practice(CLINIC_A, "riverbend", "Riverbend Family Medicine (synthetic)",
+             "America/Los_Angeles", "RFM", MRN_SYSTEM,
+             ((FACILITY_A, "MAIN", "Riverbend main office (synthetic)", "America/Los_Angeles",
+               ("1200 The Alameda", "San Jose", "CA", "95126")),
               (None, "NORTH", "Riverbend north office (synthetic)", "America/New_York",
                ("200 Sample Avenue", "Columbus", "OH", "43004")))),
     Practice(CLINIC_B, "northgate", "Northgate Clinic (synthetic)", "America/Denver",

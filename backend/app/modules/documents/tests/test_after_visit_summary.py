@@ -25,7 +25,7 @@ from .. import pdf
 STORE = fs.SqlFhirStore()
 DETAILS = avs.AfterVisitSummaryDetails(
     practice_name="Riverbend Family Medicine (synthetic)", patient_name="Mai Nguyen",
-    visit_start=datetime(2026, 11, 3, 15, 30, tzinfo=UTC), time_zone="America/Chicago",
+    visit_start=datetime(2026, 11, 3, 17, 30, tzinfo=UTC), time_zone="America/Los_Angeles",
     clinician_name="Dr. Elena Rivera", facility_name="Main office",
     reason_for_visit="Headaches for two weeks",
     diagnoses=("Migraine without aura (G43.009)",),
@@ -54,9 +54,9 @@ def test_the_summary_shows_what_the_patient_needs() -> None:
 def test_empty_sections_are_left_out_and_dates_use_the_facility_zone() -> None:
     bare = avs.AfterVisitSummaryDetails(
         practice_name="P", patient_name="Mai Nguyen", clinician_name="Dr. R",
-        visit_start=datetime(2026, 11, 4, 2, 0, tzinfo=UTC), time_zone="America/Chicago")
+        visit_start=datetime(2026, 11, 4, 4, 0, tzinfo=UTC), time_zone="America/Los_Angeles")
     shown = _text(avs.render(bare))
-    assert "Visit date: November 3, 2026" in shown  # 8 pm the evening before, in Chicago
+    assert "Visit date: November 3, 2026" in shown  # 8 pm the evening before, in San Jose
     assert not {"Diagnoses", "Your medications", "Orders", "Instructions", "Follow-up"} & set(
         shown)
 

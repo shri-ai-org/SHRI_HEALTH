@@ -106,9 +106,9 @@ def test_facilities_in_the_contracts_shape(as_user: Client, seeded: dict[str, An
     first = body["items"][0]
     assert first == {
         "id": str(seeded["a"].facilities[0].id), "code": "A", "name": "Test Clinic A",
-        "timeZone": "America/Chicago",
-        "address": {"lines": ["200 Test Avenue"], "city": "Springfield", "state": "IL",
-                    "postalCode": "62702", "country": "US"},
+        "timeZone": "America/Los_Angeles",
+        "address": {"lines": ["200 Test Avenue"], "city": "San Jose", "state": "CA",
+                    "postalCode": "95126", "country": "US"},
         "phone": "+12175550110", "npi": "1234567893", "placeOfServiceCode": "11",
         "billingLocation": True, "active": True,
         "createdAt": "2026-10-26T13:00:00Z", "updatedAt": "2026-10-26T13:00:00Z",
@@ -122,7 +122,7 @@ def test_providers_in_the_contracts_shape(as_user: Client, seeded: dict[str, Any
     assert first["name"] == {"family": "Lowe58", "given": ["Test"], "prefix": "Dr."}
     assert first["qualifications"] == [{
         "code": {"system": "http://terminology.hl7.org/CodeSystem/v2-0360", "code": "MD"},
-        "licenseNumber": "TEST-LIC-0042", "state": "IL", "startDate": "2015-07-01"}]
+        "licenseNumber": "TEST-LIC-0042", "state": "CA", "startDate": "2015-07-01"}]
     assert first["specialties"][0]["code"] == "207R00000X"
     assert first["facilityIds"] == [str(seeded["a"].facilities[0].id)]
     assert {k: first[k] for k in ("npi", "gender", "phone", "email", "active")} == {

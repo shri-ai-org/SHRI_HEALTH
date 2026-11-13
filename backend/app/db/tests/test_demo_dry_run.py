@@ -45,8 +45,8 @@ def test_an_unreachable_api_is_a_failure_not_a_crash() -> None:
 
 
 def test_a_late_evening_visit_is_looked_up_on_the_facilitys_day() -> None:
-    """22:40 in Chicago is 04:40 UTC the next day: the status board is asked for the Chicago
-    date, which a dry run after 18:00 there got wrong (13 Nov)."""
+    """22:40 in San Jose is 06:40 UTC the next day: the status board is asked for the San Jose
+    date, which a late-evening dry run got wrong (13 Nov)."""
     asked: list[str] = []
 
     def api(request: httpx.Request) -> httpx.Response:
@@ -55,12 +55,12 @@ def test_a_late_evening_visit_is_looked_up_on_the_facilitys_day() -> None:
         asked.append(request.url.params["date"])
         return httpx.Response(200, json={"items": [{"appointmentId": "appt"}]})
 
-    v = dr.Visit(facility="fac", zone="America/Chicago", start="2026-11-13T04:40:00Z",
+    v = dr.Visit(facility="fac", zone="America/Los_Angeles", start="2026-11-13T06:40:00Z",
                  appointment="appt")
     assert dr.check_in(dr.Client("http://api.test", httpx.MockTransport(api)), v) == \
         "checked in; on the status board"
     assert asked == ["2026-11-12"]
-    assert dr._visit_day(dr.Visit(zone="America/Chicago", start="2026-11-13T05:59:00Z")) == \
-        dt.date(2026, 11, 12)                                   # 23:59 in Chicago
-    assert dr._visit_day(dr.Visit(zone="America/Chicago", start="2026-11-13T06:00:00Z")) == \
+    assert dr._visit_day(dr.Visit(zone="America/Los_Angeles", start="2026-11-13T07:59:00Z")) == \
+        dt.date(2026, 11, 12)                                   # 23:59 in San Jose
+    assert dr._visit_day(dr.Visit(zone="America/Los_Angeles", start="2026-11-13T08:00:00Z")) == \
         dt.date(2026, 11, 13)                                   # midnight there
