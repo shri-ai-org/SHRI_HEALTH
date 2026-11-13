@@ -5,7 +5,7 @@
  * as the old build's did. Open notes first, newest first.
  */
 
-import { Check, Mic, Plus, StickyNote, Trash2 } from 'lucide-react'
+import { Check, Mic, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { formatDateTime, formatTime } from '@/data/format'
@@ -14,7 +14,6 @@ import { useUI } from '@/store/ui'
 
 import { cn } from '../lib/cn'
 import { useShri } from '../state/store'
-import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, PillTag, RoundButton } from '../ui/primitives'
 
 import { useMyDay } from './useMyDay'
@@ -57,7 +56,8 @@ export function TodoNotes({ className }: { className?: string }) {
             To-do
           </h2>
         </header>
-        <EmptyState compact icon={StickyNote} why="Not available yet: there's no place to save your reminders yet." />
+        {/* The sample's quiet empty line, in place of a large empty card. */}
+        <p className="text-[14px] text-sh-text-2">Nothing noted yet. Reminders can't be saved here yet.</p>
       </Card>
     )
   }

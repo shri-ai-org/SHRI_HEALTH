@@ -1,6 +1,7 @@
 // SHRI_HEALTH data layer for My Day: the signed-in provider's own day and week (GET /me's
-// practitionerId, #221). Today's bookings come from the status board and the open times from the
-// slots; the week counts the provider's bookings per day. Each read runs when the screen opens.
+// practitionerId, #221). The day's bookings come from the status board and the appointment list
+// (with each one's end, for the timeline), the open times from the slots; the week lists the
+// provider's bookings per day. Each read runs when the screen opens.
 import { useEffect, useState } from 'react'
 
 import { getStatusBoard, listAppointments, listSlots } from '../../src/api/generated/endpoints/scheduling/scheduling'
@@ -12,10 +13,12 @@ import { signedInUser, userFacility } from './opd'
 export type Loaded<T> = { status: 'loading' } | { status: 'not-a-provider' } | { status: 'failed' } | { status: 'done'; value: T }
 
 export interface ProviderDay {
-  /** Today's bookings, by start time, without cancelled ones. */
+  /** The day's bookings, by start time, without cancelled ones. */
   items: StatusBoardItem[]
-  /** Open times still ahead today. */
+  /** The day's open times, past ones included (the timeline draws them as gone). */
   slots: Slot[]
+  /** The day's bookings as the appointment list has them (with their end), for the timeline. */
+  appointments: AppointmentSummary[]
 }
 
 /** YYYY-MM-DD of a clinic-time Date. */
@@ -42,28 +45,28 @@ function useLoaded<T>(key: string, load: (facilityId: string, providerId: string
   return state.key === key ? state.loaded : { status: 'loading' }
 }
 
-/** The provider's day today. */
-export function useProviderDay(): Loaded<ProviderDay> {
-  const date = isoDay(clinicNow())
+/** The provider's day: today unless `date` (YYYY-MM-DD, clinic time) names another. */
+export function useProviderDay(date: string = isoDay(clinicNow())): Loaded<ProviderDay> {
   return useLoaded(`day:${date}`, async (facilityId, providerId) => {
-    const [board, open] = await Promise.all([
+    const [board, open, booked] = await Promise.all([
       getStatusBoard({ facilityId, date, view: 'staff', providerId, limit: 100 }),
       listSlots({ facilityId, date, providerId, limit: 100 }),
+      listAppointments({ facilityId, providerId, dateFrom: date, dateTo: date, limit: 100 }),
     ])
-    const now = Date.now()
     return {
       items: (board.data as { items: StatusBoardItem[] }).items.filter((i) => i.status !== 'cancelled').sort((a, b) => a.startAt.localeCompare(b.startAt)),
-      slots: (open.data as { items: Slot[] }).items.filter((s) => new Date(s.startAt).getTime() > now),
+      slots: (open.data as { items: Slot[] }).items,
+      appointments: (booked.data as { items: AppointmentSummary[] }).items.filter((a) => a.status !== 'cancelled'),
     }
   })
 }
 
-/** How many bookings the provider has on each day of the week from `monday` (YYYY-MM-DD → count). */
-export function useProviderWeek(monday: Date): Loaded<Map<string, number>> {
+/** The provider's bookings on each day of the week from `monday` (YYYY-MM-DD → bookings, by start time). */
+export function useProviderWeek(monday: Date): Loaded<Map<string, AppointmentSummary[]>> {
   const from = isoDay(monday)
   const to = isoDay(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6))
   return useLoaded(`week:${from}`, async (facilityId, providerId) => {
-    const counts = new Map<string, number>()
+    const days = new Map<string, AppointmentSummary[]>()
     let cursor: string | undefined
     for (let page = 0; page < 20; page += 1) {
       const res = await listAppointments({ facilityId, providerId, dateFrom: from, dateTo: to, limit: 100, ...(cursor ? { cursor } : {}) })
@@ -71,11 +74,12 @@ export function useProviderWeek(monday: Date): Loaded<Map<string, number>> {
       for (const a of data.items) {
         if (a.status === 'cancelled') continue
         const day = isoDay(clinicDate(a.startAt))
-        counts.set(day, (counts.get(day) ?? 0) + 1)
+        days.set(day, [...(days.get(day) ?? []), a])
       }
       cursor = data.nextCursor ?? undefined
       if (!cursor) break
     }
-    return counts
+    for (const list of days.values()) list.sort((a, b) => a.startAt.localeCompare(b.startAt))
+    return days
   })
 }

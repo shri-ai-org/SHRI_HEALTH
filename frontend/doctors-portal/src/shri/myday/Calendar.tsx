@@ -16,20 +16,23 @@
 
 import { format } from 'date-fns'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Ban, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
-import { useEffect, useMemo, useRef, type KeyboardEvent, type PointerEvent } from 'react'
+import { Ban, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Stethoscope } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { Link } from 'react-router-dom'
 
 import { cn } from '../lib/cn'
-import { NOW, fmtMonth } from '../lib/clock'
+import { NOW, fmtMonth, fmtTime12 } from '../lib/clock'
 import { monthSlide } from '../lib/motion'
 import { useShri } from '../state/store'
 import { useMediaQuery } from '../ui/hooks'
-import { clinicNow } from '../../../shri-health/format'
+import { clinicDate, clinicNow } from '../../../shri-health/format'
 import { isoDay, useProviderWeek } from '../../../shri-health/myday'
+import { recordPath } from '../../../shri-health/record'
+import type { AppointmentSummary } from '../../../../src/api/generated/model'
 import { EmptyState } from '../ui/EmptyState'
-import { Card, Icon, Pill, RoundButton } from '../ui/primitives'
+import { Card, Icon, Pill, PillTag, RoundButton } from '../ui/primitives'
 
-import { DayDetail } from './DayDetail'
+import { DayDetail, LoadMeter } from './DayDetail'
 import { DayPeek } from './DayPeek'
 import { useMyDay, type CalendarDay } from './useMyDay'
 
@@ -64,13 +67,46 @@ const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
  */
 function ApiWeek({ className }: { className?: string }) {
   const today = clinicNow()
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7))
+  const todayIso = isoDay(today)
+  const [anchor, setAnchor] = useState(todayIso)
+  const [selected, setSelected] = useState(todayIso)
+  const a = dateOf(anchor)
+  const monday = new Date(a.getFullYear(), a.getMonth(), a.getDate() - ((a.getDay() + 6) % 7))
   const days = Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i))
-  const isToday = (d: Date) => d.toDateString() === today.toDateString()
   const week = useProviderWeek(monday)
-  const booked = (d: Date) => (week.status === 'done' ? (week.value.get(isoDay(d)) ?? 0) : null)
+  const booked = (d: Date) => (week.status === 'done' ? (week.value.get(isoDay(d)) ?? []) : [])
+  const showingToday = days.some((d) => isoDay(d) === todayIso)
+  const step = (n: 1 | -1) => {
+    const next = addDays(isoDay(monday), 7 * n)
+    setAnchor(next)
+    setSelected(next)
+  }
+  const goToday = () => {
+    setAnchor(todayIso)
+    setSelected(todayIso)
+  }
+  const chosen = days.find((d) => isoDay(d) === selected) ?? days[0]
+  const sunday = days[6]
+  const title = monday.getMonth() === sunday.getMonth() ? `${format(monday, 'MMM d')} – ${format(sunday, 'd, yyyy')}` : `${format(monday, 'MMM d')} – ${format(sunday, 'MMM d, yyyy')}`
   return (
-    <Card className={cn('relative max-[360px]:-mx-[16px] max-[360px]:rounded-none', className)} title={format(today, 'MMMM yyyy')} titleSize="sm">
+    <Card
+      className={cn('relative max-[360px]:-mx-[16px] max-[360px]:rounded-none lg:min-h-0 lg:flex-[3]', className)}
+      title={title}
+      titleSize="sm"
+      right={
+        <>
+          {!showingToday && (
+            <Pill variant="primary" size="sm" onClick={goToday} className="mr-[2px]" aria-label="Back to today">
+              Today
+            </Pill>
+          )}
+          <span className="flex items-center gap-[10px]">
+            <RoundButton icon={ChevronLeft} size={34} iconSize={17} label="Previous week" onClick={() => step(-1)} />
+            <RoundButton icon={ChevronRight} size={34} iconSize={17} label="Next week" onClick={() => step(1)} />
+          </span>
+        </>
+      }
+    >
       <div className="grid grid-cols-7 gap-[3px] pb-[4px] max-sm:-mx-[18px] max-[360px]:gap-x-0" aria-hidden="true">
         {WEEKDAYS.map((w) => (
           <span key={w} className="text-center text-[12px]/[18px] text-sh-muted">
@@ -78,32 +114,107 @@ function ApiWeek({ className }: { className?: string }) {
           </span>
         ))}
       </div>
-      <ol aria-label={`Week of ${format(monday, 'MMMM d, yyyy')}`} className="grid grid-cols-7 gap-[3px] px-[4px] py-[4px] max-[360px]:gap-x-0">
-        {days.map((d) => (
-          <li
-            key={d.toISOString()}
-            aria-current={isToday(d) ? 'date' : undefined}
-            aria-label={`${format(d, 'EEEE, MMMM d')}${booked(d) === null ? '' : `, ${booked(d)} booked`}`}
-            className="flex h-[56px] flex-col items-center justify-center gap-[2px] rounded-[14px]"
-          >
-            <span
-              className={cn(
-                'inline-flex size-[30px] items-center justify-center rounded-full text-[13px]/none tabular-nums',
-                isToday(d) ? 'bg-sh-accent font-semibold text-sh-accent-ink' : 'text-sh-text',
-              )}
+      <div role="grid" aria-label={`Week of ${format(monday, 'MMMM d, yyyy')}`} className="grid grid-cols-7 gap-[3px] px-[4px] py-[4px] max-sm:-mx-[18px] max-sm:px-0 max-[360px]:gap-x-0">
+        {days.map((d) => {
+          const iso = isoDay(d)
+          const n = booked(d).length
+          const level = loadOf(n)
+          return (
+            <button
+              key={iso}
+              type="button"
+              role="gridcell"
+              aria-selected={iso === selected}
+              aria-current={iso === todayIso ? 'date' : undefined}
+              aria-label={`${format(d, 'EEEE, MMMM d')}${week.status === 'done' ? `, ${n} booked · ${LOAD[level]}` : ''}`}
+              onClick={() => setSelected(iso)}
+              className={cn('flex h-[56px] flex-col items-center justify-center gap-[3px] rounded-[14px] transition-colors duration-150 hover:bg-sh-accent-soft max-sm:focus-visible:outline-offset-[-3px]', iso === selected && 'bg-sh-accent-soft')}
             >
-              {d.getDate()}
-            </span>
-            <span aria-hidden="true" className="h-[14px] text-[11px]/[14px] tabular-nums text-sh-text-3">
-              {booked(d) ? booked(d) : ''}
-            </span>
-          </li>
-        ))}
-      </ol>
+              <span
+                className={cn(
+                  'inline-flex size-[30px] items-center justify-center rounded-full text-[13px]/none tabular-nums',
+                  iso === todayIso ? 'bg-sh-accent font-semibold text-sh-accent-ink' : 'text-sh-text',
+                  iso === selected && 'ring-[3px] ring-(--day-selected-ring)',
+                )}
+              >
+                {d.getDate()}
+              </span>
+              <span className="flex h-[8px] items-center gap-[3px]" aria-hidden="true">
+                {Array.from({ length: level }, (_, i) => (
+                  <span key={i} className="size-[4px] rounded-full bg-sh-accent" />
+                ))}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-[10px] flex flex-wrap items-center gap-x-[14px] gap-y-[4px] text-[11px] text-sh-muted" aria-label="Legend">
+        <Legend dots={1}>Light</Legend>
+        <Legend dots={2}>Moderate</Legend>
+        <Legend dots={3}>Busy</Legend>
+      </div>
       {week.status === 'not-a-provider' && <EmptyState compact icon={CalendarDays} why="Your sign-in isn't linked to a provider, so there are no bookings of your own to show." />}
       {week.status === 'failed' && <EmptyState compact icon={CalendarDays} why="Your week could not be loaded. Reload the page to try again." />}
-      {week.status === 'done' && <p className="px-[4px] pt-[4px] text-[12px] text-sh-text-3">Numbers are the patients booked with you each day.</p>}
+      {week.status === 'done' && <ApiDay date={chosen} isToday={isoDay(chosen) === todayIso} past={isoDay(chosen) < todayIso} bookings={booked(chosen)} />}
     </Card>
+  )
+}
+
+/** Patients booked a day: up to 4 is light, up to 9 moderate, 10 or more busy. */
+const loadOf = (n: number) => (n === 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : 3)
+const LOAD = ['free day', 'light day', 'moderate day', 'busy day']
+
+/** The chosen day under the week, as the sample's day card: the date, its load, and who is booked. */
+function ApiDay({ date, isToday, past, bookings }: { date: Date; isToday: boolean; past: boolean; bookings: AppointmentSummary[] }) {
+  const level = loadOf(bookings.length)
+  return (
+    <div className="sh-scrollbar -mx-[6px] mt-[14px] min-h-0 flex-1 overflow-y-auto border-t border-sh-line px-[6px] pt-[14px]">
+      <div className="flex items-center gap-[12px]">
+        <span className="flex size-[52px] shrink-0 flex-col items-center justify-center rounded-[16px] bg-sh-accent text-sh-accent-ink" aria-hidden="true">
+          <span className="text-[20px]/[22px] font-semibold tabular-nums">{date.getDate()}</span>
+          <span className="text-[10px]/[12px] font-medium uppercase tracking-[0.06em]">{format(date, 'EEE')}</span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px]/[20px] font-medium">{format(date, 'MMMM yyyy')}</span>
+          <span className="block text-[12px]/[16px] text-sh-text-3">{isToday ? 'Today' : past ? 'Earlier' : 'Coming up'}</span>
+        </span>
+        <LoadMeter level={level} critical={false} word={LOAD[level]} />
+      </div>
+      <div className="mt-[12px] flex flex-wrap items-center gap-[6px]">
+        <PillTag variant="control" size="sm" className="font-medium">
+          {bookings.length} booked
+        </PillTag>
+        <span className="text-[12px] font-medium text-sh-text-2">{LOAD[level]}</span>
+      </div>
+      {bookings.length > 0 ? (
+        <div className="mt-[14px]">
+          <p className="mb-[4px] text-[12px] text-sh-text-3">Booked with you</p>
+          <ul className="flex flex-col" aria-label={`Booked with you on ${format(date, 'EEEE MMMM d')}`}>
+            {bookings.map((b) => {
+              const done = b.status === 'fulfilled' || b.status === 'noshow' || b.visitStatus === 'checked-out'
+              return (
+                <li key={b.id} className={cn('flex items-center gap-[8px]', done && 'opacity-60')}>
+                  <Link to={recordPath(b.patient, 'record')} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-[10px] rounded-[12px] px-[6px] py-[4px] transition-colors duration-150 hover:bg-sh-hover">
+                    <span className="inline-flex size-[32px] shrink-0 items-center justify-center rounded-full bg-sh-inner text-sh-text-2">
+                      <Icon icon={Stethoscope} size={15} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px]/[16px] font-medium">{b.patient.displayName}</span>
+                      <span className="block truncate text-[11px]/[14px] text-sh-text-3">{b.reasonForVisit ?? b.appointmentType.name}</span>
+                    </span>
+                    <PillTag variant="primary" size="xs" className="font-semibold tabular-nums">
+                      {fmtTime12(clinicDate(b.startAt))}
+                    </PillTag>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ) : (
+        <p className="mt-[12px] text-[13px] text-sh-text-2">No patients are booked with you this day.</p>
+      )}
+    </div>
   )
 }
 
