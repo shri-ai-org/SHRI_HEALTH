@@ -6,9 +6,9 @@ import { cn } from '../../../../design-system/lib/cn'
 import { usePortalApi } from '../../api/portalApi'
 import { useResource } from '../../api/useResource'
 import { AsyncPanel, Card, formatInstantShort, PageHeader, Pager, usePaged } from '../../ui'
+import { useClinicTimeZone } from '../../clinicZone'
 
 /** Vitals carry no facility; dates show in the patient's own time zone. */
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /** One measuring session: every vital sign taken at the same moment, as the old portal showed a visit. */
 interface Reading {
@@ -52,6 +52,7 @@ interface Series {
 
 /** A line chart drawn in SVG. The List view has the same numbers, so nothing depends on seeing lines. */
 function LineChart({ title, unit, dates, series }: { title: string; unit: string; dates: string[]; series: Series[] }) {
+  const tz = useClinicTimeZone()
   const W = 560
   const H = 200
   const pad = { l: 40, r: 12, t: 12, b: 28 }
@@ -75,7 +76,7 @@ function LineChart({ title, unit, dates, series }: { title: string; unit: string
         ))}
         {dates.map((d, i) => (
           <text key={d} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === dates.length - 1 ? 'end' : 'middle'} className="fill-ink-subtle text-[11px]">
-            {new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: '2-digit', year: '2-digit' }).format(new Date(d))}
+            {new Intl.DateTimeFormat('en-US', { timeZone: tz ?? 'UTC', month: 'short', day: '2-digit', year: '2-digit' }).format(new Date(d))}
           </text>
         ))}
         {series.map((s) => {
@@ -108,6 +109,7 @@ function LineChart({ title, unit, dates, series }: { title: string; unit: string
 
 /** The old list view: one column per visit (newest first), one row per measurement, 3 visits a page. */
 function TrendTable({ vitals }: { vitals: Reading[] }) {
+  const tz = useClinicTimeZone()
   const paged = usePaged([...vitals].reverse(), 3)
   const q = (v: Quantity | undefined) => (v ? toUsDisplay(v).text : '—')
   const rows: Array<[string, (v: Reading) => string]> = [
@@ -128,7 +130,7 @@ function TrendTable({ vitals }: { vitals: Reading[] }) {
               <th scope="col" className="px-3 py-2.5 font-semibold">Date</th>
               {paged.rows.map((v) => (
                 <th key={v.takenAt} scope="col" className="px-3 py-2.5 font-semibold">
-                  {formatInstantShort(v.takenAt, TZ)}
+                  {formatInstantShort(v.takenAt, tz)}
                 </th>
               ))}
             </tr>

@@ -195,7 +195,7 @@ class FakeRepository:
         return Versioned(schemas.Encounter(
             id=encounter_id, patient_id=e.patient_id, status=e.status,
             class_="AMB", reasons=reasons or None, facility_id=e.facility_id,
-            location_id=e.location_id, time_zone="America/Chicago", started_at=NOW,
+            location_id=e.location_id, time_zone="America/Los_Angeles", started_at=NOW,
             participants=[schemas.EncounterParticipant(role=r, practitioner_id=p)
                           for r, p in e.participants],
             diagnoses=[], notes=[],

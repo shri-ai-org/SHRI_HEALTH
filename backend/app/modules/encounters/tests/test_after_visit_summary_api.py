@@ -48,7 +48,7 @@ def test_the_summary_is_made_from_the_signed_note(as_user: Client, world: World)
     assert done.headers["Location"] == f"/api/v1/operations/{operation['id']}"
     details = world.details[0]
     assert details.patient_name == "Kaia401 Lindgren118"
-    assert details.time_zone == "America/Chicago"
+    assert details.time_zone == "America/Los_Angeles"
     assert details.reason_for_visit == "Headaches."
     assert details.instructions == "Drink water & rest.\nCall if worse."
     assert details.follow_up is not None and "3 months" in details.follow_up
@@ -170,7 +170,7 @@ def test_the_details_reach_157_field_for_field() -> None:
         f.name for f in fields(documents.Medication)]
     details = avs.SummaryDetails(
         practice_name="Riverbend test practice (synthetic)", patient_name="Kaia401 Lindgren118",
-        visit_start=datetime(2026, 11, 3, 15, 0, tzinfo=UTC), time_zone="America/Chicago",
+        visit_start=datetime(2026, 11, 3, 17, 0, tzinfo=UTC), time_zone="America/Los_Angeles",
         clinician_name="Dr. Avery401 Lindqvist58", facility_name="Main office (synthetic)",
         reason_for_visit="Headaches.", diagnoses=("Tension-type headache (G44.209)",),
         medications=(avs.Medication("Synthetic tablet 10 mg", "One a day."),),

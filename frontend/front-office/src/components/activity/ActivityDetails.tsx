@@ -6,6 +6,7 @@ import type { ActivityEvent, ActivityType } from '../../domain/reportSelectors'
 
 type DetailType = Exclude<ActivityType, 'PAYMENT_COMPLETED'>
 import { timeLabel } from '../../utils/activityFormat'
+import { todayKey } from '../../domain/time'
 import { Badge } from '../ui/Badge'
 import { Card, CardHeader } from '../ui/Card'
 import { ResponsiveTable } from '../ui/ResponsiveTable'
@@ -58,7 +59,7 @@ const bookedAt: Column = {
   cell: (e) =>
     e.appointmentAt === undefined
       ? dash
-      : timeLabel(e.appointmentAt, new Date(e.appointmentAt).toDateString() !== new Date(e.timestamp).toDateString()),
+      : timeLabel(e.appointmentAt, todayKey(new Date(e.appointmentAt)) !== todayKey(new Date(e.timestamp))),
 }
 
 const COLUMNS: Record<DetailType, Column[]> = {

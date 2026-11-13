@@ -22,7 +22,7 @@ from sqlalchemy.pool import NullPool
 
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
 
-from .conftest import Practice, local, setup_session
+from .conftest import ZONE, Practice, local, setup_session
 from .test_check_in_live import _check_in, _sql, _today_appointment
 
 pytestmark = [
@@ -62,7 +62,7 @@ def test_booking_lists_show_the_users_facilities_only(client: Any, practice: Pra
     fd = client("fd")
     facilities = fd.get(f"{API}/booking/facilities").json()["items"]
     assert [f["id"] for f in facilities] == [str(practice.facility)]
-    assert facilities[0]["timeZone"] == "America/Chicago"
+    assert facilities[0]["timeZone"] == ZONE
     locations = fd.get(f"{API}/booking/locations").json()["items"]
     assert [loc["id"] for loc in locations] == [str(practice.room)]
     assert locations[0]["physicalType"] == "ro"
@@ -97,7 +97,7 @@ def test_free_times_leave_out_booked_ones(client: Any, practice: Practice) -> No
     before = client("fd").get(f"{API}/slots", params=params)
     assert before.status_code == 200, before.text
     body = before.json()
-    assert body["timeZone"] == "America/Chicago"
+    assert body["timeZone"] == ZONE
     starts = [s["startAt"] for s in body["items"]]
     assert len(starts) == 24 and body["items"][0]["overbook"] is False  # 9:00–17:00, 20 minutes
     _book(client, practice)
@@ -183,7 +183,7 @@ def test_book_returns_the_appointment(client: Any, practice: Practice) -> None:
     assert a["patient"] == {"id": str(practice.patients["kaia"]),
                             "displayName": "Kaia401 Lindgren118", "restricted": False}
     assert a["provider"]["displayName"] == "Dr. Avery401 Lindqvist58"
-    assert a["appointmentType"]["code"] == "FU" and a["timeZone"] == "America/Chicago"
+    assert a["appointmentType"]["code"] == "FU" and a["timeZone"] == ZONE
     assert a["reasonForVisit"] == "Follow-up on headaches." and a["locationId"] == str(
         practice.room)
     assert "visitStatus" not in a and "encounterId" not in a
@@ -365,7 +365,7 @@ def test_list_by_day_by_range_and_by_patient(client: Any, practice: Practice) ->
     by_day = client("ma").get(f"{API}/appointments", params={"date": day})
     assert by_day.status_code == 200, by_day.text
     assert [a["id"] for a in by_day.json()["items"]] == [first["id"], second["id"]]
-    assert by_day.json()["timeZone"] == "America/Chicago"
+    assert by_day.json()["timeZone"] == ZONE
     week = client("ma").get(f"{API}/appointments", params={
         "dateFrom": day, "dateTo": (practice.day + timedelta(days=6)).isoformat()})
     assert len(week.json()["items"]) == 2

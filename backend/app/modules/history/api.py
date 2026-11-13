@@ -217,3 +217,9 @@ async def list_surgical_history(
         db, check, user, patient_id, history.surgical_history,
         include_entered_in_error=include_entered_in_error, limit=limit, cursor=cursor)
     return schemas.SurgicalHistoryList(items=items, next_cursor=next_cursor)
+
+
+# The patient portal's own history reads (B8a; portal_api.py), on this module's router.
+from .portal_api import router as _portal_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_portal_router)

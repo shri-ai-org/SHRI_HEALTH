@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app.core.deps import DEV_USER_HEADER
 from app.db.tests.conftest import TEST_DATABASE_URL
 
+from .conftest import ZONE
 from .portal_live import API, PortalChart, audit_rows, portal_client
 from .portal_live import portal_app as portal_app  # noqa: F401 (fixture)
 from .portal_live import portal_chart as portal_chart  # noqa: F401 (fixture)
@@ -37,7 +38,7 @@ def test_patient_a_sees_only_their_own_appointments(
     upcoming = a.get(URL)
     assert _ids(upcoming) == [str(ids["a-next"]), str(ids["a-cancelled"])]
     nxt = upcoming.json()["items"][0]
-    assert nxt["status"] == "booked" and nxt["timeZone"] == "America/Chicago"
+    assert nxt["status"] == "booked" and nxt["timeZone"] == ZONE
     assert nxt["provider"]["displayName"] == "Dr. Avery401 Lindqvist58"
     assert nxt["appointmentType"]["name"] == "Follow-up visit"
     assert nxt["reasonForVisit"] == "Follow-up on headaches."

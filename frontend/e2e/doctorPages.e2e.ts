@@ -14,7 +14,10 @@ test('the home shows the signed-in doctor, today and the clinic, not sample data
   await page.goto(`${DOCTORS}/`)
   // The first visit compiles the home on a cold dev server; reading the day takes a few calls.
   await expect(page.getByText(/Good (morning|afternoon|evening), Dev MD/).first()).toBeVisible({ timeout: 30_000 })
-  const today = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' }).format(new Date())
+  // Today in the clinic's own zone, read from the API (D40), never a fixed zone.
+  const facilities = (await (await page.request.get(`${DOCTORS}/api/v1/booking/facilities`)).json()) as { items: { timeZone: string }[] }
+  const timeZone = facilities.items[0].timeZone
+  const today = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone }).format(new Date())
   await expect(page.getByText(today).first()).toBeVisible()
   await expect(page.locator('main')).not.toContainText(SAMPLE)
 })

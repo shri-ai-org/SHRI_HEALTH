@@ -150,7 +150,7 @@ export function formatShortDate(isoDate: string): string {
 }
 
 /** `11/03/2026`: the calendar date of an instant in the given zone. */
-export function formatInstantShort(instant: string, timeZone: string): string {
+export function formatInstantShort(instant: string, timeZone: string | null): string {
   return formatDate(todayIn(timeZone, new Date(instant)))
 }
 

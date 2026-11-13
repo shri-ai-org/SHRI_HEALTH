@@ -40,7 +40,7 @@ from app.main import create_app
 from . import pending_permissions
 
 M = MAPPERS
-ZONE = "America/Chicago"
+ZONE = "America/Los_Angeles"
 SIGNS_IN_AS = ("fd", "ma", "rn", "md", "bil", "adm", "dsp", "none", "md-b", "fd-b")
 LINKED = "md"  # the one dev user linked to a practitioner of its own (who recorded what)
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -54,7 +54,7 @@ def demo_day() -> dt.date:
 
 
 def local(day: dt.date, hour: int, minute: int = 0) -> str:
-    """An ISO timestamp for a Chicago wall-clock time on the day."""
+    """An ISO timestamp for a San Jose wall-clock time on the day."""
     return dt.datetime.combine(day, dt.time(hour, minute), ZoneInfo(ZONE)).isoformat()
 
 

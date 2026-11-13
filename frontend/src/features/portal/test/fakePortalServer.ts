@@ -20,7 +20,7 @@ import type {
  * change requests) so a journey reads back what it did. Each call starts from fresh data.
  */
 
-export const TZ = 'America/Chicago'
+export const TZ = 'America/Los_Angeles'
 const DAY = 86_400_000
 
 export function id(n: number): string {
@@ -48,8 +48,8 @@ const facility = { id: IDS.facility, name: 'Shri Health Springfield Clinic', add
 const provider = { id: IDS.provider, displayName: 'Dr. Alvina56 Hettinger94, MD' }
 const officeVisit = { id: IDS.officeVisit, name: 'Office Visit' }
 
-/** An instant `days` from now at 15:30 UTC (morning in Chicago), on a weekday. */
-function at(days: number, hourUtc = 15, minute = 30): string {
+/** An instant `days` from now at 17:30 UTC (morning in San Jose), on a weekday. */
+function at(days: number, hourUtc = 17, minute = 30): string {
   const d = new Date(Date.now() + days * DAY)
   while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
   d.setUTCHours(hourUtc, minute, 0, 0)
@@ -148,8 +148,8 @@ export function fakePortalServer({ signedIn = true, bookingConflict = false, una
 
   function slots(date: string): PortalSlot[] {
     slotReads += 1
-    // 15:00 and 15:20 UTC on the asked date: a morning time in Chicago all year.
-    return [0, 20].map((m) => ({ startAt: `${date}T15:${String(m).padStart(2, '0')}:00.000Z`, endAt: `${date}T15:${String(m + 20).padStart(2, '0')}:00.000Z`, providerId: IDS.provider }))
+    // 17:00 and 17:20 UTC on the asked date: a morning time in San Jose all year.
+    return [0, 20].map((m) => ({ startAt: `${date}T17:${String(m).padStart(2, '0')}:00.000Z`, endAt: `${date}T17:${String(m + 20).padStart(2, '0')}:00.000Z`, providerId: IDS.provider }))
   }
 
   function route(method: string, path: string, q: URLSearchParams, body: Record<string, unknown>): Response {

@@ -32,7 +32,10 @@ SELECT (SELECT count(*) FROM clinical.condition WHERE subject_patient_id = :p),
        (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = :p),
        (SELECT count(*) FROM clinical.encounter WHERE subject_patient_id = :p
           AND status = 'finished'),
-       (SELECT count(*) FROM clinical.observation WHERE subject_patient_id = :p),
+       (SELECT count(*) FROM clinical.observation o WHERE subject_patient_id = :p
+          AND NOT EXISTS (SELECT 1 FROM clinical.observation_category k     -- results.py's
+                           WHERE k.observation_id = o.id
+                             AND k.category_code IN ('laboratory', 'imaging'))),
        (SELECT count(*) FROM clinical.family_member_history WHERE patient_id = :p),
        (SELECT count(*) FROM clinical.procedure WHERE subject_patient_id = :p),
        (SELECT count(*) FROM clinical.composition WHERE subject_patient_id = :p

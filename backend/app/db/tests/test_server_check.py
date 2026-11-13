@@ -4,10 +4,13 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import Engine, text
 
+from app.core.deps import CLINIC_A
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE
+from app.db.tests.test_seed import migrator_engine
 from app.db.tools import server_check as sc
 
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
+__all__ = ["migrator_engine"]       # a fixture, used by name
 
 
 def test_the_default_patient_count_is_the_demo_seeds() -> None:
@@ -50,3 +53,34 @@ def test_a_query_that_fails_is_a_failed_check_not_a_crash(admin_engine: Engine) 
 def test_it_needs_the_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SERVER_CHECK_DATABASE_URL", raising=False)
     assert sc.main([]) == 2
+
+
+def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
+        admin_engine: Engine, migrator_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """After the demo seed, its history and its results, every demo check passes but the code
+    lists (the test database has none loaded); an AI feature switched off fails its own line."""
+    from sqlalchemy.orm import Session
+
+    from app.db.seed import demo
+    from app.db.tests.test_seed_results import _load
+
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load()
+    with admin_engine.connect() as conn:
+        failed = {c.name for c, v in sc.run(conn, sc.demo_checks()) if not c.passes(v)}
+        assert failed <= {"ICD-10-CM codes loaded", "RxNorm codes loaded"}, failed
+        conn.rollback()
+        conn.execute(text("UPDATE admin.ai_feature_setting SET is_enabled = false, "
+                          "reason = 'rehearsal (synthetic)' WHERE feature = 'chart-summary' "
+                          "AND tenant_id = :t"), {"t": CLINIC_A})
+        off = {c.name for c, v in sc.run(conn, sc.demo_checks()) if not c.passes(v)}
+        conn.rollback()                                     # nothing is kept
+    assert "both AI features on in the demo clinic" in off
+
+
+def test_an_at_least_check_takes_more_but_not_fewer() -> None:
+    check = sc.Check("visits", "SELECT 1", "6", at_least=True)
+    assert check.passes("7") and check.passes("6")
+    assert not check.passes("5") and not check.passes(None) and not check.passes("x")

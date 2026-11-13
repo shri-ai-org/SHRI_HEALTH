@@ -31,7 +31,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
-from app.db.seed import history, starter
+from app.db.seed import history, results, starter
 from app.db.seed.demo import (
     CLINIC_ZONE,
     DEMO_DAY,
@@ -91,6 +91,7 @@ def reset(engine: Engine) -> ResetSummary:
     with Session(engine) as db, db.begin():
         load_demo(db)
     history.run(engine)
+    results.run(engine)
     with Session(engine) as db, db.begin():
         found = summary(db)
         problems = verify(db, found)
