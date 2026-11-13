@@ -106,7 +106,7 @@ def test_support_staff_get_no_phi() -> None:
         ("MD", "scheduling-reference:read", True),
         ("APP", "scheduling-reference:read", True),
         ("BIL", "scheduling-reference:read", True),
-        ("ADM", "scheduling-reference:read", False),
+        ("ADM", "scheduling-reference:read", True),   # D49, amended 13 Nov
         ("FD", "pharmacies:read", True),
         ("MA", "pharmacies:read", True),
         ("BIL", "pharmacies:read", False),

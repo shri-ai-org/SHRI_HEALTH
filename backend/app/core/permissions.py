@@ -92,7 +92,8 @@ CATALOGUE: frozenset[str] = _expand(
 # Reusable groups from the matrix rows.
 _PATIENT_LOOKUP = _expand("patients:search|read")
 _SCHEDULE_READ = _expand("slots:read", "appointments:read", "status-board:read")
-_BOOKING_REFERENCE = _expand("scheduling-reference:read")  # FD, MA, RN, MD, APP, BIL (D49)
+# FD, MA, RN, MD, APP, BIL, ADM (D49, amended 13 Nov)
+_BOOKING_REFERENCE = _expand("scheduling-reference:read")
 # D55, D61, D66: front desk and practice admin run the schedule; clinicians are read-only (D67).
 _SCHEDULE_DESK = _expand(
     "appointments:create|update|cancel|check-in|undo-check-in|reschedule",
@@ -215,7 +216,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ),
     # Practice administrator: no clinical access by default
     "ADM": frozenset().union(
-        _PATIENT_LOOKUP, _SCHEDULE_READ, _SCHEDULE_DESK, _INBOX, _COMMS,
+        _PATIENT_LOOKUP, _SCHEDULE_READ, _BOOKING_REFERENCE, _SCHEDULE_DESK, _INBOX, _COMMS,
         _expand("patients:create|update|restrict",
                 "coverages:read|create|update|entered-in-error",
                 "eligibility-checks:read|create", "consents:read|create",

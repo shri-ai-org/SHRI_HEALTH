@@ -170,7 +170,7 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `coverages:*`, `eligibility-checks:*` | ✓ | R | R | R | R | ✓ | ✓ | – | – | – |
 | `consents:*` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | R | – | – |
 | `duplicates:read`, `duplicates:merge`, `duplicates:dismiss`, `patient-merges:read`, `patient-merges:undo` (D64: duplicate review is in the admin portal; FD sees only the `409 possible-duplicate` warning) | – | – | – | – | – | – | ✓ | R | – | – |
-| `scheduling-reference:read` (booking lists, D49; in core since #21) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – |
+| `scheduling-reference:read` (booking lists, D49 as amended 2026-11-13: ADM too; in core since #21) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | `pharmacies:read` (pharmacy directory, D50; batch 1; in core since #21, which added FD) | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `slots:read`, `appointments:read`, `status-board:read` | ✓ | ✓ | ✓ | ✓ | ✓ | R | ✓ | – | – | ✓ (status-board only, shared view; D47) |
 | `appointments:create\|update\|cancel\|check-in` (D67: clinicians are read-only on appointments and request changes through inbox tasks) | ✓ | – | – | – | – | – | ✓ | – | – | – |
