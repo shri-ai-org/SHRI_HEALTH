@@ -21,7 +21,10 @@ import { Card, Chip, CountBubble, Icon, Pill } from '../ui/primitives'
 import { EmptyState } from '../ui/EmptyState'
 import { Segmented } from '../ui/Segmented'
 
+import { ApiReports } from './ApiResults'
 import { RecordFrame } from './RecordFrame'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 type Filter = 'all' | 'imaging' | 'documents'
 
@@ -41,7 +44,8 @@ export function ReportsPage() {
   const { id } = useParams()
   return (
     <RecordFrame id={id} section="reports">
-      {(p) => <Reports patient={p} />}
+      {/* SHRI_HEALTH: with the API, the patient's imaging reports as text (listImagingReports, ./ApiResults.tsx). */}
+      {(p) => (REAL_API ? <ApiReports patient={p} /> : <Reports patient={p} />)}
     </RecordFrame>
   )
 }

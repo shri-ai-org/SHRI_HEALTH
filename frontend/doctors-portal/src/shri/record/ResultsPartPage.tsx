@@ -26,8 +26,11 @@ import { Segmented } from '../ui/Segmented'
 import { Sparkline } from '../ui/Sparkline'
 import { StatTile } from '../ui/StatTile'
 
+import { ApiResults } from './ApiResults'
 import { ClinicalFlag } from './bits'
 import { RecordFrame } from './RecordFrame'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 type Filter = 'all' | 'abnormal' | 'review'
 
@@ -35,7 +38,8 @@ export function ResultsPartPage() {
   const { id } = useParams()
   return (
     <RecordFrame id={id} section="results">
-      {(p) => <Results patient={p} />}
+      {/* SHRI_HEALTH: with the API, the patient's lab reports (listLabResults, ./ApiResults.tsx). */}
+      {(p) => (REAL_API ? <ApiResults patient={p} /> : <Results patient={p} />)}
     </RecordFrame>
   )
 }
