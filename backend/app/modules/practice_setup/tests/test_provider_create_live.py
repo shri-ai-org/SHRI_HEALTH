@@ -150,7 +150,7 @@ def test_create_a_provider_and_read_it_back(client: Any, clinics: dict[str, Any]
                                    "display": "Family Medicine"}],
                      qualifications=[{"code": {"system": "http://terminology.hl7.org/"
                                                "CodeSystem/v2-0360", "code": "MD"},
-                                      "licenseNumber": "TEST-12345", "state": "IL",
+                                      "licenseNumber": "TEST-12345", "state": "CA",
                                       "startDate": "2020-01-01"}])
     made = client("adm").post("/api/v1/providers", json=body)
     assert made.status_code == 201, made.text
@@ -262,7 +262,7 @@ def test_create_a_schedule_and_read_it_back(client: Any, clinics: dict[str, Any]
               appointmentTypeIds=[str(a["visit"])]),
         _rule("mon", "12:00", "17:00", endDate="2027-06-30"),       # touching is not overlapping
         _rule("tue", "09:00", "17:00")],
-        exceptions=[{"startAt": "2026-12-24T09:00:00-05:00", "endAt": "2026-12-24T17:00:00-05:00",
+        exceptions=[{"startAt": "2026-12-24T14:00:00Z", "endAt": "2026-12-24T22:00:00Z",
                      "available": False, "reason": "Holiday"}],
         comment="Main office hours")
     made = client("fd").post("/api/v1/provider-schedules", json=body)       # FD may (D66)

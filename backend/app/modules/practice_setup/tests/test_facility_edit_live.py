@@ -33,8 +33,8 @@ pytestmark = [
 ]
 M = b.M
 PATCH = {"Content-Type": "application/merge-patch+json"}
-ADDRESS = {"lines": ["300 Sample Road", "Suite 2"], "city": "Springfield", "state": "IL",
-           "postalCode": "62704", "country": "US"}
+ADDRESS = {"lines": ["300 Sample Road", "Suite 2"], "city": "San Jose", "state": "CA",
+           "postalCode": "95126", "country": "US"}
 
 
 @pytest.fixture
@@ -54,8 +54,8 @@ def _clinic(admin: Engine, app_engine: Engine) -> dict[str, Any]:
     ctx = b.practice(db)
     site = ctx["facility"].location_id
     db.add_all([
-        M["address"](location_id=site, line=["200 Test Avenue"], city="Springfield", state="IL",
-                     postal_code="62702", country="US", use="work"),
+        M["address"](location_id=site, line=["200 Test Avenue"], city="San Jose", state="CA",
+                     postal_code="95126", country="US", use="work"),
         M["contact_point"](location_id=site, system="phone", value="+12175550110", rank=1),
         M["contact_point"](location_id=site, system="email", value="desk@example.test", rank=2),
     ])
@@ -119,7 +119,7 @@ def test_read_then_change_the_facility_and_its_site(client: Any, clinics: dict[s
     url = _url(clinics["a"])
     got = client("adm").get(url)
     assert got.status_code == 200, got.text
-    assert got.json()["phone"] == "+12175550110" and got.json()["address"]["city"] == "Springfield"
+    assert got.json()["phone"] == "+12175550110" and got.json()["address"]["city"] == "San Jose"
     etag = got.headers["ETag"]
 
     changed = _patch(client, "adm", url, {"name": "Main office (renamed)", "npi": "1234567893",

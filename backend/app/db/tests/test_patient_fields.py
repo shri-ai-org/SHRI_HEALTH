@@ -342,14 +342,14 @@ def test_a_facility_has_a_time_zone(db: Session) -> None:
         db.flush()
 
 
-@pytest.mark.parametrize("zone", ["EST", "Mars/Olympus", "", "+05", "UTC", "america/chicago "])
+@pytest.mark.parametrize("zone", ["EST", "Mars/Olympus", "", "+05", "UTC", "america/los_angeles "])
 def test_a_time_zone_is_an_iana_name(db: Session, zone: str) -> None:
     # D40, Vimal's review of #74: on the facility and on the practice, on insert and on update.
     ctx = b.practice(db)
     fac = ctx["facility"]
-    db.execute(text("UPDATE admin.facility SET timezone = 'America/Chicago' WHERE id = :f"),
+    db.execute(text("UPDATE admin.facility SET timezone = 'America/Los_Angeles' WHERE id = :f"),
                {"f": fac.id})
-    db.execute(text("UPDATE admin.tenant SET timezone = 'America/Chicago'"))
+    db.execute(text("UPDATE admin.tenant SET timezone = 'America/Los_Angeles'"))
     with fails(db, "P0001", message="is not an IANA time zone name"):
         db.add(M["facility"](location_id=fac.location_id, code="SECOND", name="Second office",
                              timezone=zone))

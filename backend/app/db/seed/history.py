@@ -55,6 +55,8 @@ from app.db.models import systems
 from app.db.models.fhir.documents import Composition
 from app.db.seed.demo import (
     APPOINTMENT,
+    CLINIC_ZONE,
+    DEMO_DAY,
     DEMO_USER,
     PA_FOLLOW_UP,
     PA_LOCATION,
@@ -67,6 +69,7 @@ from app.db.seed.demo import (
     PATIENT,
     SHOWN_PATIENTS,
     DemoPatient,
+    home_place,
 )
 from app.db.seed.starter import PRACTITIONER, ROOM, SCHEDULE, SITE, TEMPLATE, VISIT, sid
 
@@ -151,8 +154,8 @@ class PastVisit:
     diagnoses: tuple[fs.Coded, ...]
 
     @property
-    def start(self) -> dt.datetime:           # 09:00 Chicago in winter, 10:00 in summer
-        return dt.datetime.combine(self.day, dt.time(15, 0), tzinfo=dt.UTC)
+    def start(self) -> dt.datetime:           # 09:30 at the clinic (San Jose), all year
+        return dt.datetime.combine(self.day, dt.time(9, 30), tzinfo=CLINIC_ZONE)
 
 
 @dataclass(frozen=True)
@@ -830,8 +833,8 @@ async def _emergency_contact(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPa
         gender=c.gender, birth_date=c.birth_date,
         telecoms=(fs.Telecom(system="phone", value=c.phone, use="mobile", rank=1),
                   fs.Telecom(system="email", value=c.email, use="home", rank=2)),
-        addresses=(fs.PostalAddress(lines=(c.street or p.street,), city="Springfield",
-                                    state="IL", postal_code="62704", use="home"),)))
+        addresses=(fs.PostalAddress(lines=(c.street or p.street,), city=home_place(p.n)[0],
+                                    state="CA", postal_code=home_place(p.n)[1], use="home"),)))
 
 
 async def _appointment(db: AsyncSession, patient_id: uuid.UUID, n: int,
@@ -955,12 +958,12 @@ async def _nurse_visit(store: fs.SqlFhirStore, db: AsyncSession, patient_id: uui
 
 
 def _at(day: dt.date) -> dt.datetime:
-    """A nurse check's time: 15:00 UTC, the morning in Chicago, as the visits."""
-    return dt.datetime.combine(day, dt.time(15, 0), tzinfo=dt.UTC)
+    """A nurse check's time: 09:30 at the clinic (San Jose), as the visits."""
+    return dt.datetime.combine(day, dt.time(9, 30), tzinfo=CLINIC_ZONE)
 
 
 def _noon(day: dt.date) -> dt.datetime:
-    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=dt.UTC)
+    return dt.datetime.combine(day, dt.time(12, 0), tzinfo=CLINIC_ZONE)
 
 
 IMPORT_REASON = "synthetic demo import"
@@ -1013,7 +1016,7 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
         if i < len(h.visits):               # booked as the next past visit
             follow_up = (_months(v.day, h.visits[i].day), booked[i], None)
         elif h.last_follow_up is None:      # the demo-day appointment books it
-            follow_up = (_months(v.day, dt.date(2026, 11, 20)), sid(APPOINTMENT, p.n), None)
+            follow_up = (_months(v.day, DEMO_DAY), sid(APPOINTMENT, p.n), None)
         else:
             follow_up = (h.last_follow_up[0], None, h.last_follow_up[1])
         reading = next(x for x in VITALS[p.n] if x.day == v.day)

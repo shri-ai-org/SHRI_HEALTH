@@ -20,7 +20,7 @@ def _details(**overrides: object) -> ReceiptDetails:
         "practice_name": "Lakeside Test Neurology", "patient_name": "Kaia401 Lindgren118",
         "payment_id": PAYMENT_ID, "collected_at": COLLECTED, "amount": Decimal("25.00"),
         "currency": "USD", "method": "check", "check_number": "1042",
-        "note": "Copay (visit) paid at check-in \\ thanks", "time_zone": "America/Chicago"}
+        "note": "Copay (visit) paid at check-in \\ thanks", "time_zone": "America/Los_Angeles"}
     values.update(overrides)
     return ReceiptDetails(**values)  # type: ignore[arg-type]
 
@@ -87,7 +87,7 @@ def test_the_receipt_shows_what_was_paid() -> None:
     assert "Payment receipt" in texts
     assert f"Receipt number: {PAYMENT_ID}" in texts
     assert "Patient: Kaia401 Lindgren118" in texts
-    assert "Collected: November 3, 2026, 8:53 AM CST" in texts
+    assert "Collected: November 3, 2026, 6:53 AM PST" in texts
     assert "Amount paid: $25.00 USD" in texts
     assert "Method: Check" in texts
     assert "Check number: 1042" in texts

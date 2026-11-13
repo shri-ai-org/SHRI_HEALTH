@@ -28,8 +28,8 @@ def _pharmacy(admin_engine: Engine, name: str, *, active: bool = True) -> uuid.U
     with admin_engine.begin() as c:
         c.execute(text("INSERT INTO admin.pharmacy (id, ncpdp_id, name, phone, address_line, "
                        "city, state, postal_code, is_mail_order, is_active) VALUES (:i, :n, "
-                       ":name, '+12175550190', '90 Sample Avenue', 'Springfield', 'IL', "
-                       "'62704', false, :a)"),
+                       ":name, '+12175550190', '1450 Meridian Avenue', 'San Jose', 'CA', "
+                       "'95125', false, :a)"),
                   {"i": pharmacy, "n": f"{secrets.randbelow(10**7):07d}", "name": name,
                    "a": active})
     return pharmacy
@@ -58,8 +58,8 @@ async def test_setting_it_moves_the_patients_version_and_reads_back(
     assert (w.id, w.version) == (pt.id, pt.version + 1) and w.last_updated > pt.last_updated
     got = await _read(database, clinic, pt.id)
     assert got is not None and (got.pharmacy_id, got.name, got.city, got.state, got.postal_code
-                                ) == (first, "First Pharmacy (synthetic)", "Springfield", "IL",
-                                      "62704")
+                                ) == (first, "First Pharmacy (synthetic)", "San Jose", "CA",
+                                      "95125")
     history = _rows(admin_engine, "SELECT version_id FROM clinical.fhir_resource_history "
                     "WHERE resource_id = :p ORDER BY version_id", p=pt.id)
     assert [r.version_id for r in history] == [pt.version, w.version]

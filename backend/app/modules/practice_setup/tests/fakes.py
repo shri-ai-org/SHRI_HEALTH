@@ -160,9 +160,9 @@ def _at(n: int) -> datetime:
 def facility(name: str, *, active: bool = True, n: int = 0) -> schemas.Facility:
     return schemas.Facility(
         id=uuid4(), code=name.split()[-1].upper(), name=name,
-        time_zone="America/Chicago",
-        address=schemas.Address(lines=["200 Test Avenue"], city="Springfield", state="IL",
-                                postal_code="62702"),
+        time_zone="America/Los_Angeles",
+        address=schemas.Address(lines=["200 Test Avenue"], city="San Jose", state="CA",
+                                postal_code="95126"),
         phone="+12175550110", npi="1234567893", place_of_service_code="11",
         billing_location=True, active=active, created_at=_at(n), updated_at=_at(n))
 
@@ -175,7 +175,7 @@ def provider(family: str, facility_ids: list[UUID], *, active: bool = True, n: i
         qualifications=[schemas.ProviderQualification(
             code=schemas.SetupCoding(system="http://terminology.hl7.org/CodeSystem/v2-0360",
                                      code="MD"),
-            license_number="TEST-LIC-0042", state="IL", start_date=date(2015, 7, 1))],
+            license_number="TEST-LIC-0042", state="CA", start_date=date(2015, 7, 1))],
         specialties=[schemas.SetupCoding(system="http://nucc.org/provider-taxonomy",
                                          code="207R00000X", display="Internal Medicine")],
         facility_ids=facility_ids, phone="+12175550120", email="test.provider@example.com",

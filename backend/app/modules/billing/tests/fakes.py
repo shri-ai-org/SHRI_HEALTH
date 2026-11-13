@@ -45,7 +45,7 @@ class World:
     encounters: dict[UUID, dict[UUID, EncounterLink]] = field(default_factory=dict)
     payments: list[NewPayment] = field(default_factory=list)
     sessions: list[FakeSession] = field(default_factory=list)
-    practice: Practice = Practice(name="Lakeside Test Neurology", time_zone="America/Chicago")
+    practice: Practice = Practice(name="Lakeside Test Neurology", time_zone="America/Los_Angeles")
 
     def add_patient(self, clinic: UUID, patient: PatientForPayment) -> None:
         self.patients.setdefault(clinic, {})[patient.id] = patient
