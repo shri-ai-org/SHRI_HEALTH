@@ -1,8 +1,10 @@
-"""Keeps bearer tokens in query strings out of uvicorn's access log (T53, D105).
+"""uvicorn's access log names paths only, never query strings (T53, D105, D13).
 
-`GET /api/v1/files/{fileId}/content?token=…` carries a download token in its query string; the
-access log shows that route's path with `?…` in place of the query. nginx does the same for its
-own log (infra/nginx/nginx.conf). Core's own log lines name only the path, never the query.
+Some query strings are credentials: a download link's token (`/files/{fileId}/content?token=…`)
+and the sign-in callbacks' Keycloak `code` and `state` (`/auth/callback`,
+`/portal/auth/callback`). Others may carry search terms. So every logged path shows `?…` in
+place of its query, as nginx logs `$uri` only (infra/nginx/nginx.conf,
+infra/deploy/nginx/shri.conf.template). Core's own log lines name only the path, never the query.
 """
 
 import logging
@@ -13,8 +15,8 @@ from fastapi import FastAPI
 from app.core.config import Settings
 
 ACCESS_LOGGER = "uvicorn.access"
-# Routes whose query string is a credential: never logged.
-SECRET_QUERY = re.compile(r"^(/api/v1/files/[^/?]+/content)\?.*$", re.DOTALL)
+# Everything after the first "?": never logged.
+QUERY = re.compile(r"\?.*$", re.DOTALL)
 
 
 class DropSecretQueries(logging.Filter):
@@ -23,7 +25,7 @@ class DropSecretQueries(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
         if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
-            path = SECRET_QUERY.sub(r"\1?…", args[2])
+            path = QUERY.sub("?…", args[2], count=1)
             if path != args[2]:
                 record.args = (*args[:2], path, *args[3:])
         return True

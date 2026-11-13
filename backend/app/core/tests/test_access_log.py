@@ -1,4 +1,4 @@
-"""uvicorn's access log never shows a download link's token (core/access_log.py, T53)."""
+"""uvicorn's access log names paths only, never a query string (core/access_log.py, T53)."""
 
 import logging
 import secrets
@@ -24,12 +24,27 @@ def test_the_content_routes_query_is_dropped() -> None:
     assert TOKEN not in message and "/api/v1/files/0b1c/content?…" in message
 
 
-def test_other_queries_are_left_alone() -> None:
-    for path in ("/api/v1/appointments?dateFrom=2026-11-01", "/api/v1/files/0b1c",
-                 "/api/v1/files/0b1c/content-other?token=x"):
+def test_the_sign_in_callbacks_code_and_state_are_dropped() -> None:
+    code, state = secrets.token_urlsafe(32), secrets.token_urlsafe(16)
+    for route in ("/api/v1/auth/callback", "/api/v1/portal/auth/callback"):
+        record = _record(f"{route}?state={state}&session_state=x&code={code}")
+        assert DropSecretQueries().filter(record)
+        message = record.getMessage()
+        assert code not in message and state not in message and f"{route}?…" in message
+
+
+def test_every_query_is_dropped() -> None:
+    record = _record("/api/v1/appointments?dateFrom=2026-11-01&patient=a?b")
+    DropSecretQueries().filter(record)
+    message = record.getMessage()
+    assert "dateFrom" not in message and "/api/v1/appointments?…" in message
+
+
+def test_paths_without_a_query_are_left_alone() -> None:
+    for path in ("/api/v1/files/0b1c", "/health"):
         record = _record(path)
         DropSecretQueries().filter(record)
-        assert path in record.getMessage()
+        assert path in record.getMessage() and "?" not in record.getMessage()
 
 
 def test_the_filter_is_installed_once() -> None:
