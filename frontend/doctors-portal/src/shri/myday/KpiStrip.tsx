@@ -15,7 +15,7 @@ import { motion } from 'framer-motion'
 import { BedDouble, Check, Clock, HeartPulse, OctagonAlert, Stethoscope, Users, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { patient } from '../../../shri-health/kit'
+import { summaryPatient } from '../../../shri-health/kit'
 
 import { cn } from '../lib/cn'
 import { EASE } from '../lib/motion'
@@ -52,7 +52,7 @@ interface KpiValue {
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
-const surname = (id: string) => patient(id).name.split(' ').slice(-1)[0]
+const surname = (id: string) => summaryPatient(id).name.split(' ').slice(-1)[0]
 
 function kpis(d: MyDay): KpiValue[] {
   const status = (r: { status?: { label: string } }) => r.status?.label

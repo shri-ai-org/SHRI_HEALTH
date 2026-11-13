@@ -21,7 +21,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { clinicDate, clinicNow } from '../../../shri-health/format'
 import { useProviderDay, type ProviderDay } from '../../../shri-health/myday'
-import { patient } from '../../../shri-health/kit'
+import { summaryPatient } from '../../../shri-health/kit'
 import type { DayBlock } from '@/data/myday'
 
 import { canonical } from '../app/paths'
@@ -92,7 +92,7 @@ function SampleToday({ className }: { className?: string }) {
 
   // The OPD's next patient, as the queue calls them.
   const next = day.isToday ? nextToCall(d.opd) : undefined
-  const nextPatient = next ? { name: patient(next.patientId).name, token: next.clinic?.token ?? 'Teleconsult' } : undefined
+  const nextPatient = next ? { name: summaryPatient(next.patientId).name, token: next.clinic?.token ?? 'Teleconsult' } : undefined
 
   return (
     <Card className={cn('gap-0', className)} aria-labelledby="sh-today-title">
