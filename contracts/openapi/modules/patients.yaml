@@ -13,8 +13,9 @@ paths:
       operationId: searchPatients
       summary: Search patients
       description: 'Finds patients by name, date of birth, phone or identifier (inventory #28). Criteria go in the body, never
-        in the URL (D13, ADR-0005). Phone is an exact match on the full number. Restricted patients appear with summary fields
-        only and `restricted: true`. At most 50 per page.'
+        in the URL (D13, ADR-0005). A search box sends `query` from the first letter typed (D117): every word matches the
+        start of a name or of the MRN. Phone is an exact match on the full number. Restricted patients appear with summary
+        fields only and `restricted: true`. At most 50 per page. Every search is audited with the patients it returned.'
       tags:
       - patients
       x-owner: vimal
@@ -35,6 +36,12 @@ paths:
             schema:
               $ref: '#/components/schemas/PatientSearchRequest'
             examples:
+              typed:
+                summary: What was typed in a search box (D117)
+                value:
+                  criteria:
+                    query: ro
+                  limit: 10
               name-and-birth-date:
                 summary: Family name and date of birth
                 value:
@@ -4071,9 +4078,9 @@ components:
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
     PatientSearchRequest:
-      description: Patient search. Give either one exact identifier (`mrn`, `driversLicenseNumber`, `memberId` or the full
-        `phone`) or at least two criteria, for example `family` and `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS
-        §14.2).
+      description: Patient search. Give `query` (what was typed in a search box, from one letter; D117), one exact identifier
+        (`mrn`, `driversLicenseNumber`, `memberId` or the full `phone`), or at least two criteria, for example `family` and
+        `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS §14.2).
       type: object
       additionalProperties: false
       required:
@@ -4084,6 +4091,16 @@ components:
           type: object
           additionalProperties: false
           properties:
+            query:
+              type: string
+              minLength: 1
+              maxLength: 100
+              pattern: \S
+              description: 'What the user typed in a search box, from one letter (D117). Split at spaces; every word must
+                match the start of one of the patient''s names (first, middle, last, preferred or previous) or the start of
+                the MRN, ignoring case, as literal text (no wildcards). Enough on its own; results are ordered by last name,
+                then first name. Not a phone search: give the full `phone` for that.'
+              x-phi: identifier
             family:
               type: string
               minLength: 2

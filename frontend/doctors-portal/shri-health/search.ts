@@ -2,8 +2,9 @@
 // POST /patients/search (D13: the query goes in the body, never the URL) and, before anything is
 // typed, today's patients from the staff status board (no all-patients list, D65).
 //
-// What the one box can ask (API_STANDARDS §14.3): an exact identifier, or at least two of last
-// name, first name and date of birth. So: an MRN, a 10-digit US phone, or a first and last name.
+// What the one box asks (D117): a full 10-digit US phone is an exact phone search; anything else
+// is what was typed (`query`), from the first letter: every word matches the start of a name or
+// of the MRN.
 // Field mapping, the screen's Patient ⇐ PatientSummary: id ⇐ id, name ⇐ given + family,
 // uhid ⇐ mrn (the practice's record number, D41), age ⇐ birthDate, sex ⇐ gender, bed ⇐ none.
 import { useEffect, useState } from 'react'
@@ -58,15 +59,13 @@ function fromSummary(s: PatientSummary): Patient {
   }
 }
 
-/** The search the typed text allows, or null when it is not enough yet. */
+/** The search the typed text asks for, or null before anything is typed. */
 export function criteriaFor(query: string): PatientSearchRequestCriteria | null {
   const q = query.trim()
+  if (!q) return null
   const digits = q.replace(/\D/g, '')
   if (/^[+\d\s().-]+$/.test(q) && (digits.length === 10 || (digits.length === 11 && digits.startsWith('1')))) return { phone: `+1${digits.slice(-10)}` }
-  if (/\d/.test(q) && /^[A-Za-z0-9-]+$/.test(q)) return { mrn: q.toUpperCase() }
-  const words = q.split(/\s+/).filter(Boolean)
-  if (words.length >= 2 && words[words.length - 1]!.length >= 2) return { given: words[0]!, family: words[words.length - 1]! }
-  return null
+  return { query: q }
 }
 
 /** Today's patients (from the status board), or the search's matches once enough is typed. */
@@ -87,7 +86,7 @@ export function usePatientMatches(query: string): Patient[] {
         return res.status === 200 ? res.data.items.map(fromSummary) : []
       }
       if (!criteria) return []
-      const res = await searchPatients({ criteria, limit: 8 })
+      const res = await searchPatients({ criteria, limit: 10 })
       return res.status === 200 ? res.data.items.map(fromSummary) : []
     }
     const t = window.setTimeout(() => {

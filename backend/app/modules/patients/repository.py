@@ -168,7 +168,22 @@ WHERE (:include_inactive OR p.active)
   AND (CAST(:member_id AS text) IS NULL OR EXISTS (
         SELECT 1 FROM clinical.coverage cv JOIN clinical.identifier i ON i.coverage_id = cv.id
          WHERE cv.beneficiary_patient_id = p.id AND i.type_code = 'MB' AND i.value = :member_id))
-ORDER BY p.id
+  -- What was typed (D117): every word starts one of the patient's names (any use: official,
+  -- preferred, previous) or the MRN. starts_with is literal: % and _ are plain characters.
+  AND (CAST(:words AS text[]) IS NULL OR NOT EXISTS (
+        SELECT 1 FROM unnest(CAST(:words AS text[])) w(word)
+         WHERE NOT EXISTS (
+                 SELECT 1 FROM clinical.human_name n WHERE n.patient_id = p.id
+                   AND (starts_with(lower(n.family), w.word) OR EXISTS (
+                        SELECT 1 FROM unnest(n.given) g WHERE starts_with(lower(g), w.word))))
+           AND NOT EXISTS (
+                 SELECT 1 FROM clinical.identifier i WHERE i.patient_id = p.id
+                   AND i.type_code = 'MR' AND starts_with(lower(i.value), w.word))))
+ORDER BY (SELECT lower(n.family) FROM clinical.human_name n WHERE n.patient_id = p.id
+           ORDER BY (n.use = 'official') DESC, n.id LIMIT 1) NULLS LAST,
+         (SELECT lower(coalesce(n.given[1], '')) FROM clinical.human_name n
+           WHERE n.patient_id = p.id ORDER BY (n.use = 'official') DESC, n.id LIMIT 1),
+         p.id
 LIMIT :limit OFFSET :offset
 """)
 _POOL = text("""
@@ -335,6 +350,7 @@ class SqlPatientRepository:
             "family": criteria.family, "given": criteria.given, "phone": criteria.phone,
             "mrn": criteria.mrn, "dl": criteria.drivers_license_number,
             "member_id": criteria.member_id, "limit": limit, "offset": offset,
+            "words": [w.lower() for w in criteria.query.split()] if criteria.query else None,
         })).scalars())
         summaries = []
         for patient_id in ids:

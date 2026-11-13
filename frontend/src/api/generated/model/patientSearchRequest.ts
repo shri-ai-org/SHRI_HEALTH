@@ -18,7 +18,7 @@ import type { Cursor } from './cursor';
 import type { PatientSearchRequestCriteria } from './patientSearchRequestCriteria';
 
 /**
- * Patient search. Give either one exact identifier (`mrn`, `driversLicenseNumber`, `memberId` or the full `phone`) or at least two criteria, for example `family` and `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS §14.2).
+ * Patient search. Give `query` (what was typed in a search box, from one letter; D117), one exact identifier (`mrn`, `driversLicenseNumber`, `memberId` or the full `phone`), or at least two criteria, for example `family` and `birthDate`; otherwise `422 business-rule-violation` (API_STANDARDS §14.2).
  */
 export interface PatientSearchRequest {
   /** Search criteria. */

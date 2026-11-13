@@ -21,7 +21,7 @@ let asked = ''
 let timer: number | undefined
 /** The server's matches for the last query, by ID: a phone match can't be found again in the store,
  *  whose search results carry only the last four digits (D54). */
-let matched: { query: string; ids: string[] } = { query: '', ids: [] }
+let matched: { query: string; ids: string[]; byPhone: boolean } = { query: '', ids: [], byPhone: false }
 /** The last query the server refused or never answered, with why: never shown as "no patient found". */
 let failed: { query: string; message: string } = { query: '', message: '' }
 
@@ -31,13 +31,14 @@ function askServer(query: string): void {
   asked = q
   window.clearTimeout(timer)
   const plan = planSearch(q)
-  // TODO(gap): a query the contract can't search on (one word, under two letters) asks nothing.
+  // Every typed letter asks the server (D117); only an empty box asks nothing.
   if (!('criteria' in plan)) return
+  const byPhone = plan.criteria.phone !== undefined
   timer = window.setTimeout(
     () =>
       void searchPatientsOnServer(plan.criteria)
         .then((found) => {
-          matched = { query: q, ids: found.map((p) => p.patientId) }
+          matched = { query: q, ids: found.map((p) => p.patientId), byPhone }
           failed = { query: '', message: '' }
           // Redraw: the store already holds the patients; the screen's search reads `matched` too.
           setState((state) => ({ ...state }))
@@ -54,13 +55,13 @@ export function searchPatients(state: AppState, rawQuery: string): PatientSearch
   if (rawQuery.trim()) askServer(rawQuery)
   const local = sampleSearch(state, rawQuery).filter((m) => isApiPatientId(m.patient.patientId))
   if (matched.query !== rawQuery.trim()) return local
-  // The server's other matches for this query (a phone search, say), in its order.
+  // The server's other matches for this query, in its order (by name, or the phone's owner).
   const seen = new Set(local.map((m) => m.patient.patientId))
   const extra: PatientSearchMatch[] = matched.ids
     .filter((id) => !seen.has(id))
     .map((id) => state.patients.find((p) => p.patientId === id))
     .filter((p): p is NonNullable<typeof p> => Boolean(p))
-    .map((patient) => ({ patient, matchedOn: 'Mobile', tier: 4 }))
+    .map((patient) => ({ patient, matchedOn: matched.byPhone ? ('Mobile' as const) : ('Name' as const), tier: 4 }))
   return [...local, ...extra]
 }
 

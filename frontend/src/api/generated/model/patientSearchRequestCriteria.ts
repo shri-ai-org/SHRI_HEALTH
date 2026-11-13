@@ -22,6 +22,13 @@ import type { PhoneNumber } from './phoneNumber';
  */
 export type PatientSearchRequestCriteria = {
   /**
+     * What the user typed in a search box, from one letter (D117). Split at spaces; every word must match the start of one of the patient's names (first, middle, last, preferred or previous) or the start of the MRN, ignoring case, as literal text (no wildcards). Enough on its own; results are ordered by last name, then first name. Not a phone search: give the full `phone` for that.
+     * @minLength 1
+     * @maxLength 100
+     * @pattern \S
+     */
+  query?: string;
+  /**
      * Family name, at least 2 characters; matches names starting with it.
      * @minLength 2
      * @maxLength 100

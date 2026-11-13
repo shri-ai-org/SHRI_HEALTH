@@ -203,8 +203,11 @@ def related_changes(patch: schemas.RelatedPersonPatch) -> RelatedPersonChanges:
 
 # ---------------------------------------------------------------------------------- operations
 def check_search_criteria(c: schemas.SearchCriteria) -> None:
-    """API_STANDARDS §14.3: an exact identifier (MRN, driver's license, member ID or the full
-    phone), or at least two of family name, given name and date of birth."""
+    """API_STANDARDS §14.3: what was typed in a search box (``query``, D117), an exact
+    identifier (MRN, driver's license, member ID or the full phone), or at least two of family
+    name, given name and date of birth."""
+    if c.query and c.query.split():
+        return
     if c.mrn or c.drivers_license_number or c.member_id or c.phone:
         return
     if sum(x is not None for x in (c.family, c.given, c.birth_date)) >= 2:
