@@ -21,7 +21,7 @@ export function parentOf(pathname: string, landing: string): Parent | null {
   if (pathname.startsWith('/radiology/study/')) return { to: '/radiology/worklist', label: 'Imaging reports' }
   if (/^\/results\/(?!inbox)/.test(pathname)) return { to: '/results/inbox', label: 'Test results' }
   if (pathname.startsWith('/ip/encounter/')) return { to: '/ip/patients', label: 'Inpatients' }
-  if (pathname.startsWith('/encounter/')) return { to: '/op-queue', label: 'OPD' }
+  if (pathname.startsWith('/encounter/')) return { to: '/op-queue', label: 'today’s visits' }
   if (pathname.startsWith('/stroke/case/')) return { to: '/stroke/ai-console', label: 'Stroke-AI Console' }
   const rx = /^\/tele\/session\/([^/]+)\/rx$/.exec(pathname)
   if (rx) return { to: `/tele/session/${rx[1]}`, label: 'Teleconsult' }

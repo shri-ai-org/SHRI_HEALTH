@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { encounterForPatient } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
+import { clinicDate } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
 import { activeMedicines, prescriptionsFor, type RxItem } from '@/data/record'
 import { useClinical } from '@/store/clinical'
@@ -27,6 +28,11 @@ import { medicationsFor } from '../../../shri-health/medications'
 import { encounterOfToday } from '../../../shri-health/opd'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** A day in the clinic's zone, U.S. style ("Nov 13, 2026"), with the API; the sample screens keep their own. */
+function sinceDay(at: Date | string): string {
+  return REAL_API ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(clinicDate(at)) : formatDate(typeof at === 'string' ? new Date(at) : at)
+}
 
 const STATUS_TONE: Record<RxItem['status'], Tone> = { Active: 'norm', Stopped: 'neu', Completed: 'neu' }
 
@@ -105,7 +111,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                   {m.note && <span className="block text-[12px] text-sh-text-3">{m.note}</span>}
                 </span>
                 <span className="text-[12px] tabular-nums text-sh-text-3">
-                  since {formatDate(m.since)} · {m.by}
+                  since {sinceDay(m.since)} · {m.by}
                 </span>
               </li>
             ))}

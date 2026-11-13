@@ -28,7 +28,7 @@ import { can, canSignNotes } from '@/atlas/personas'
 import { bannedIn } from '@/data/abbreviations'
 import { CODE_SUGGESTIONS, type Encounter, type NoteSectionSeed, type SectionKey } from '@/data/clinical'
 import { NOW, formatDateTime, formatTime as sampleTime } from '@/data/format'
-import { clinicDate, formatTime as clinicTime } from '../../../shri-health/format'
+import { clinicDate, formatClinicDateTime, formatTime as clinicTime } from '../../../shri-health/format'
 import { icdLabel } from '@/data/icd10'
 import { DIAGNOSES, type Patient } from '@/data/kit'
 import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
@@ -224,7 +224,12 @@ export function NoteAuthoring({
 
   function doSaveDraft() {
     saveDraft(enc.id, 'manual')
-    toast({ tone: 'info', title: 'Draft saved', detail: 'Nothing is signed. The draft stays on this device until you sign it.' })
+    toast({
+      tone: 'info',
+      title: 'Draft saved',
+      // With the API the draft is saved to the visit (each section as you leave it), not kept in this browser.
+      detail: REAL_API ? 'Nothing is signed. The draft is saved to this visit until you sign it.' : 'Nothing is signed. The draft stays on this device until you sign it.',
+    })
   }
 
   function onDictated(seed: NoteSectionSeed, meta: DictatedMeta) {
@@ -539,7 +544,8 @@ export function NoteAuthoring({
                 <li key={a.id} className="rounded-[14px] border-l-[3px] border-sh-accent bg-sh-inner px-[16px] py-[12px]">
                   <p className="text-[14px]/[1.55] text-sh-text">{a.body}</p>
                   <p className="mt-[8px] text-[12px] tabular-nums text-sh-text-3">
-                    {a.by} · {a.registrationNo} · {formatDateTime(new Date(a.at))}
+                    {/* With the API: the clinic's time, U.S. style ("Nov 11, 2026, 9:40 AM"); no sample registration number. */}
+                    {REAL_API ? [a.by, a.registrationNo, formatClinicDateTime(a.at)].filter(Boolean).join(' · ') : `${a.by} · ${a.registrationNo} · ${formatDateTime(new Date(a.at))}`}
                   </p>
                 </li>
               ))}
@@ -602,7 +608,8 @@ export function NoteAuthoring({
         sections={[
           ...seeds.map((s) => ({ heading: s.label, body: textFor(s.key) })),
           ...(record.code ? [{ heading: 'Diagnosis and ICD-10', body: `${record.code}${chosen ? ` · ${chosen.label}` : ''}` }] : []),
-          ...record.addenda.map((a) => ({ heading: `Addendum · ${a.by} · ${formatDateTime(new Date(a.at))}`, body: a.body })),
+          // The addendum's time in the clinic's zone, U.S. style ("Nov 11, 2026, 9:40 AM"), with the API.
+          ...record.addenda.map((a) => ({ heading: `Addendum · ${a.by} · ${REAL_API ? formatClinicDateTime(a.at) : formatDateTime(new Date(a.at))}`, body: a.body })),
         ]}
         paper="A4"
       />
