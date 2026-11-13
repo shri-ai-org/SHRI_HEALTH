@@ -55,6 +55,7 @@ from app.db.models import systems
 from app.db.models.fhir.documents import Composition
 from app.db.seed.demo import (
     APPOINTMENT,
+    DEMO_DAY,
     DEMO_USER,
     PA_FOLLOW_UP,
     PA_LOCATION,
@@ -1013,7 +1014,7 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
         if i < len(h.visits):               # booked as the next past visit
             follow_up = (_months(v.day, h.visits[i].day), booked[i], None)
         elif h.last_follow_up is None:      # the demo-day appointment books it
-            follow_up = (_months(v.day, dt.date(2026, 11, 20)), sid(APPOINTMENT, p.n), None)
+            follow_up = (_months(v.day, DEMO_DAY), sid(APPOINTMENT, p.n), None)
         else:
             follow_up = (h.last_follow_up[0], None, h.last_follow_up[1])
         reading = next(x for x in VITALS[p.n] if x.day == v.day)

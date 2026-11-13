@@ -22,6 +22,7 @@ free times. The seed's environment guard is unchanged.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import random
 import uuid
 from dataclasses import dataclass
@@ -48,10 +49,23 @@ P_EMAIL, P_RACE, P_ETHNICITY, P_EMPLOYER, P_PCP, C_PLAN, C_COPAY, BOOKING_SETTIN
 #: The history's past visits (app.db.seed.history), n = patient n * 10 + the visit's number.
 PAST_APPOINTMENT, PA_PATIENT, PA_PROVIDER, PA_LOCATION, PA_STEP, PA_ROOM, PA_FOLLOW_UP, \
     PA_REASON, A_REASON = range(53, 62)
+AI_FEATURE = 62
 
-#: The demo day, Friday 20 November 2026, at the main office (America/Chicago, UTC-6 then).
-DEMO_DAY = dt.date(2026, 11, 20)
+#: The main office's time zone in November (America/Chicago, UTC-6 then).
 CHICAGO = dt.timezone(dt.timedelta(hours=-6))
+
+
+def _demo_day() -> dt.date:
+    """SHRI_DEMO_DAY (YYYY-MM-DD) when set; otherwise the reset day in the clinic's time zone, so
+    a rehearsal on any day has the demo patients booked that day (Vimal's run check on #85). The
+    demo itself is Friday 20 November 2026: set it for that reset, or reset that day."""
+    if value := os.environ.get("SHRI_DEMO_DAY", "").strip():
+        return dt.date.fromisoformat(value)
+    return dt.datetime.now(CHICAGO).date()
+
+
+#: The day the demo patients are booked, at the main office.
+DEMO_DAY = _demo_day()
 #: The pharmacy the prescription goes to (Thulasi's simulated pharmacy answers for it).
 PHARMACY_ID = sid(PHARMACY, 1)
 
@@ -278,6 +292,9 @@ def _patient(db: Session, p: DemoPatient) -> Any:
     mrn = db.execute(text("SELECT system, value FROM admin.next_mrn()")).one()
     pt = M["patient"](id=sid(PATIENT, p.n), tenant_id=CLINIC_A, gender=p.gender,
                       birth_date=p.birth_date, ext_birthsex="F" if p.gender == "female" else "M")
+    if p.history:                       # registered a week before the first past visit
+        from app.db.seed.history import HISTORY  # history imports this module
+        pt.created_at = HISTORY[p.n].visits[0].start - dt.timedelta(days=7)
     pt.identifier = [M["identifier"](id=sid(P_MRN, p.n), system=mrn.system, value=mrn.value,
                                      type_system=systems.V2_0203, type_code="MR", use="usual")]
     pt.name = [M["human_name"](id=sid(P_NAME, p.n), family=p.family, given=[p.given],
@@ -482,6 +499,16 @@ def _all_day_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
     db.flush()
 
 
+#: The demo's AI switches (FRS §3.4, D116): both features on for the demo clinic, so every reset
+#: has the AI on. The clinic switch (tenant.ai_enabled) defaults to true; the kill switch stays
+#: the admin's PUT /ai-settings, and every demo step still works with them off (D108).
+def _ai_features(db: Session) -> None:
+    starter._set_clinic(db, CLINIC_A)
+    for i, feature in enumerate(("ambient-documentation", "chart-summary"), start=1):
+        _ensure(db, "ai_feature_setting", sid(AI_FEATURE, i), tenant_id=CLINIC_A,
+                feature=feature, is_enabled=True)
+
+
 def load_demo(db: Session) -> None:
     """Loads the starter layer, then the demo layer, in the session's transaction."""
     starter.load_starter(db)                    # checks the environment first
@@ -496,5 +523,6 @@ def load_demo(db: Session) -> None:
         _appointment(db, p, visits)
     _demo_users(db)
     _online_booking(db, visits)
+    _ai_features(db)
     _all_day_schedules(db, visits)
     db.flush()

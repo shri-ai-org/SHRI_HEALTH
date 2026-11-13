@@ -79,10 +79,10 @@ def test_the_front_desk_sees_the_demo_day(migrator_engine: Engine,
                                   "WHERE type_code = 'MR'") if r.patient_id in ours]
     assert len(mrns) == len(ours) and all(m.startswith("RFM-") for m in mrns)
     day = rows("SELECT a.start, t.code FROM clinical.appointment a JOIN admin.appointment_type t "
-               "ON t.id = a.ext_appointment_type_id WHERE a.start::date = '2026-11-20' "
+               f"ON t.id = a.ext_appointment_type_id WHERE a.start::date = '{demo.DEMO_DAY}' "
                "ORDER BY a.start")
     assert [r.code for r in day] == ["NEW", "FU", "FU", "ANNUAL"]
-    assert day[0].start.isoformat() == "2026-11-20T15:00:00+00:00"      # 9:00 in Chicago
+    assert day[0].start.isoformat() == f"{demo.DEMO_DAY}T15:00:00+00:00"   # 9:00 in Chicago
     assert len(rows("SELECT 1 FROM clinical.coverage WHERE status = 'active'")) >= 4
     required = {r.kind for r in rows("SELECT kind FROM admin.consent_requirement "
                                      "WHERE is_required AND is_active")}
@@ -196,7 +196,7 @@ def test_a_shown_patient_has_every_registration_field(migrator_engine: Engine,
 
 
 # ============================================================== the shown patients, no database
-ON_THE_DEMO_DAY = dt.date(2026, 11, 20)
+ON_THE_DEMO_DAY = dt.date(2026, 11, 20)  # ages are the demo's, whatever day the seed books
 
 
 def _age(born: dt.date) -> int:
@@ -236,7 +236,7 @@ def test_each_history_patients_conditions() -> None:
         assert 3 <= len(h.visits) <= 4 and h.allergies and h.medications
         assert h.family and h.surgeries
         assert len({v.day for v in h.visits}) == len(h.visits)
-        assert all(dt.date(2025, 11, 11) <= v.day < ON_THE_DEMO_DAY for v in h.visits)
+        assert all(dt.date(2025, 11, 11) <= v.day < demo.DEMO_DAY for v in h.visits)
 
 
 def test_the_portal_accounts_have_their_posted_ids() -> None:
@@ -457,3 +457,39 @@ def test_no_two_seed_kinds_share_a_number() -> None:
                     used.setdefault(number, []).append(name.id)  # type: ignore[attr-defined]
     shared = {n: names for n, names in used.items() if len(names) > 1}
     assert shared == {21: ["USER_ROLE", "PHARMACY"]}
+
+
+def test_the_demo_day_is_the_reset_day_unless_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vimal's run check on #85: rehearsals before the 20th see the demo patients that day."""
+    monkeypatch.setenv("SHRI_DEMO_DAY", "2026-11-20")
+    assert demo._demo_day() == dt.date(2026, 11, 20)
+    monkeypatch.setenv("SHRI_DEMO_DAY", " ")
+    assert demo._demo_day() == dt.datetime.now(demo.CHICAGO).date()
+    monkeypatch.setenv("SHRI_DEMO_DAY", "20 Nov")
+    with pytest.raises(ValueError):
+        demo._demo_day()
+
+
+def test_the_demo_clinic_has_both_ai_features_on(migrator_engine: Engine,
+                                                admin_engine: Engine) -> None:
+    """A feature without a row is off (modules/ai), so a reset without these leaves the AI off."""
+    _seed(migrator_engine)
+    with admin_engine.connect() as c:
+        rows = c.execute(text("SELECT feature, is_enabled FROM admin.ai_feature_setting "
+                              "WHERE tenant_id = :t ORDER BY feature"), {"t": CLINIC_A}).all()
+    assert [tuple(r) for r in rows] == [("ambient-documentation", True), ("chart-summary", True)]
+
+
+def test_a_history_patient_was_registered_before_the_first_visit(
+        migrator_engine: Engine, admin_engine: Engine) -> None:
+    from app.db.seed.history import HISTORY
+
+    _seed(migrator_engine)
+    with admin_engine.connect() as c:
+        found = c.execute(text("SELECT id, created_at FROM clinical.patient WHERE tenant_id = :t"),
+                          {"t": CLINIC_A}).all()
+    created: dict[Any, dt.datetime] = {r.id: r.created_at for r in found}
+    for n, h in HISTORY.items():
+        assert created[sid(demo.PATIENT, n)] == h.visits[0].start - dt.timedelta(days=7)
+    others = [p for p in demo.PATIENTS if not p.history]
+    assert all(created[sid(demo.PATIENT, p.n)].date() >= dt.date(2026, 11, 1) for p in others)
