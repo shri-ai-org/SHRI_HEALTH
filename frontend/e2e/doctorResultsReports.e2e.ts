@@ -50,7 +50,7 @@ test('Imaging reports shows the lumbar MR impression as text, with no images', a
 
   await page.goto(`${DOCTORS}/patient/${id}/reports`)
   const main = page.locator('main')
-  await expect(main.getByText(/MR Lumbar spine/).first()).toBeVisible({ timeout: 30_000 })
+  await expect(main.getByText(/MR lumbar spine/i).first()).toBeVisible({ timeout: 30_000 })
   await expect(main.getByText(/Degenerative disc disease at L4-L5 and L5-S1/).first()).toBeVisible()
   await expect(main.getByText('Full report')).toBeVisible()
   await expect(main.locator('img, canvas')).toHaveCount(0)

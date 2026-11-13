@@ -8,8 +8,11 @@
 //   wait wrong. Here it is the clinic's time when the screen's data was last read (an ES module
 //   binding, so importers see each refresh).
 // - Times: 12-hour U.S. time ("1:20 PM") with the API; the sample screens keep their 24-hour format.
-export { formatDate, formatDateTime, formatElapsed } from '@/data/format'
-import { formatDateTime as formatDateTimeSample } from '@/data/format'
+// - Dates: U.S. style ("Sep 15, 2026", "Sep 15, 2026, 10:10 AM") with the API, in the clinic's day;
+//   the sample screens keep their "15-Sep-2026". A Date given here is already clinic time
+//   (clinicDate), so only a string is converted.
+export { formatElapsed } from '@/data/format'
+import { formatDate as formatDateSample, formatDateTime as formatDateTimeSample } from '@/data/format'
 
 let facilityZone: string | undefined
 
@@ -58,4 +61,16 @@ export function formatClinicDateTime(at: string): string {
   return REAL_API
     ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(clinicDate(at))
     : formatDateTimeSample(new Date(at))
+}
+
+/** A day, U.S. style with the API ("Sep 15, 2026"), in the clinic's calendar; the sample's otherwise. */
+export function formatDate(d: Date | string): string {
+  if (!REAL_API) return formatDateSample(d)
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(typeof d === 'string' ? clinicDate(d) : d)
+}
+
+/** A day and time, U.S. style with the API ("Sep 15, 2026, 10:10 AM"); the sample's otherwise. */
+export function formatDateTime(d: Date | string): string {
+  if (!REAL_API) return formatDateTimeSample(d)
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(typeof d === 'string' ? clinicDate(d) : d)
 }

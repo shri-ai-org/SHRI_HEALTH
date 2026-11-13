@@ -34,6 +34,9 @@ test("the overview's notes card lists the server's signed notes, with no browser
   expect(rows).toBeGreaterThan(0)
   expect(rows).toBeLessThanOrEqual(5)
   await expect(card).not.toContainText('No notes yet')
+  // Dates U.S. style in the clinic's calendar ("Sep 15, 2026"), never the sample's "15-Sep-2026".
+  await expect(list.getByRole('listitem').first()).toContainText(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)
+  await expect(card).not.toContainText(/\d{2}-[A-Z][a-z]{2}-\d{4}/)
   await expect(card.getByRole('button', { name: /^Dictate a note on / })).toHaveCount(0)
   await expect(card.getByRole('button', { name: /^Type a note on / })).toHaveCount(0)
   // Each row opens the Notes tab.
