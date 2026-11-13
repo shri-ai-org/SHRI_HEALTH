@@ -3,11 +3,12 @@ getChartSummary; FRS §3.4; D70).
 
 **What the model sees.** The chart, read as the clinician through each module's own service
 (the reader in api.py): the recent visits with their diagnoses, the active allergies and the
-active medications, each part only with its read permission, the facility check and the
-restricted-chart check (D37). Every record is one numbered line ("S3: ..."), names and dates
-only, never an ID or other patient data. Entered-in-error records are never read. A part the
-clinician may not read, or that has no data source yet (results, the problem list), is named
-as such, so the model lists it under ``missing``.
+active medications, the problem list and recent final lab results (the latest value of each
+test and the abnormal ones of the last year), each part only with its read permission, the
+facility check and the restricted-chart check (D37). Every record is one numbered line
+("S3: ..."), names and dates only, never an ID or other patient data. Entered-in-error records
+are never read. A part the clinician may not read, or that this summary does not read (imaging
+reports), is named as such, so the model lists it under ``missing``.
 
 **What comes back.** Statements by topic, each citing the lines it rests on ("S3"). The
 gateway maps each cited line back to its record (``AiSourceLink``: resource type, our ID and a

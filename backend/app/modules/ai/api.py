@@ -19,7 +19,7 @@ and the note template (practice setup's repository, Anand's).
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -44,6 +44,8 @@ from app.modules.history import service as history_service
 from app.modules.history.repository import SqlAllergyRepository, SqlHistoryRepository
 from app.modules.medications import service as medications_service
 from app.modules.medications.repository import SqlMedicationRepository
+from app.modules.orders import service as orders_service
+from app.modules.orders.repository import SqlResultsRepository
 from app.modules.practice_setup.repository import SqlSetupRepository
 from app.modules.scheduling import service as scheduling_service
 from app.modules.scheduling.reference import reference as scheduling_reference
@@ -199,11 +201,13 @@ def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
                    ) -> summaries.SummaryReader:
     """The chart a summary may use, read as the clinician through each module's own service
     (summary.py): the recent visits and their diagnoses, active allergies and medications,
-    each only with its read permission, and the problem list (#280). Results have no service yet."""
+    each only with its read permission, the problem list (#280), and recent lab results
+    (``results:read``, through the orders reads: final values only, the latest of each test and
+    the abnormal ones of the last year, each citing its Observation)."""
     async def read(db: AsyncSession, user: CurrentUser, patient_id: UUID
                    ) -> summary_lines.SummaryChart:
         lines: list[summary_lines.ChartLine] = []
-        unavailable = ["results (not in this build)"]
+        unavailable = ["imaging reports (not in this summary)"]
         if user.can("problems:read"):
             problems, _ = await history_service.page(
                 db, check, user, patient_id, SqlHistoryRepository().problems,
@@ -252,6 +256,15 @@ def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
                       for name, source in zip(names, sources, strict=True)]
         else:
             unavailable.append("medications (no permission)")
+        if user.can("results:read"):
+            reports, _ = await orders_service.lab_results(
+                db, SqlResultsRepository(), check, user, patient_id,
+                limit=chart_lines.LAB_REPORTS, cursor=None)
+            names, sources = chart_lines.lab_lines(reports, datetime.now(UTC))
+            lines += [summary_lines.ChartLine(f"Lab result: {name}", source, "Lab result")
+                      for name, source in zip(names, sources, strict=True)]
+        else:
+            unavailable.append("lab results (no permission)")
         return summary_lines.SummaryChart(lines=tuple(lines), unavailable=tuple(unavailable))
 
     return read

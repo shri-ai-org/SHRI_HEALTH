@@ -50,7 +50,7 @@ def note_draft(system_prompt: str) -> dict[str, Any]:
 
 _LINE = re.compile(r"^(?P<handle>S[0-9]+): (?P<kind>[A-Za-z ]+): (?P<text>.+)$", re.MULTILINE)
 _TOPIC = {"Visit": "encounters", "Diagnosis": "diagnoses", "Medication": "medications",
-          "Allergy": "allergies"}
+          "Allergy": "allergies", "Lab result": "results"}
 
 
 def chart_summary(chart_text: str) -> dict[str, Any]:
@@ -62,7 +62,8 @@ def chart_summary(chart_text: str) -> dict[str, Any]:
         if topic is not None:
             sections.setdefault(topic, []).append(
                 {"text": f"{m['kind'].strip()}: {m['text'].strip()}", "sources": [m["handle"]]})
-    missing = [{"topic": "results", "description": f"{NOTICE} Results are not in this build."}]
+    missing = ([] if "results" in sections else
+               [{"topic": "results", "description": f"{NOTICE} No lab results were available."}])
     return {"sections": [{"topic": t, "statements": s} for t, s in sections.items()],
             "missing": missing}
 
