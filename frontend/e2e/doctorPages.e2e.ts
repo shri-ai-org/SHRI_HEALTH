@@ -28,3 +28,23 @@ for (const path of ['/ip/patients', '/results/inbox', '/discharge/board', '/radi
     await expect(page.locator('body')).not.toContainText(SAMPLE)
   })
 }
+
+test('every tab on the patient record opens a screen with the API', async ({ page, request }) => {
+  // A synthetic patient, registered by the front desk through the API.
+  const res = await request.post('/api/v1/patients', {
+    headers: { 'Idempotency-Key': crypto.randomUUID() },
+    data: { name: { family: `Tabcheck${Date.now().toString(36)}`, given: ['Rowan'] }, birthDate: '1970-04-12' },
+  })
+  expect(res.status(), await res.text()).toBe(201)
+  const { id } = (await res.json()) as { id: string }
+  await page.goto(`${DOCTORS}/patient/${id}`)
+  const tabs = page.getByRole('tablist', { name: /record/ }).getByRole('tab')
+  await expect(tabs.first()).toBeVisible({ timeout: 30_000 })
+  const names = await tabs.allInnerTexts()
+  expect(names.join(' ')).not.toMatch(/Test results|Imaging reports/)
+  for (let i = 0; i < names.length; i += 1) {
+    await page.getByRole('tablist', { name: /record/ }).getByRole('tab').nth(i).click()
+    await expect(page.getByRole('tablist', { name: /record/ })).toBeVisible()
+    await expect(page.getByText('No screen at this address')).toHaveCount(0)
+  }
+})
