@@ -22,7 +22,15 @@ HISTORY_READS = frozenset({
     "listSurgicalHistory",
 })
 PENDING: frozenset[str] = frozenset()
+#: The patient portal's own history reads (B8a, x-owner Vimal; portal_api.py).
+PORTAL_B8A = frozenset({
+    "listPortalProblems",
+    "getPortalProblem",
+    "listPortalAllergies",
+    "getPortalAllergy",
+    "listPortalVitals",
+})
 
 
 def test_history_operations_are_built_or_pending() -> None:
-    assert progress_problems(MODULE, ALLERGIES | HISTORY_READS, PENDING) == []
+    assert progress_problems(MODULE, ALLERGIES | HISTORY_READS | PORTAL_B8A, PENDING) == []

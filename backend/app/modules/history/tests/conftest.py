@@ -12,6 +12,7 @@ from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, tenant_db
 from app.main import create_app
 from app.modules.scheduling.tests.conftest import client, practice, users  # noqa: F401
+from app.modules.scheduling.tests.portal_live import portal_app, portal_chart  # noqa: F401
 
 from .. import api
 from .fakes import FakeRepository, FakeSession, FakeStore, World

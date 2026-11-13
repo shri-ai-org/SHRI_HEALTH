@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 import pytest
+from fastapi.routing import APIRoute
 
 from app.core.deps import CurrentUser
 from app.db.tests.conftest import TEST_DATABASE_URL
@@ -27,6 +28,7 @@ from app.modules.scheduling.tests.facility_scope import (
 )
 from app.modules.scheduling.tests.test_check_in_live import _check_in
 
+from ..portal_api import router as portal_router
 from .history_seed import seed_history
 from .test_allergies_live import MERGE, PENICILLIN
 
@@ -115,5 +117,10 @@ def test_every_history_operation_follows_the_patient_and_facility_rules(
         client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
     outcomes = sweep(client, practice, _rows(client, practice, users))
     assert not failures(outcomes), report(failures(outcomes))
-    assert {o.row.operation for o in outcomes} == served_operations("history"), \
-        "the table must cover every operation history serves"
+    # The portal's own reads (portal_api.py) belong to the patient session, not to a staff
+    # user's facilities (D84): their own-record and other-patient 404s are in
+    # test_portal_history_live.py.
+    portal = {r.operation_id for r in portal_router.routes
+              if isinstance(r, APIRoute) and r.operation_id}
+    assert {o.row.operation for o in outcomes} == served_operations("history") - portal, \
+        "the table must cover every staff operation history serves"
