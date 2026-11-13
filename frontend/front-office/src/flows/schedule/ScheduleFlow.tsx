@@ -34,7 +34,7 @@ import type { Patient } from '../../types/patient'
 import type { ConsultMode } from '../../types/appointment'
 import type { Provider } from '../../types/doctor'
 import type { AppState } from '../../types/store'
-import { inputClass } from '../../utils/formClasses'
+import { inputClass, labelClass } from '../../utils/formClasses'
 import { dayStartTimestamp, formatTime } from '../../domain/time'
 import { getDepartmentDateStrip, getDepartmentDayRange } from '../../domain/doctorDaySelectors'
 import { addDaysToKey, calendarDate } from '../../domain/time'
@@ -401,8 +401,8 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
         {/* With the API and a server doctor (M10): the visit type and the reason, then Book. */}
         {serverBooking ? (
           <div className="flex flex-wrap items-end gap-2">
-            <label className="flex min-w-[10rem] flex-col gap-1 text-xs font-medium text-ink-muted">
-              Visit type
+            <label className="flex min-w-[10rem] flex-col">
+              <span className={labelClass}>Visit type</span>
               <select value={chosenTypeId} onChange={(event) => setVisitTypeId(event.target.value)} className={inputClass}>
                 {visitTypes.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -411,8 +411,8 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
                 ))}
               </select>
             </label>
-            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-medium text-ink-muted">
-              Reason for the visit
+            <label className="flex min-w-[12rem] flex-1 flex-col">
+              <span className={labelClass}>Reason for the visit</span>
               <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Cough for a week, say" maxLength={120} className={inputClass} />
             </label>
           </div>
