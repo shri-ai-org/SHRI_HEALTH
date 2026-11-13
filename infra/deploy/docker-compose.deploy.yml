@@ -116,6 +116,10 @@ services:
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
       FORWARDED_ALLOW_IPS: ${SHRI_NET_B:-172.31.251}.10  # Nginx's address on backend
+      # No access log from uvicorn: it writes the whole URL, so the sign-in callback's code and
+      # state would be logged (D13, D105). Our Nginx logs every request already, without the
+      # query string (shri.conf.template, log_format no_query). Uvicorn reads UVICORN_* (click).
+      UVICORN_ACCESS_LOG: "false"
       # Under a shared host's path (SHRI_PUBLIC_URL=https://shri-ai.org/dep): the cookies' path
       # (core/cookies.py) and where sign-in lands. "/" and "/" at a host of its own.
       COOKIE_PATH: ${SHRI_COOKIE_PATH:-/}

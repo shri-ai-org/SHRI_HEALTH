@@ -4,17 +4,18 @@
  * visit is named too (consultation, prescribing), on the record the chart. Every statement links to
  * the record it comes from; when the chart doesn't hold the answer it says "Not in the chart" and
  * nothing else. Answers are AI-generated and labelled so; they never change the chart. With the AI
- * off, unavailable or over budget the assistant hides (aiStatus); the screens work as before.
+ * off, unavailable or over budget the assistant stays open and says "AI is unavailable right now"
+ * on that question; nothing else on the screen changes. A render failure inside the assistant is
+ * caught here and said the same way, so the drawer never closes or takes the page down.
  */
 
 import { ArrowUp, CircleHelp, CornerDownRight, RotateCcw, Sparkles } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Component, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import type { ChartAnswer, ChartQuestionPageType } from '../../../../src/api/generated/model'
 import { askChart, suggestedQuestions } from '../../../shri-health/aiChart'
 import { aiSourceLabel, routeForAiSource } from '../../../shri-health/aiSources'
-import { aiDownReason, useAiStatus } from '../../../shri-health/aiStatus'
 import { maybeEncounter } from '../../../shri-health/encounter'
 import { Icon, PillTag, RoundButton } from '../ui/primitives'
 
@@ -43,8 +44,45 @@ interface Turn {
   error?: string
 }
 
+/** Said on a question the AI couldn't answer, whatever the reason (off, down, over budget, offline). */
+export const AI_UNAVAILABLE = 'AI is unavailable right now.'
+
+/** Keeps a render failure inside the assistant: it says so in place and the drawer stays open. */
+class AssistantBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="flex flex-col items-start gap-[8px] px-[18px] py-[12px]">
+        <p role="alert" className="text-[14px] text-sh-warn-fg">
+          {AI_UNAVAILABLE}
+        </p>
+        <button
+          type="button"
+          onClick={() => this.setState({ failed: false })}
+          className="inline-flex min-h-[36px] items-center gap-[6px] rounded-full px-[8px] text-[13px] font-medium text-sh-ai transition-colors duration-150 hover:bg-sh-hover"
+        >
+          <Icon icon={RotateCcw} size={13} />
+          Try again
+        </button>
+      </div>
+    )
+  }
+}
+
 /** The conversation, the starters and the composer; the drawer and the page frame it. */
-export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => void }) {
+export function RealAssistantBody(props: { onSourceOpened?: () => void }) {
+  return (
+    <AssistantBoundary>
+      <Conversation {...props} />
+    </AssistantBoundary>
+  )
+}
+
+function Conversation({ onSourceOpened }: { onSourceOpened?: () => void }) {
   const ctx = useChartContext()
   const navigate = useNavigate()
   const [turns, setTurns] = useState<Turn[]>([])
@@ -56,10 +94,8 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
     let live = true
     suggestedQuestions(ctx.pageType)
       .then((qs) => live && setStarters(qs.slice(0, 4)))
-      .catch((error: unknown) => {
-        const down = aiDownReason(error)
-        if (down) useAiStatus.getState().markDown('chart-qa', down)
-      })
+      // Without suggestions the composer still works; a refusal shows on the question asked.
+      .catch(() => live && setStarters([]))
     return () => {
       live = false
     }
@@ -84,11 +120,9 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
     askChart(question, ctx.pageType, patientId, ctx.encounterId)
       // An answer is kept only on its own turn, and only when it is about that turn's patient.
       .then((answer) => setTurns((t) => t.map((x) => (x.id === id && answer.patientId === x.patientId ? { ...x, answer } : x))))
-      .catch((error: unknown) => {
-        const down = aiDownReason(error)
-        if (down) useAiStatus.getState().markDown('chart-qa', down)
-        setTurns((t) => t.map((x) => (x.id === id ? { ...x, error: down ?? (error instanceof Error ? error.message : 'No answer arrived.') } : x)))
-      })
+      // Any refusal or failure (AI off, model down, budget used up, network) is said on this turn;
+      // the drawer stays open and the next question can be asked.
+      .catch(() => setTurns((t) => t.map((x) => (x.id === id ? { ...x, error: AI_UNAVAILABLE } : x))))
   }
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -143,7 +177,7 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
                   <PillTag tone="neu" size="xs" icon={Sparkles} className="self-start font-medium">
                     AI-generated · {t.answer.generatedBy.modelName}
                   </PillTag>
-                  {t.answer.insufficientEvidence || t.answer.statements.length === 0 ? (
+                  {t.answer.statements.length === 0 ? (
                     <p className="flex items-start gap-[8px] text-[14px] text-sh-text">
                       <Icon icon={CircleHelp} size={14} className="mt-[3px] shrink-0 text-sh-muted" />
                       Not in the chart.
@@ -169,6 +203,13 @@ export function RealAssistantBody({ onSourceOpened }: { onSourceOpened?: () => v
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {/* A partial answer: what the chart says, and that it doesn't say it all. */}
+                  {t.answer.insufficientEvidence && t.answer.statements.length > 0 && (
+                    <p className="flex items-start gap-[8px] text-[13px] text-sh-text-2">
+                      <Icon icon={CircleHelp} size={13} className="mt-[2px] shrink-0 text-sh-muted" />
+                      The chart doesn&rsquo;t fully answer this.
+                    </p>
                   )}
                 </div>
               )}

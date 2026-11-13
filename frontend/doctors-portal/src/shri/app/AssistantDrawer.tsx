@@ -27,7 +27,6 @@ import { useIsPhone } from '../ui/frames'
 import { useFocusTrap } from '../ui/hooks'
 import { AssistantIcon } from '../ui/AssistantIcon'
 import { RealAssistantBody } from '../assistant/RealAssistant'
-import { useAiFeatureUp } from '../../../shri-health/aiStatus'
 
 /** With the SHRI_HEALTH API the panel asks the chart (RealAssistant), never the sample's answers. */
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
@@ -44,8 +43,8 @@ export function AssistantDrawer() {
   const aiOn = useAiActive()
   const { pathname } = useLocation()
   // Moving onto a screen that is not offered the assistant (a wall, a modal, an assistant screen) puts the panel away.
-  const qaUp = useAiFeatureUp('chart-qa')
-  const open = useShri((s) => s.assistantOpen) && aiOn && (!REAL_API || qaUp) && assistantOfferedAt(pathname)
+  // An AI refusal or failure never closes it: the answer says so inline (RealAssistant).
+  const open = useShri((s) => s.assistantOpen) && aiOn && assistantOfferedAt(pathname)
   const close = useShri((s) => s.closeAssistant)
   return (
     <AnimatePresence>

@@ -339,8 +339,10 @@ export async function loadProviders(): Promise<Option[]> {
 
 // ---- Validation: the Angular rules, changed to the U.S. contract (SCREEN_PORT.md) --------------
 
-/** Letters (any script, with accents), spaces, hyphens and apostrophes; at least one letter first. */
-const NAME = /^\p{L}[\p{L}\p{M} '’-]*$/u
+/** Letters (any script, with accents), digits, spaces, hyphens and apostrophes; a letter first.
+ *  Digits are allowed because every demo and test name is Synthea-style (D112: "Kaia401
+ *  Lindgren118"); the contract's HumanName takes any text. */
+const NAME = /^\p{L}[\p{L}\p{M}\p{Nd} '’-]*$/u
 const ADDRESS = /^(?=.*[a-zA-Z])[\w\s,.#'/-]+$/
 const CITY = /^\p{L}[\p{L}\p{M} .'’-]*$/u
 const ZIP = /^\d{5}(?:-\d{4})?$/
@@ -398,9 +400,9 @@ function needed(value: string, missing: string): string | undefined {
 
 export function basicInfoErrors(f: BasicInfo, today: string = todayIso()): Errors<BasicInfo> {
   return {
-    firstName: name(f.firstName, true, 'Username required', 'Invalid Username'),
-    middleName: name(f.middleName, false, '', 'Invalid Middlename'),
-    lastName: name(f.lastName, true, 'Lastname required', 'Invalid Lastname'),
+    firstName: name(f.firstName, true, 'First name required', 'Invalid first name'),
+    middleName: name(f.middleName, false, '', 'Invalid middle name'),
+    lastName: name(f.lastName, true, 'Last name required', 'Invalid last name'),
     date: !f.date ? 'Date Required' : f.date > today ? 'Invalid Date' : undefined,
     phoneNo: !f.phoneNo.trim() ? 'Phoneno required' : isUsPhone(f.phoneNo) ? undefined : 'Invalid phoneno',
     address: needed(f.address, 'Address required') ?? pattern(f.address, ADDRESS, 'Invalid Address', 100),

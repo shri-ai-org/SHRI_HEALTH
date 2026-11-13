@@ -178,11 +178,17 @@ export function OutpatientsPage() {
         if (REAL_API && row.appointment && isServerAppointment(row.appointment.appointmentId)) {
           const appointmentId = row.appointment.appointmentId
           // Roomed: waiting for the doctor in a room, so no undo and no second rooming (gap 78).
+          // Check-out opens from here too: no screen records "with provider" (the doctor goes
+          // straight to the visit), and the API checks out any checked-in visit (D98), so the desk
+          // must not wait for a step nobody records (demo run check, 13 Nov).
           if (row.appointment.serverVisitStatus === 'roomed') {
             return (
-              <Badge tone="teal" className="px-2">
-                Roomed
-              </Badge>
+              <>
+                <Badge tone="teal" className="px-2">
+                  Roomed
+                </Badge>
+                {checkOutButton(appointmentId)}
+              </>
             )
           }
           return (

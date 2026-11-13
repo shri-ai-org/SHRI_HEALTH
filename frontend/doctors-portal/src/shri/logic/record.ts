@@ -36,9 +36,11 @@ export const SECTION_META: Record<RecordSection, { label: string; short: string;
   appointments: { label: 'Appointments', short: 'Appointments', path: 'appointments', screenId: 'S-06-17' },
 }
 
-// SHRI_HEALTH: the History tab (gap 86) reads the API only, so it isn't in the sample screens.
+// SHRI_HEALTH: the History tab (gap 86) reads the API only, so it isn't in the sample screens. With
+// the API, Test results (S-06-13) and Imaging reports (S-06-12) have no service yet, so they have no
+// screen (ShriApp NO_SERVICE) and no tab: a tab must never lead to "No screen at this address".
 export const SECTION_ORDER: RecordSection[] = REAL_API
-  ? ['record', 'condition', 'history', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
+  ? ['record', 'condition', 'history', 'notes', 'prescriptions', 'appointments']
   : ['record', 'condition', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
 
 /** A condition's status in this build's tones — stable is the quiet one, the clinical hues for the rest (`STATUS_TONE`). */

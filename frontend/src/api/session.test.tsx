@@ -231,7 +231,7 @@ describe('SessionProvider', () => {
     await waitFor(() => expect(server.calls().filter((u) => u === 'GET /api/v1/auth/session')).toHaveLength(2))
   })
 
-  it('signs out through POST /auth/logout and shows the prompt, without starting a new login', async () => {
+  it('signs out through POST /auth/logout, then goes straight to the sign-in form', async () => {
     const oneMinuteLeft = session(1)
     const server = serve({
       'GET /api/v1/auth/session': [() => ok(oneMinuteLeft)],
@@ -239,9 +239,9 @@ describe('SessionProvider', () => {
     })
     render(<SessionProvider><Who /></SessionProvider>)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
-    expect(await screen.findByRole('heading', { name: 'You have signed out' })).toBeInTheDocument()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/v1/auth/login'))
     expect(server.calls()).toContain('POST /api/v1/auth/logout')
-    expect(assign).not.toHaveBeenCalled()
+    expect(assign).toHaveBeenCalledTimes(1)
   })
 
   it('still signs this tab out when the logout call fails', async () => {
@@ -253,6 +253,7 @@ describe('SessionProvider', () => {
     render(<SessionProvider><Who /></SessionProvider>)
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
     expect(await screen.findByRole('heading', { name: 'You have signed out' })).toBeInTheDocument()
+    expect(assign).not.toHaveBeenCalled()
   })
 
   it('ends the session when a background call gets 401', async () => {
