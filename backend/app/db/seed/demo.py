@@ -15,8 +15,8 @@ user ID, and a ``user_role`` row at the main office for its role, against migrat
 platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
 the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
 
-Every demo provider is also bookable in clinic hours, 08:00 to 17:00 on weekdays
-(``_daily_schedules``): weekly recurring rules with no end date, so a weekday rehearsal, the
+Every demo provider is also bookable in clinic hours, 08:00 to 17:00 every day of the week
+(``_daily_schedules``): weekly recurring rules with no end date, so a rehearsal on any day, the
 demo or a revisit weeks ahead has free times. The seed's environment guard is unchanged.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
@@ -489,18 +489,17 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
     db.flush()
 
 
-#: Every demo provider is bookable in clinic hours, 08:00 to 17:00 on weekdays, in each facility's
-#: own time zone (Vimal's A3 on #85, 13 Nov: the all-day hours of 2 and 5 Nov made the first free
-#: time 05:20 AM). One weekly rule per weekday, on top of the starter's 09:00 to 17:00 (free times
-#: are keyed by start and provider, so the two never double up). The rules start with the
-#: starter's and have no end date, so a revisit weeks ahead has free times. Monday to Friday keep
-#: the IDs of the earlier all-day rules, so a database seeded before is moved to clinic hours; its
-#: Saturday and Sunday rules (the next two IDs) are removed with their visit-type links, so nothing
-#: is left over.
+#: Every demo provider is bookable in clinic hours, 08:00 to 17:00 every day of the week, in each
+#: facility's own time zone (Vimal's A3 on #85, 13 Nov: the all-day hours of 2 and 5 Nov made the
+#: first free time 05:20 AM; weekends too, his review of #347, so a weekend redeploy, audit or
+#: rehearsal can book today). One weekly rule per day, on top of the starter's weekday 09:00 to
+#: 17:00 (free times are keyed by start and provider, so the two never double up). The rules start
+#: with the starter's and have no end date, so a revisit weeks ahead has free times. They keep the
+#: IDs of the earlier all-day rules, so a database seeded before is moved to clinic hours, with
+#: nothing left over.
 CLINIC_HOURS = (dt.time(8, 0), dt.time(17, 0))
 DAILY_SLOT_MINUTES = 20
-DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri")
-WEEKEND = ("sat", "sun")                    # all-day rules of earlier seeds, removed
+DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
 def _daily_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
@@ -530,11 +529,6 @@ def _daily_schedules(db: Session, visits: dict[str, uuid.UUID]) -> None:
                                       .where(link.rule_id == rule.id)).scalars())
                 db.add_all(link(tenant_id=CLINIC_A, rule_id=rule.id, appointment_type_id=v)
                            for v in visits.values() if v not in have)
-            gone = [sid(DAILY_RULE, n * 10 + d) for d in
-                    range(len(DAYS_OF_WEEK) + 1, len(DAYS_OF_WEEK) + len(WEEKEND) + 1)]
-            db.execute(delete(link).where(link.rule_id.in_(gone)))
-            db.execute(delete(M["schedule_availability_rule"])
-                       .where(M["schedule_availability_rule"].id.in_(gone)))
     db.flush()
 
 
