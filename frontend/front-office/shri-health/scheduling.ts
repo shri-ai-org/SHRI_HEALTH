@@ -86,6 +86,11 @@ function typeFor(mode: ConsultMode): BookableAppointmentType | null {
   return bookableTypes.find((t) => Boolean(t.telehealth) === (mode === 'Teleconsult')) ?? null
 }
 
+/** The visit types the desk can book in this mode (M10): in person or teleconsult, as the server lists them. */
+export function bookableTypesFor(mode: ConsultMode): Array<{ id: string; name: string; minutes: number }> {
+  return bookableTypes.filter((t) => Boolean(t.telehealth) === (mode === 'Teleconsult')).map((t) => ({ id: t.id, name: t.name, minutes: t.defaultDurationMinutes }))
+}
+
 function fromProvider(p: BookableProvider, types: BookableAppointmentType[], slotMinutes: number): Provider {
   const tele = types.some((t) => t.telehealth)
   const inPerson = types.some((t) => !t.telehealth)
@@ -268,6 +273,8 @@ export interface BookOnServerInput {
   slot: string
   mode: ConsultMode
   reason?: string
+  /** The visit type the desk chose (M10); without one, the mode's first type. */
+  appointmentTypeId?: string
   /** The revisit, booked from check-out: the visit whose follow-up it answers. */
   followUpOfEncounterId?: string
 }
@@ -277,7 +284,7 @@ export async function bookOnServer(input: BookOnServerInput, key: string = newId
   const { facility } = await loadBookable()
   const startAt = startAtBySlot.get(`${input.providerId}|${input.date}|${input.slot}`)
   if (!startAt) throw new Error('That time is no longer offered — choose another time.')
-  const type = typeFor(input.mode)
+  const type = (input.appointmentTypeId ? bookableTypes.find((t) => t.id === input.appointmentTypeId) : undefined) ?? typeFor(input.mode)
   if (!type) throw new Error(`No appointment type allows ${input.mode === 'Teleconsult' ? 'a teleconsult' : 'an in-person visit'}.`)
   const res = await apiBookAppointment(
     {
