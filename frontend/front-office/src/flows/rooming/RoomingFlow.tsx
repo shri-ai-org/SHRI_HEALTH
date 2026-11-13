@@ -14,10 +14,13 @@ import { cn } from '../../utils/cn'
 import { errorClass, inputClass, labelClass } from '../../utils/formClasses'
 import type { FlowProps } from '../registry'
 import { EMPTY_VITALS, toVitalEntries, type VitalsErrors, type VitalsForm } from '../../../../src/features/clinical/vitals'
+import { CodedSearch, codedEntry, NO_CODED, type CodedValue } from './CodedSearch'
 import {
   addAllergyEntry,
   addMedicationEntry,
   allergyLabel,
+  findAllergens,
+  findDrugs,
   loadRooming,
   markRoomed,
   ReasonChanged,
@@ -59,9 +62,9 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
   const [vitals, setVitals] = useState<VitalsForm>(EMPTY_VITALS)
   const [vitalErrors, setVitalErrors] = useState<VitalsErrors>({})
   const [vitalsSaved, setVitalsSaved] = useState(false)
-  const [allergyText, setAllergyText] = useState('')
+  const [allergy, setAllergy] = useState<CodedValue>(NO_CODED)
   const [allergiesReviewed, setAllergiesReviewed] = useState(false)
-  const [medText, setMedText] = useState('')
+  const [med, setMed] = useState<CodedValue>(NO_CODED)
   const [medDose, setMedDose] = useState('')
   const [medsReviewed, setMedsReviewed] = useState(false)
   const [busy, setBusy] = useState<'vitals' | 'allergy' | 'nka' | 'med' | 'room' | null>(null)
@@ -143,21 +146,21 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
   }
 
   function onAddAllergy(noneKnown: boolean) {
-    if (!noneKnown && !allergyText.trim()) return
+    if (!noneKnown && !allergy.text.trim()) return
     void run(noneKnown ? 'nka' : 'allergy', 'allergies', async () => {
-      const added = await addAllergyEntry(current, noneKnown ? null : allergyText, keyFor(noneKnown ? 'nka' : 'allergy'))
+      const added = await addAllergyEntry(current, noneKnown ? null : codedEntry(allergy), keyFor(noneKnown ? 'nka' : 'allergy'))
       setVisit({ ...current, allergies: [...current.allergies, added] })
-      setAllergyText('')
+      setAllergy(NO_CODED)
       setAllergiesReviewed(true)
     })
   }
 
   function onAddMedication() {
-    if (!medText.trim()) return
+    if (!med.text.trim()) return
     void run('med', 'meds', async () => {
-      const added = await addMedicationEntry(current, medText, medDose, keyFor('med'))
+      const added = await addMedicationEntry(current, codedEntry(med), medDose, keyFor('med'))
       setVisit({ ...current, medications: [...current.medications, added] })
-      setMedText('')
+      setMed(NO_CODED)
       setMedDose('')
       setMedsReviewed(true)
     })
@@ -291,13 +294,17 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
             </ul>
           )}
           <div className="flex flex-wrap items-end gap-2">
-            <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5">
-              <label htmlFor="rooming-allergy" className={labelClass}>
-                Add an allergy
-              </label>
-              <input id="rooming-allergy" value={allergyText} maxLength={200} placeholder="Penicillin, say" onChange={(e) => setAllergyText(e.target.value)} className={inputClass} />
-            </div>
-            <Button variant="secondary" onClick={() => onAddAllergy(false)} disabled={busy !== null || !allergyText.trim()}>
+            <CodedSearch
+              id="rooming-allergy"
+              label="Add an allergy"
+              placeholder="Penicillin, say"
+              value={allergy}
+              onChange={setAllergy}
+              find={findAllergens}
+              note="Pick a match from the drug list so prescribing can check it. An allergy recorded as typed is kept, but it doesn't trigger prescribing alerts."
+              disabled={busy !== null}
+            />
+            <Button variant="secondary" onClick={() => onAddAllergy(false)} disabled={busy !== null || !allergy.text.trim()}>
               {busy === 'allergy' ? 'Adding…' : 'Add'}
             </Button>
             <Button variant="outline" onClick={() => onAddAllergy(true)} disabled={busy !== null}>
@@ -325,19 +332,23 @@ export function RoomingFlow({ params, onClose }: FlowProps) {
             </ul>
           )}
           <div className="flex flex-wrap items-end gap-2">
-            <div className="flex min-w-[10rem] flex-1 flex-col gap-1.5">
-              <label htmlFor="rooming-med" className={labelClass}>
-                Add a medication
-              </label>
-              <input id="rooming-med" value={medText} maxLength={200} placeholder="Lisinopril 10 mg, say" onChange={(e) => setMedText(e.target.value)} className={inputClass} />
-            </div>
+            <CodedSearch
+              id="rooming-med"
+              label="Add a medication"
+              placeholder="Lisinopril 10 mg, say"
+              value={med}
+              onChange={setMed}
+              find={findDrugs}
+              note="Pick a match from the drug list so prescribing can check for duplicates. A medication recorded as typed is kept, but it isn't checked."
+              disabled={busy !== null}
+            />
             <div className="flex min-w-[8rem] flex-1 flex-col gap-1.5">
               <label htmlFor="rooming-med-dose" className={labelClass}>
                 How they take it
               </label>
               <input id="rooming-med-dose" value={medDose} maxLength={200} placeholder="Once a day" onChange={(e) => setMedDose(e.target.value)} className={inputClass} />
             </div>
-            <Button variant="secondary" onClick={onAddMedication} disabled={busy !== null || !medText.trim()}>
+            <Button variant="secondary" onClick={onAddMedication} disabled={busy !== null || !med.text.trim()}>
               {busy === 'med' ? 'Adding…' : 'Add'}
             </Button>
             {!medsReviewed ? (

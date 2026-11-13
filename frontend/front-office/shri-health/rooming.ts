@@ -13,7 +13,7 @@
 //   roomed          ⇒ recordVisitStatus { status: 'roomed', roomLocationId } (Idempotency-Key)
 // Each write keeps its key while it is retried, so the server does it once.
 import { ApiError, etagOf } from '../../src/api/client'
-import { getEncounter, recordVitals, updateEncounter } from '../../src/api/generated/endpoints/encounters/encounters'
+import { getEncounter, recordVitals, searchCodes, updateEncounter } from '../../src/api/generated/endpoints/encounters/encounters'
 import { addAllergy, listAllergies } from '../../src/api/generated/endpoints/history/history'
 import { listMedications, recordMedication } from '../../src/api/generated/endpoints/medications/medications'
 import { getAppointment, listBookableLocations, recordVisitStatus } from '../../src/api/generated/endpoints/scheduling/scheduling'
@@ -108,17 +108,53 @@ export async function saveVitals(encounterId: string, entries: VitalEntry[], key
   if (res.status >= 300) throw new Error('The vitals were not saved')
 }
 
-/** An allergy as the patient states it (free text), or "No known allergies". */
-export async function addAllergyEntry(visit: RoomingVisit, text: string | null, key: string = newIdempotencyKey()): Promise<Allergy> {
-  const code = text === null ? NO_KNOWN_ALLERGY : { text: text.trim() }
+const RXNORM = 'http://www.nlm.nih.gov/research/umls/rxnorm'
+
+/** An RxNorm concept offered at rooming: an ingredient for an allergy, a drug for a medication. */
+export interface CodedChoice {
+  code: string
+  display: string
+}
+
+/**
+ * The RxNorm ingredients that match what was typed (M3): the drug search (`GET /codes?system=rxnorm`,
+ * drug names only in the query, D13) answers products, each with its ingredients; an allergy is
+ * recorded against the ingredient, which is what the prescription safety check matches (D97, D99).
+ */
+export async function findAllergens(query: string): Promise<CodedChoice[]> {
+  const res = await searchCodes({ system: 'rxnorm', q: query.trim(), limit: 25 })
+  if (res.status !== 200) throw new Error('The drug list could not be searched')
+  const seen = new Map<string, CodedChoice>()
+  for (const m of res.data.items) for (const i of m.drug?.ingredients ?? []) if (!seen.has(i.rxcui)) seen.set(i.rxcui, { code: i.rxcui, display: i.name })
+  const q = query.trim().toLowerCase()
+  // The ingredients named like the query first ("amox" → Amoxicillin before Clavulanate).
+  return [...seen.values()].sort((a, b) => Number(!a.display.toLowerCase().startsWith(q)) - Number(!b.display.toLowerCase().startsWith(q))).slice(0, 10)
+}
+
+/** The RxNorm drugs that match what was typed, for the patient's medication list (the duplicate check). */
+export async function findDrugs(query: string): Promise<CodedChoice[]> {
+  const res = await searchCodes({ system: 'rxnorm', q: query.trim(), limit: 10 })
+  if (res.status !== 200) throw new Error('The drug list could not be searched')
+  return res.data.items.map((m) => ({ code: m.code, display: m.display }))
+}
+
+const coded = (c: CodedChoice) => ({ codings: [{ system: RXNORM, code: c.code, display: c.display }], text: c.display })
+
+/**
+ * An allergy: coded in RxNorm when a match was picked (the prescribing alerts use it), else as the
+ * patient states it (free text, kept but never matched), or "No known allergies" (`null`).
+ */
+export async function addAllergyEntry(visit: RoomingVisit, entry: string | CodedChoice | null, key: string = newIdempotencyKey()): Promise<Allergy> {
+  const code = entry === null ? NO_KNOWN_ALLERGY : typeof entry === 'string' ? { text: entry.trim() } : coded(entry)
   const res = await addAllergy(visit.patientId, { code, encounterId: visit.encounterId }, { 'Idempotency-Key': key })
   if (res.status >= 300) throw new Error('The allergy was not saved')
   return res.data as Allergy
 }
 
-/** A medicine the patient takes, as they state it, on their own list. */
-export async function addMedicationEntry(visit: RoomingVisit, text: string, dosageText: string, key: string = newIdempotencyKey()): Promise<Medication> {
-  const res = await recordMedication(visit.patientId, { medication: { text: text.trim() }, status: 'active', ...(dosageText.trim() ? { dosageText: dosageText.trim() } : {}) }, { 'Idempotency-Key': key })
+/** A medicine the patient takes, on their own list: coded in RxNorm when a match was picked, else as stated. */
+export async function addMedicationEntry(visit: RoomingVisit, entry: string | CodedChoice, dosageText: string, key: string = newIdempotencyKey()): Promise<Medication> {
+  const medication = typeof entry === 'string' ? { text: entry.trim() } : coded(entry)
+  const res = await recordMedication(visit.patientId, { medication, status: 'active', ...(dosageText.trim() ? { dosageText: dosageText.trim() } : {}) }, { 'Idempotency-Key': key })
   if (res.status >= 300) throw new Error('The medication was not saved')
   return res.data as Medication
 }

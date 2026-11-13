@@ -13,6 +13,8 @@ export const frontOfficePort = 5192
 export const portalPort = 5193
 /** The front office's dev server, signed in as the development administrator (the AI switch). */
 export const frontOfficeAdminPort = 5195
+/** The front office as the development medical assistant (ma), for rooming (e2e/roomingCoded.e2e.ts). */
+export const frontOfficeMaPort = 5196
 const portalPatient = process.env.SHRI_E2E_PORTAL_PATIENT
 
 export default defineConfig({
@@ -56,6 +58,13 @@ export default defineConfig({
       url: `http://localhost:${frontOfficePort}`,
       reuseExistingServer: !process.env.CI,
       env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
+    },
+    {
+      // The front office as the development medical assistant (ma), for rooming (e2e/roomingCoded.e2e.ts).
+      command: `npm run dev -w front-office -- --port ${frontOfficeMaPort} --strictPort`,
+      url: `http://localhost:${frontOfficeMaPort}`,
+      reuseExistingServer: !process.env.CI,
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'ma' },
     },
     {
       // The front office as the development administrator (adm), for the clinic's AI switch
