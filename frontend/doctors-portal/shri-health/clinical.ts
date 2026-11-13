@@ -142,7 +142,8 @@ interface NoteState {
   applyScribeDraft: (encounterId: string, keys: string[], drafts?: Partial<Record<string, string>>) => string[]
   /** "Draft with AI" (AI-01): the dictated text to createNoteDraft; resolves with the drafted section keys. */
   draftWithAi: (encounterId: string, transcript: string) => Promise<string[]>
-  setNoteCode: (encounterId: string, code: string | undefined) => void
+  /** The note's ICD-10 code (on screen; M8: kept across a reload through the visit's diagnoses). */
+  setNoteCode: (encounterId: string, code: string | undefined, label?: string) => void
   saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
   /** Resolves to the status the server gives the note, or null when it refused to sign it. */
   signNote: (args: { encounterId: string; by: string; registrationNo: string; canSign: boolean }) => Promise<NoteStatus | null>
@@ -267,6 +268,37 @@ function toProblem(d: EncounterDiagnosis, patientId: string): AddedProblem {
 
 const blank = (encounterId: string): NoteRecord => ({ encounterId, text: {}, provenance: {}, status: 'draft', addenda: [] })
 
+// ---- The note's ICD-10 code across a reload (M8, RUN_CHECK 27) --------------------------------
+// The contract codes diagnoses on the encounter, not the note, so the note's code is a screen choice.
+// On a reload it comes back as the code chosen in this browser while it is still one of the visit's
+// live diagnoses, else the visit's primary diagnosis (lowest rank); a code picked from the index
+// that isn't a diagnosis yet is added to the visit, so it is on the server too.
+
+/** Each encounter's live diagnosis codes, primary (lowest rank) first, as last read. */
+const visitCodes = new Map<string, string[]>()
+const codeKey = (encounterId: string) => `shri.notecode:${encounterId}`
+
+function rememberCode(encounterId: string, code: string | undefined): void {
+  try {
+    if (code) sessionStorage.setItem(codeKey(encounterId), code)
+    else sessionStorage.removeItem(codeKey(encounterId))
+  } catch {
+    // A private window: the visit's primary diagnosis is used instead.
+  }
+}
+
+function restoredCode(encounterId: string): string | undefined {
+  const codes = visitCodes.get(encounterId)
+  if (!codes || codes.length === 0) return undefined
+  let chosen: string | null = null
+  try {
+    chosen = sessionStorage.getItem(codeKey(encounterId))
+  } catch {
+    chosen = null
+  }
+  return chosen && codes.includes(chosen) ? chosen : codes[0]
+}
+
 function fromNote(encounterId: string, n: Note, local?: NoteRecord): NoteRecord {
   const text: Record<string, string> = {}
   for (const s of n.sections) if (KEY_BY_CODE[s.code]) text[KEY_BY_CODE[s.code]] = s.text
@@ -290,8 +322,8 @@ function fromNote(encounterId: string, n: Note, local?: NoteRecord): NoteRecord 
     addenda: n.addenda.map((a) => ({ id: a.id, body: a.text, by: a.author.displayName, registrationNo: '', at: a.signedAt })),
     savedAt: n.updatedAt,
     savedHow: local?.savedHow,
-    // TODO(gap): the contract codes diagnoses on the encounter, not the note; this stays on screen only.
-    code: local?.code,
+    // The contract codes diagnoses on the encounter, not the note (M8: restored from them on a reload).
+    code: local?.code ?? restoredCode(encounterId),
     coSignedBy: n.cosignedBy?.displayName,
     coSignedAt: n.cosignedAt,
     returned: n.cosignReturn ? { by: n.cosignReturn.returnedBy.displayName, at: n.cosignReturn.returnedAt, comment: n.cosignReturn.comment } : undefined,
@@ -568,6 +600,13 @@ export const useClinical = create<NoteState>()((set, get) => {
         diagnoses: { ...get().diagnoses, [encounterId]: live.map((d) => toProblem(d, e.patientId)) },
         problemConfirmations: { ...get().problemConfirmations, ...confirmed },
       })
+      // M8: the visit's codes, primary first; a note already loaded without a code gets it back.
+      visitCodes.set(encounterId, [...live].sort((a, b) => (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER)).map((d) => d.code.code))
+      const note = get().notes[encounterId]
+      if (note && !note.code) {
+        const code = restoredCode(encounterId)
+        if (code) patch(encounterId, { code })
+      }
     },
 
     addProblem: (encounterId, dx, by, at) => {
@@ -813,7 +852,21 @@ export const useClinical = create<NoteState>()((set, get) => {
       return keys
     },
 
-    setNoteCode: (encounterId, code) => patch(encounterId, { code }),
+    setNoteCode: (encounterId, code, label) => {
+      patch(encounterId, { code })
+      rememberCode(encounterId, code)
+      // A code picked from the index that isn't one of the visit's diagnoses yet: added to the visit,
+      // so the code is on the server and comes back after a reload (M8).
+      if (!code) return
+      void (async () => {
+        if (!get().diagnoses[encounterId]) await get().loadDiagnoses(encounterId).catch(() => undefined)
+        const known = get().diagnoses[encounterId]
+        if (!known || known.some((pr) => pr.icd10 === code)) return
+        if (get().addProblem(encounterId, { icd10: code, label: label ?? code }, '', new Date().toISOString())) {
+          visitCodes.set(encounterId, [...(visitCodes.get(encounterId) ?? []), code])
+        }
+      })()
+    },
 
     saveDraft: (encounterId, how = 'manual') => {
       if (get().note(encounterId).status !== 'draft') return

@@ -43,6 +43,7 @@ import { ScreenFrame } from '../app/ScreenFrame'
 import { cn } from '../lib/cn'
 import { encounterLabel } from '../logic/encounter'
 import { useProblemsFor } from '../logic/record'
+import { useProblemsFor as useVisitDiagnoses } from '../../../shri-health/record'
 import { useAiActive, useForcedState } from '../state/ai'
 import { FieldChip, GhostSection } from '../ui/ai'
 import { Alert } from '../ui/Alert'
@@ -130,6 +131,8 @@ export function NoteAuthoring({
   const aimScribe = useScribeDrafts((s) => s.aim)
   const draftFor = (key: SectionKey): string | undefined => scribeDraft?.sections[key]
   const patientProblems = useProblemsFor(p.id)
+  // M8: with the API, the visit's diagnoses are read too, so the note's ICD-10 code comes back after a reload.
+  if (REAL_API) useVisitDiagnoses(enc.id)
 
   const [blurred, setBlurred] = useState<Record<string, boolean>>({})
   const [confirmSign, setConfirmSign] = useState(false)
@@ -526,7 +529,7 @@ export function NoteAuthoring({
                   id={`${enc.id}-code-search`}
                   extra={codeIndex.map((o) => ({ code: o.icd10, label: o.label, leaf: o.leaf }))}
                   selected={record.code ? [record.code] : []}
-                  onPick={(o) => setNoteCode(enc.id, o.code)}
+                  onPick={(o) => setNoteCode(enc.id, o.code, o.label)}
                   className="max-w-[440px]"
                 />
               )}
