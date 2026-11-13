@@ -9,7 +9,7 @@ import { useCallback, useMemo } from 'react'
 
 import { LOAD_WORD, monthDays, sameDay, type DayLoad } from '@/data/calendar'
 import { DISCHARGE_BOARD, RESULTS } from '@/data/clinical'
-import { patient } from '../../../shri-health/kit'
+import { primeSummaries, summaryPatient } from '../../../shri-health/kit'
 import {
   attentionChronological, attentionFor, currentBlock, dayPlanFor, isStrokePersona, telestrokeList, toFinishFor,
   type AttentionItem, type DayBlock, type PatientListRow,
@@ -135,6 +135,8 @@ export function useMyDay() {
   /** A critical result stays critical until a named clinician acknowledges it; marking the patient seen does not. */
   const criticalResults = useMemo(() => unacknowledgedCritical(acknowledgements), [acknowledgements])
   const lowConfidence = forced === 'AI-LOW'
+  // M6: every patient the home screen names, in one summary read.
+  primeSummaries([...opd.map((r) => r.patientId), ...inpatients.map((r) => r.patientId), ...attention.map((i) => i.patientId)])
 
   const toFinish = useMemo(
     () => toFinishFor(persona, { notes, coSigned, triagedReferrals, voiceNotes }),
@@ -226,7 +228,7 @@ export function useMyDay() {
 export type MyDay = ReturnType<typeof useMyDay>
 
 /** A row's patient — the old kit's record. */
-export const rowPatient = (r: PatientListRow) => patient(r.patientId)
+export const rowPatient = (r: PatientListRow) => summaryPatient(r.patientId)
 
 /** Critical results still waiting for someone to acknowledge them — the Critical KPI's count and sub-line. */
 export function unacknowledgedCritical(acknowledgements: Record<string, unknown>) {

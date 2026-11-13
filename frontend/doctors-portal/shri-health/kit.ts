@@ -2,9 +2,9 @@
 // its allergies.
 import { patient as mockPatient, patientByAnyId as mockPatientByAnyId, type Patient, type Payer } from '@/data/kit'
 
-import { getPatient, listCoverages } from '../../src/api/generated/endpoints/patients/patients'
+import { getPatient, getPatientSummaries, listCoverages } from '../../src/api/generated/endpoints/patients/patients'
 import { listAllergies } from '../../src/api/generated/endpoints/history/history'
-import type { Allergy, Coverage, Patient as ApiPatient } from '../../src/api/generated/model'
+import type { Allergy, Coverage, Patient as ApiPatient, PatientSummary, PatientSummaryList } from '../../src/api/generated/model'
 
 import { read } from './resource'
 
@@ -71,6 +71,49 @@ export function patient(id: string): Patient {
     const [p, coverages, allergies] = await Promise.all([getPatient(id), listCoverages(id), listAllergies(id)])
     return toPatient(p.data as ApiPatient, (coverages.data as { items: Coverage[] }).items, (allergies.data as { items: Allergy[] }).items)
   })
+}
+
+/** The home screen's patients from one batched summary read, by ID (M6). */
+const summaries = new Map<string, Patient>()
+
+/**
+ * Reads the summaries of a list's patients in one call (at most 50 IDs per call), instead of a
+ * patient, coverage and allergy read per row (M6). The home screen shows only name, age, sex and
+ * MRN, so allergies and payer are not read for it. Suspends until the call answers.
+ */
+export function primeSummaries(ids: string[]): void {
+  const want = [...new Set(ids.filter((id) => UUID.test(id)))].sort()
+  if (want.length === 0) return
+  read(`summaries:${want.join(',')}`, async () => {
+    for (let i = 0; i < want.length; i += 50) {
+      const res = await getPatientSummaries({ patientIds: want.slice(i, i + 50) })
+      for (const s of (res.data as PatientSummaryList).items) summaries.set(s.id, fromSummary(s))
+    }
+  })
+}
+
+/** A home-screen patient: from the batched summary, else the full read (never sample data for an API patient). */
+export function summaryPatient(id: string): Patient {
+  if (!UUID.test(id)) return mockPatient(id)
+  return summaries.get(id) ?? patient(id)
+}
+
+function fromSummary(s: PatientSummary): Patient {
+  return {
+    id: s.id,
+    name: [...(s.name.given ?? []), s.name.family].join(' '),
+    age: s.birthDate ? ageOn(s.birthDate, new Date()) : 0,
+    sex: s.gender === 'male' ? 'M' : s.gender === 'female' ? 'F' : 'O',
+    uhid: s.mrn,
+    scenario: '',
+    // Not read for the home screen (M6): the chart's own read has the payer and allergies.
+    payer: '' as Payer,
+    abha: null,
+    abhaStatus: 'Not linked',
+    allergies: [],
+    bed: null,
+    facilityCode: '',
+  }
 }
 
 function toPatient(p: ApiPatient, coverages: Coverage[], allergies: Allergy[]): Patient {

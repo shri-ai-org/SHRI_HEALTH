@@ -25,7 +25,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { NOW } from '@/data/format'
-import { patient } from '../../../shri-health/kit'
+import { summaryPatient } from '../../../shri-health/kit'
 import { useClinical } from '@/store/clinical'
 import { useUI } from '@/store/ui'
 
@@ -142,7 +142,7 @@ function SimulateCritical() {
   function simulate() {
     const worst = ranked.find((i) => i.urgency === 'critical') ?? ranked[0]
     if (!worst) return
-    const p = patient(worst.patientId)
+    const p = summaryPatient(worst.patientId)
     toast({ tone: 'critical', title: `${worst.reason} — ${p.name}`, detail: worst.detail })
     if ('Notification' in window) {
       void Notification.requestPermission().then((granted) => {

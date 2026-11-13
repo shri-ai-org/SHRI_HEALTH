@@ -245,7 +245,7 @@ function Prescription({ enc }: { enc: Encounter }) {
       subject: p.id,
       detail: `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${encounterLabel(enc)}${overridden.length > 0 ? ` · ${overridden.length} past a hard stop, dual-signed` : ''}${coded.length > 0 ? ` · indications ICD-10 ${coded.map((l) => `${l.drug}: ${l.indicationCode!.code}`).join('; ')}` : ''}`,
     })
-    toast({ tone: 'success', title: 'Prescription signed', detail: REAL_API ? 'Sent to the pharmacy.' : `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
+    toast({ tone: 'success', title: 'Prescription signed', detail: REAL_API ? 'Sending to the pharmacy. Each line shows its status.' : `HPR ${me.identifier} printed on it. Now in the pharmacy queue.` })
   }
 
   const items = `${basket.length} ${basket.length === 1 ? 'item' : 'items'} · ${p.payer}`

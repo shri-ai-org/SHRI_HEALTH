@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, ListChecks, Mic, OctagonAlert, TriangleAlert
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { patient } from '../../../shri-health/kit'
+import { summaryPatient } from '../../../shri-health/kit'
 import type { AttentionItem, FinishItem, Urgency } from '@/data/myday'
 
 import { Menu, MenuRow } from '../app/menus/Menu'
@@ -182,7 +182,7 @@ function Attention({ d, ordered, showRanking, onShowRanking }: { d: MyDay; order
 function AttentionRow({ item, onOpen, onDictate }: { item: AttentionItem; onOpen: () => void; onDictate: () => void }) {
   const tone = URGENCY_TONE[item.urgency]
   const crit = tone === 'crit'
-  const name = patient(item.patientId).name
+  const name = summaryPatient(item.patientId).name
   return (
     <li className={cn('flex items-center gap-[4px] rounded-[14px] pr-[4px]', crit && 'bg-(--attn-crit-row)')}>
       <button
