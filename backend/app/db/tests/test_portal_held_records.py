@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import MAPPERS, systems
 from app.db.tests import builders as b
+from app.db.tests.conftest import make_tenant, open_session
 from app.db.tests.test_portal_access import (
     DENIED,
     _as_patient,
@@ -98,6 +99,39 @@ def test_another_patients_hold_never_shows(portal_engine: Engine,
                                              True)}
         c.execute(text("SELECT set_config('app.current_patient_id', '', true)"))
         assert c.execute(text(HELD)).all() == []           # no session patient, nothing
+
+
+@pytest.mark.db
+def test_another_clinics_hold_never_shows(portal_engine: Engine, admin_engine: Engine,
+                                          app_engine: Engine, chart: dict[str, Any]) -> None:
+    """Thulasi's review of #355: the function runs as its owner, under the forced
+    tenant_isolation policy, so a hold in clinic B never shows to a session in clinic A, even
+    one naming clinic B's patient. The same hold shows in its own clinic."""
+    clinic_b = make_tenant(admin_engine)
+    s = open_session(app_engine, clinic_b)
+    try:
+        ctx = b.practice(s)
+        pt = b.patient(s, "Okafor904", "Other")
+        problem = b.condition(s, pt, b.encounter(s, pt, ctx, status="finished"))
+        s.add(M["release_hold"](patient_id=pt.id, reason="patient-request",
+                                held_by_user_id=ctx["user"].id, condition_id=problem.id))
+        s.flush()
+        patient_id, problem_id = pt.id, problem.id
+        s.commit()
+    finally:
+        s.close()
+        s.bind.close()  # type: ignore[union-attr]
+    expected = {("Condition", problem_id, patient_id, True)}
+    with portal_engine.begin() as c:
+        c.execute(text("SELECT set_config('app.current_tenant_id', :t, true), "
+                       "set_config('app.current_patient_id', :p, true)"),
+                  {"t": str(chart["tenant"]), "p": str(patient_id)})   # clinic A, B's patient
+        assert c.execute(text(HELD)).all() == []
+    with portal_engine.begin() as c:
+        c.execute(text("SELECT set_config('app.current_tenant_id', :t, true), "
+                       "set_config('app.current_patient_id', :p, true)"),
+                  {"t": str(clinic_b), "p": str(patient_id)})          # its own clinic
+        assert {tuple(r) for r in c.execute(text(HELD))} == expected
 
 
 @pytest.mark.db
