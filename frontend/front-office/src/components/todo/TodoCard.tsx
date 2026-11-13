@@ -5,6 +5,7 @@ import { useToast } from '../../hooks/useToast'
 import { useTodos } from '../../hooks/useTodos'
 import type { Todo } from '../../hooks/useTodos'
 import { cn } from '../../utils/cn'
+import { formatTimestampTime } from '../../domain/time'
 
 // The browser's own speech recognition (Chrome, Edge, Safari) — no library.
 interface Recognition {
@@ -48,7 +49,8 @@ const VOICE_ERROR: Record<string, { title: string; detail: string }> = {
   'language-not-supported': { title: 'Voice input doesn’t support this language here', detail: 'Tap + to type the task instead.' },
 }
 
-const savedTime = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+// The clinic's time (domain/time.ts), not the browser's.
+const savedTime = (at: number) => formatTimestampTime(at)
 
 /**
  * Quick to-do notes for the desk: + adds one (type, then Enter), the

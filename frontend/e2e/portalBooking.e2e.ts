@@ -11,9 +11,13 @@ const BASE = `http://localhost:${portalPort}`
 const PORTAL = `${BASE}/portal`
 
 test.skip(!process.env.SHRI_E2E_PORTAL_PATIENT, 'needs SHRI_E2E_PORTAL_PATIENT: a portal patient whose clinic books online')
+// The patient's browser is in India; dates and times on the screen are the clinic's (D40).
+test.use({ timezoneId: 'Asia/Kolkata' })
 
 interface Choice {
   facilityId: string
+  /** The facility's IANA time zone, from the API. */
+  timeZone: string
   typeId: string
   providerId: string
   day: string
@@ -28,17 +32,18 @@ async function json<T>(api: APIRequestContext, path: string): Promise<T> {
 
 /** The first bookable location, type and provider with at least three free times on one day. */
 async function bookable(api: APIRequestContext): Promise<Choice> {
-  const facilities = await json<{ items: { id: string }[] }>(api, '/portal/booking/facilities')
+  const facilities = await json<{ items: { id: string; timeZone: string }[] }>(api, '/portal/booking/facilities')
   for (const f of facilities.items) {
     const types = await json<{ items: { id: string }[] }>(api, `/portal/booking/appointment-types?facilityId=${f.id}`)
     for (const t of types.items) {
       for (let d = 2; d < 30; d++) {
-        const day = new Date(Date.now() + d * 86_400_000).toISOString().slice(0, 10)
+        // A day in the clinic's calendar, not the browser's or UTC's.
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: f.timeZone }).format(new Date(Date.now() + d * 86_400_000))
         const slots = await json<{ items: { startAt: string; providerId: string }[] }>(
           api, `/portal/me/slots?facilityId=${f.id}&appointmentTypeId=${t.id}&date=${day}`)
         const providerId = slots.items[0]?.providerId
         const own = slots.items.filter((s) => s.providerId === providerId)
-        if (providerId && own.length >= 3) return { facilityId: f.id, typeId: t.id, providerId, day, slots: own }
+        if (providerId && own.length >= 3) return { facilityId: f.id, timeZone: f.timeZone, typeId: t.id, providerId, day, slots: own }
       }
     }
   }
@@ -112,4 +117,26 @@ test('a patient books, meets a taken time, reschedules and cancels online', asyn
   const gone = await json<{ status: string }>(api, `/portal/me/appointments/${moved[0].id}`)
   expect(gone.status).toBe('cancelled')
   await api.dispose()
+})
+
+test("the booking times are the clinic's, from a browser in India", async ({ page }) => {
+  const api = await playwrightRequest.newContext({ baseURL: BASE })
+  const choice = await bookable(api)
+  await api.dispose()
+  // India: UTC+5:30 (Chrome names the zone Asia/Calcutta).
+  expect(await page.evaluate(() => [Intl.DateTimeFormat().resolvedOptions().timeZone, new Date().getTimezoneOffset()])).toEqual([expect.stringMatching(/^Asia\/(Kolkata|Calcutta)$/), -330])
+  await page.goto(`${PORTAL}/appointments/schedule`)
+  await page.getByLabel(/Select a location/).selectOption(choice.facilityId)
+  await page.getByLabel(/Select appointment type/).selectOption(choice.typeId)
+  await page.getByLabel(/Your providers/).selectOption(choice.providerId)
+  await page.getByLabel(/Appointment preferred date/).fill(usDate(choice.day))
+  await page.getByRole('button', { name: /Preferred time/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Select preferred timing' })
+  await expect(dialog.locator('button[aria-pressed]').first()).toBeVisible()
+  // Each free time as the clinic's clock reads it ("9:00 AM"), in the API's order.
+  const clinicTime = (at: string) =>
+    new Intl.DateTimeFormat('en-US', { timeZone: choice.timeZone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(at))
+  const shown = await dialog.locator('button[aria-pressed]').allTextContents()
+  // The screen reads every page of free times; the check read the first.
+  expect(shown.map((t) => t.trim()).slice(0, choice.slots.length)).toEqual(choice.slots.map((s) => clinicTime(s.startAt)))
 })

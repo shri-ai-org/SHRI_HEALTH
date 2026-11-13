@@ -6,6 +6,7 @@ import type { ResultFlag } from '../../api/types'
 import { useResource } from '../../api/useResource'
 import { Link } from '../../router'
 import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, HeldMarker, matches, PageHeader, Pager, SearchBox, Table, tableLink, usePaged } from '../../ui'
+import { useClinicTimeZone } from '../../clinicZone'
 
 /*
  * The old Health Summary record screens: a searchable list, and a detail page per record. Detail
@@ -13,10 +14,8 @@ import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, 
  * refresh and put health data in the address bar).
  */
 
-const TZ = 'America/Chicago'
 
 /** "Recorded" instants have no facility; they show as the patient's own calendar date. */
-const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 function Footer({ topic }: { topic: string }) {
   return <p className="mt-5 text-sm text-ink-muted">If you have questions or concerns regarding {topic}, please contact your provider.</p>
@@ -39,6 +38,7 @@ export function TestResultsPage() {
 }
 
 function TestResultTable({ list }: { list: Awaited<ReturnType<ReturnType<typeof usePortalApi>['listResults']>> }) {
+  const tz = useClinicTimeZone()
   const paged = usePaged(list, 10)
   return (
     <>
@@ -47,7 +47,7 @@ function TestResultTable({ list }: { list: Awaited<ReturnType<ReturnType<typeof 
         rows={paged.rows}
         rowKey={(r) => r.id}
         columns={[
-          { header: 'Date', cell: (r) => formatInstantShort(r.orderedAt, TZ) },
+          { header: 'Date', cell: (r) => formatInstantShort(r.orderedAt, tz) },
           { header: 'Test Name', rowHeader: true, cell: (r) => <Link to={`/test-results/${r.id}`} className={tableLink}>{r.name}</Link> },
           { header: 'Lab Name', cell: (r) => r.lab.name },
           { header: 'Order By', cell: (r) => r.orderedBy.displayName },
@@ -68,6 +68,7 @@ const FLAG: Record<ResultFlag, { label: string; tone: BadgeTone }> = {
 }
 
 export function TestResultDetailPage({ resultId }: { resultId: string }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const result = useResource(() => api.getResult(resultId), [resultId])
   const title = result.status === 'ready' ? `${result.data.code} - ${result.data.name} - Details` : 'Test Details'
@@ -102,8 +103,8 @@ export function TestResultDetailPage({ resultId }: { resultId: string }) {
             <Card title="General Information">
               <DefinitionList
                 items={[
-                  { term: 'Collected', value: formatInstantShort(r.collectedAt, TZ) },
-                  { term: 'Resulted', value: formatInstantShort(r.resultedAt, TZ) },
+                  { term: 'Collected', value: formatInstantShort(r.collectedAt, tz) },
+                  { term: 'Resulted', value: formatInstantShort(r.resultedAt, tz) },
                   { term: 'Order By', value: r.orderedBy.displayName },
                   { term: 'Result Status', value: { final: 'Final', preliminary: 'Preliminary', corrected: 'Corrected' }[r.status] },
                 ]}
@@ -178,6 +179,7 @@ export function HealthIssuesPage() {
 }
 
 export function HealthIssueDetailPage({ issueId }: { issueId: string }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const issue = useResource(() => api.getProblem(issueId), [issueId])
   return (
@@ -196,7 +198,7 @@ export function HealthIssueDetailPage({ issueId }: { issueId: string }) {
                     { term: 'Problem Status', value: <ProblemStatus {...(h.clinicalStatus ? { status: h.clinicalStatus } : {})} /> },
                     { term: 'Begin Date', value: h.onsetDate ? formatPartialDate(h.onsetDate) : '—' },
                     { term: 'End Date', value: h.abatementDate ? formatPartialDate(h.abatementDate) : 'Problem is still active' },
-                    { term: 'Recorded', value: h.recordedAt ? formatInstantShort(h.recordedAt, BROWSER_TZ) : '—' },
+                    { term: 'Recorded', value: h.recordedAt ? formatInstantShort(h.recordedAt, tz) : '—' },
                   ]}
                 />
               )}
@@ -254,6 +256,7 @@ export function AllergiesPage() {
 }
 
 export function AllergyDetailPage({ allergyId }: { allergyId: string }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const allergy = useResource(() => api.getAllergy(allergyId), [allergyId])
   return (
@@ -268,7 +271,7 @@ export function AllergyDetailPage({ allergyId }: { allergyId: string }) {
                   { term: 'Allergy Status', value: <Badge tone={ALLERGY_STATUS[a.clinicalStatus].tone}>{ALLERGY_STATUS[a.clinicalStatus].label}</Badge> },
                   { term: 'Reaction', value: reactionsOf(a) },
                   { term: 'Risk', value: a.criticality ? CRITICALITY[a.criticality] : '—' },
-                  { term: 'Recorded', value: a.recordedAt ? formatInstantShort(a.recordedAt, BROWSER_TZ) : '—' },
+                  { term: 'Recorded', value: a.recordedAt ? formatInstantShort(a.recordedAt, tz) : '—' },
                 ]}
               />
             </Card>

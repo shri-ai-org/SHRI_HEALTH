@@ -7,8 +7,8 @@ import { toProblem, useResource } from '../../api/useResource'
 import { Link } from '../../router'
 import { SignaturePad, type SignaturePadHandle } from '../../SignaturePad'
 import { AsyncPanel, formatInstantShort, PageHeader, Table, tableLink } from '../../ui'
+import { useClinicTimeZone } from '../../clinicZone'
 
-const TZ = 'America/Chicago'
 
 const REVIEW: Record<DocumentTemplate['reviewStatus'], { label: string; tone: BadgeTone }> = {
   'not-sent': { label: 'Not sent', tone: 'neutral' },
@@ -18,6 +18,7 @@ const REVIEW: Record<DocumentTemplate['reviewStatus'], { label: string; tone: Ba
 }
 
 export function DocumentTemplatesPage() {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const list = useResource(() => api.listTemplates(), [])
   return (
@@ -32,8 +33,8 @@ export function DocumentTemplatesPage() {
             rowKey={(t) => t.id}
             columns={[
               { header: 'Document', rowHeader: true, cell: (t) => <Link to={`/document-templates/${t.id}`} className={tableLink}>{t.name}</Link> },
-              { header: 'Create Date', cell: (t) => formatInstantShort(t.createdAt, TZ) },
-              { header: 'Review Date', cell: (t) => (t.reviewedAt ? formatInstantShort(t.reviewedAt, TZ) : '—') },
+              { header: 'Create Date', cell: (t) => formatInstantShort(t.createdAt, tz) },
+              { header: 'Review Date', cell: (t) => (t.reviewedAt ? formatInstantShort(t.reviewedAt, tz) : '—') },
               { header: 'Reviewed Status', cell: (t) => <Badge tone={REVIEW[t.reviewStatus].tone}>{REVIEW[t.reviewStatus].label}</Badge> },
               { header: 'Patient Signed Status', cell: (t) => <Badge tone={t.signed ? 'success' : 'warning'}>{t.signed ? 'Signed' : 'Not signed'}</Badge> },
             ]}

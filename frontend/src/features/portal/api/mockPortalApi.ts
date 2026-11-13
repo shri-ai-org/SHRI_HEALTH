@@ -28,7 +28,8 @@ import type {
  * Each call to createMockPortalApi() starts from fresh data, so tests do not leak into each other.
  */
 
-const TZ = 'America/Chicago'
+/** The sample practice's zone (a fixed example zone: the screens read the clinic's from the API). */
+const TZ = 'America/Los_Angeles'
 const PATIENT_ID = uid(1)
 
 /** Stable UUID-shaped IDs, so links keep working across reloads. */

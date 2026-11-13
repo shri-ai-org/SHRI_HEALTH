@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { encounterForPatient } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
+import { formatTime as clinicTime } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
 import { activeMedicines, prescriptionsFor, type RxItem } from '@/data/record'
 import { useClinical } from '@/store/clinical'
@@ -72,7 +73,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
       {today?.status === 'signed' && (
         <p role="status" className="flex items-center gap-[8px] rounded-[16px] bg-sh-norm-bg px-[16px] py-[12px] text-[14px] font-medium text-sh-norm-fg">
           <Icon icon={Signature} size={16} />
-          Today’s prescription was signed{today.signedAt ? ` at ${formatTime(new Date(today.signedAt))}` : ''}
+          Today’s prescription was signed{today.signedAt ? ` at ${REAL_API ? clinicTime(today.signedAt) : formatTime(new Date(today.signedAt))}` : ''}
           {today.signedBy ? ` by ${today.signedBy}` : ''}.
         </p>
       )}

@@ -7,7 +7,7 @@
 // Whose time: the clinic's. With the SHRI_HEALTH API (SHRI_API=real) that is
 // the facility's IANA time zone from the server (setClinicTimeZone, SHRI_HEALTH
 // D40), whatever the browser's own zone is — a desk in Chennai looking after a
-// clinic in Chicago sees Chicago's today and Chicago's times. With no zone set
+// clinic in San Jose sees San Jose's today and San Jose's times. With no zone set
 // (the sample data), it is the browser's, as before.
 
 export function pad2(value: number): string {
@@ -17,7 +17,7 @@ export function pad2(value: number): string {
 let clinicTimeZone: string | null = null
 let clinicFormat: Intl.DateTimeFormat | null = null
 
-/** The clinic's IANA time zone (e.g. "America/Chicago"); null goes back to the browser's. */
+/** The clinic's IANA time zone (e.g. "America/Los_Angeles"); null goes back to the browser's. */
 export function setClinicTimeZone(timeZone: string | null): void {
   clinicTimeZone = timeZone
   clinicFormat = timeZone

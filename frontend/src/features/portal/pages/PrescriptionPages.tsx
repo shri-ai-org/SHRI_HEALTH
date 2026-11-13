@@ -6,6 +6,7 @@ import type { Pharmacy, Prescription } from '../api/types'
 import { toProblem, useResource } from '../api/useResource'
 import { Link, useRouter } from '../router'
 import { AsyncPanel, Card, DefinitionList, ErrorSummary, formatInstantShort, formatShortDate, matches, PageHeader, Pager, SearchBox, usePaged } from '../ui'
+import { useClinicTimeZone } from '../clinicZone'
 
 const STATUS: Record<Prescription['requestStatus'], { label: string; tone: BadgeTone }> = {
   none: { label: '—', tone: 'neutral' },
@@ -160,6 +161,7 @@ function RefillForm({ list, pharmacies }: { list: Prescription[]; pharmacies: Ph
 
 /** The old "Prescription Refill Summary", now with every prescription and the pharmacy actually chosen. */
 export function RefillConfirmationPage({ refillRequestId }: { refillRequestId: string }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const req = useResource(() => api.getRefillRequest(refillRequestId), [refillRequestId])
   return (
@@ -177,7 +179,7 @@ export function RefillConfirmationPage({ refillRequestId }: { refillRequestId: s
                     { term: r.prescriptions.length === 1 ? 'Prescription' : 'Prescriptions', value: r.prescriptions.map((p) => p.drug).join(', ') },
                     { term: 'Pharmacy', value: `${r.pharmacy.displayName}, ${r.pharmacy.address}, ${formatPhone(r.pharmacy.phone)}` },
                     { term: 'Your message', value: r.message },
-                    { term: 'Sent', value: formatInstantShort(r.requestedAt, 'America/Chicago') },
+                    { term: 'Sent', value: formatInstantShort(r.requestedAt, tz) },
                   ]}
                 />
               </div>
