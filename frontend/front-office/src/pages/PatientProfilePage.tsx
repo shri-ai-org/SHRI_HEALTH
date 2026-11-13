@@ -144,6 +144,7 @@ export function PatientProfilePage() {
           admit: () => openFlow('admit', { uhid: patient.patientId }),
           discharge: () => openFlow('discharge', { uhid: patient.patientId }),
           togglePayments: () => setPaymentsOpen((open) => !open),
+          insurance: () => navigate(`/patients/${patient.patientId}/insurance`),
         }}
         paymentsOpen={paymentsOpen}
       />
