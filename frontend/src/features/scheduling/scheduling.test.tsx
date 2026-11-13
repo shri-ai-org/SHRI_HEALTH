@@ -10,7 +10,7 @@ import { PatientAppointmentsPanel } from './PatientAppointmentsPanel'
 import { SchedulePage } from './SchedulePage'
 
 // Synthetic data only.
-const TZ = 'America/Chicago'
+const TZ = 'America/Los_Angeles'
 const facility = { id: '00000000-0000-4000-8000-0000000003f1', code: 'MAIN', name: 'Test Main Clinic', timeZone: TZ }
 const type = { id: '00000000-0000-4000-8000-0000000003a1', code: 'FU', name: 'Follow-up', defaultDurationMinutes: 20 }
 const provider = { id: '00000000-0000-4000-8000-0000000003b1', displayName: 'Dr. Test Provider', facilityIds: [facility.id] }

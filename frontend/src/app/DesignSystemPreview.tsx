@@ -30,10 +30,10 @@ import {
 } from '../design-system'
 
 // The contract's own example people (API_STANDARDS §20), so the preview matches the mock server.
-const TZ = 'America/Chicago'
+const TZ = 'America/Los_Angeles'
 const APPOINTMENTS = [
-  { id: 'a1', startAt: '2026-11-03T14:30:00Z', patient: 'Kuhlman72, Ramona980', provider: 'Dr. Gerard14 Lowe58', type: 'Follow-up visit', status: 'Checked in' },
-  { id: 'a2', startAt: '2026-11-03T15:00:00Z', patient: 'Kuhlman72, Darius71', provider: 'Dr. Gerard14 Lowe58', type: 'New patient', status: 'Scheduled' },
+  { id: 'a1', startAt: '2026-11-03T16:30:00Z', patient: 'Kuhlman72, Ramona980', provider: 'Dr. Gerard14 Lowe58', type: 'Follow-up visit', status: 'Checked in' },
+  { id: 'a2', startAt: '2026-11-03T17:00:00Z', patient: 'Kuhlman72, Darius71', provider: 'Dr. Gerard14 Lowe58', type: 'New patient', status: 'Scheduled' },
 ]
 
 /** A page of every design-system component with synthetic data, for review and screenshots. */
@@ -129,7 +129,7 @@ export function DesignSystemPreview() {
                 <Card title="U.S. display formats">
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                     <Row label="Date of birth">{formatDate('1984-07-19')}</Row>
-                    <Row label="Appointment">{formatTime('2026-11-03T14:30:00Z', TZ)}</Row>
+                    <Row label="Appointment">{formatTime('2026-11-03T16:30:00Z', TZ)}</Row>
                     <Row label="Copay">{formatMoney({ value: '25.00', currency: 'USD' })}</Row>
                     <Row label="Balance">{formatMoney({ value: '1234.50', currency: 'USD' })}</Row>
                     <Row label="Phone">{formatPhone('+16175550123')}</Row>
@@ -226,8 +226,8 @@ export function DesignSystemPreview() {
               <SharedStatusBoard
                 timeZone={TZ}
                 items={[
-                  { appointmentId: 's1', initials: 'RK', startAt: '2026-11-03T14:30:00Z', status: 'checked-in', visitStatus: 'roomed' },
-                  { appointmentId: 's2', initials: 'DK', startAt: '2026-11-03T15:00:00Z', status: 'arrived', visitStatus: 'arrived' },
+                  { appointmentId: 's1', initials: 'RK', startAt: '2026-11-03T16:30:00Z', status: 'checked-in', visitStatus: 'roomed' },
+                  { appointmentId: 's2', initials: 'DK', startAt: '2026-11-03T17:00:00Z', status: 'arrived', visitStatus: 'arrived' },
                 ]}
               />
             ),

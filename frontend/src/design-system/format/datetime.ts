@@ -73,7 +73,7 @@ export function ageInYears(birthDate: string, today: string): number | null {
 export const TIME_ZONE_MISSING = 'time zone missing'
 
 /**
- * True for an IANA zone the browser knows (e.g. `America/Chicago`). The facility time zone may be
+ * True for an IANA zone the browser knows (e.g. `America/Los_Angeles`). The facility time zone may be
  * null until the schema lock, and Intl silently uses the browser's zone when none is given, which
  * API_STANDARDS §6.1 forbids; every formatter checks this first.
  */
@@ -103,7 +103,7 @@ export function todayIn(timeZone: string | null, now: Date = new Date()): string
 }
 
 /**
- * `2026-11-03T14:30:00Z` in America/Chicago → `8:30 AM CST`. 12-hour clock with the zone shown.
+ * `2026-11-03T16:30:00Z` in America/Los_Angeles → `8:30 AM PST`. 12-hour clock with the zone shown.
  * `timeZone` is required: pass the facility's `timeZone` from the response. If it is null or
  * invalid, the time is shown in UTC with a marker: `2:30 PM UTC · time zone missing`.
  */
@@ -120,7 +120,7 @@ export function formatTime(instant: string, timeZone: string | null, { withZone 
 }
 
 /**
- * `2026-11-03T14:30:00Z` in America/Chicago → `11/03/2026, 8:30 AM CST`. Same rule as formatTime
+ * `2026-11-03T16:30:00Z` in America/Los_Angeles → `11/03/2026, 8:30 AM PST`. Same rule as formatTime
  * when the zone is missing: `11/03/2026, 2:30 PM UTC · time zone missing`.
  */
 export function formatDateTime(instant: string, timeZone: string | null): string {

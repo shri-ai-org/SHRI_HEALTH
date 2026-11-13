@@ -11,7 +11,7 @@ import { TodayPage } from './TodayPage'
 import { bmi, EMPTY_VITALS, toVitalEntries } from './vitals'
 
 // Synthetic data only.
-const TZ = 'America/Chicago'
+const TZ = 'America/Los_Angeles'
 const facility = { id: '00000000-0000-4000-8000-0000000007f1', code: 'MAIN', name: 'Test Main Clinic', timeZone: TZ }
 const provider = { id: '00000000-0000-4000-8000-0000000007b1', displayName: 'Dr. Test Provider', facilityIds: [facility.id] }
 const patientId = '00000000-0000-4000-8000-0000000007aa'

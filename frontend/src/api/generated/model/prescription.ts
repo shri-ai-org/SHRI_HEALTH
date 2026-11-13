@@ -66,6 +66,11 @@ export interface Prescription {
   noteToPharmacy?: string;
   /** Who signed it. */
   prescriberId?: Id;
+  /**
+     * The signer's name as shown on screens (staff, not patient data), for the prescription's banner. Present once signed.
+     * @maxLength 200
+     */
+  readonly prescriberDisplayName?: string;
   /** When it was signed. */
   signedAt?: Timestamp;
   /** Delivery to the pharmacy. */
