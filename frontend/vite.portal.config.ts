@@ -8,6 +8,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/portal/',
   plugins: [react(), tailwindcss()],
+  // The real API unless SHRI_API=mock asks for the sample data, as the doctors' portal and the front
+  // office build: the screens still on sample data are then hidden (features.ts, M4).
+  define: { __SHRI_REAL_API__: JSON.stringify(process.env.SHRI_API !== 'mock') },
   build: {
     outDir: 'dist-portal',
     emptyOutDir: true,
