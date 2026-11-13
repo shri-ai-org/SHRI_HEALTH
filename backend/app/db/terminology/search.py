@@ -1,17 +1,22 @@
 """Code search over admin.concept (searchCodes, ``GET /codes``; demo steps 8 and 9).
 
-Best match first, in four classes, each by word similarity to the query, then the shorter name
-(a single product before a combination pack that contains it), then by code:
+Best match first, in four classes, each by a similarity score, then the shorter name (a single
+product before a combination pack that contains it), then by code:
   0  the code itself (``E11.9``, typed with or without its dot, any case);
   1  codes that start with the query;
   2  names that contain every word of the query, in any order (``diabetes type 2``);
   3  names close to the query word by word (pg_trgm's ``<%``), so a typo still finds them.
-The name search uses the trigram index on ``concept.display``. Only active concepts; for
+Within a class, the score is pg_trgm's ``similarity`` of the query to the whole name, which
+counts every extra word against a name, so "Essential (primary) hypertension" (I10) comes before
+"Pre-existing essential hypertension complicating childbirth" (O10.02) for "essential
+hypertension" (audit V3). For RxNorm it stays ``word_similarity``, the best-matching part of the
+name, as the drug search has always ranked. The name search uses the trigram index on
+``concept.display``. Only active concepts; for
 ICD-10-CM, ``billable_only`` leaves out header codes. For RxNorm only the products a prescriber
 can pick (SCD, SBD, GPCK, BPCK), each with its drug details from ``concept_property``.
 
-A page ends at a ``Position`` (class, similarity, name length, code); the next page starts
-after it.
+A page ends at a ``Position`` (class, score, name length, code); the next page starts after
+it.
 Reference data, not patient data: nothing here is audited.
 """
 from __future__ import annotations
@@ -72,7 +77,8 @@ WITH found AS (
               WHEN replace(upper(c.code), '.', '') LIKE :code_prefix THEN 1
               WHEN c.display ILIKE ALL (CAST(:words AS text[])) THEN 2
               ELSE 3 END AS rank,
-         CAST(word_similarity(:q, c.display) AS float8) AS similarity,
+         CAST(CASE WHEN :products_only THEN word_similarity(:q, c.display)
+                   ELSE similarity(:q, c.display) END AS float8) AS similarity,
          length(c.display) AS length
   FROM admin.concept c
   WHERE c.code_system_id = (SELECT id FROM admin.code_system WHERE uri = :system)

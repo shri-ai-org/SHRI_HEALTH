@@ -184,6 +184,56 @@ async def test_equal_matches_put_the_shorter_name_first(loaded: None, app_db: An
         _load_as_migrator(ORDER_FILE)   # the extra code is retired again
 
 
+#: Audit V3: names that contain "essential hypertension" word for word but say much more.
+HYPERTENSION = [
+    _line(8, "I159", True, "Secondary hypertension, unspecified"),
+    _line(9, "O1002", True, "Pre-existing essential hypertension complicating childbirth"),
+    _line(10, "O1003", True, "Pre-existing essential hypertension complicating the puerperium"),
+    _line(11, "O10011", True,
+          "Pre-existing essential hypertension complicating pregnancy, first trimester"),
+    _line(12, "R030", True, "Elevated blood-pressure reading, without diagnosis of hypertension"),
+]
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+async def test_the_general_name_comes_before_longer_ones_with_the_phrase(loaded: None,
+                                                                         app_db: Any) -> None:
+    """Within a class the whole name's similarity decides, so every extra word counts against a
+    name: I10 first for "essential hypertension" and for "hypertension", where the pregnancy
+    codes, which contain the phrase word for word, used to come first. Pages follow the same
+    order, without repeats or gaps."""
+    _load_as_migrator(ORDER_FILE + HYPERTENSION)
+    try:
+        for q in ("essential hypertension", "hypertension", "Essential  HYPERTENSION"):
+            every, last = await terms.search(app_db, "icd-10-cm", q, limit=50)
+            codes = [m.code for m in every]
+            assert last is None and codes[0] == "I10", (q, codes)
+            assert codes.index("I10") < min(codes.index(c) for c in codes if c.startswith("O10"))
+            seen, after = [], None
+            while True:
+                page, after = await terms.search(app_db, "icd-10-cm", q, after=after, limit=2)
+                seen += [m.code for m in page]
+                if after is None:
+                    break
+            assert seen == codes and len(set(seen)) == len(seen)
+        broad, _ = await terms.search(app_db, "icd-10-cm", "hypertension", limit=50)
+        assert [m.code for m in broad][:2] == ["I10", "I15.9"]
+    finally:
+        _load_as_migrator(ORDER_FILE)   # the extra codes are retired again
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+async def test_drug_search_keeps_its_word_similarity(loaded: None, app_db: Any) -> None:
+    """The V3 change is for code systems other than RxNorm: a drug's score is still the best
+    matching part of its name, so a product's order doesn't move."""
+    matches, _ = await terms.search(app_db, "rxnorm", "amoxicillin 500")
+    assert matches
+    best = matches[0].position
+    assert best.rank == 2 and best.similarity == pytest.approx(1.0)
+
+
 def _load_as_migrator(lines: list[str]) -> None:
     engine = create_engine(sync_url(), poolclass=NullPool)
 
