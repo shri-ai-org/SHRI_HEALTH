@@ -1394,6 +1394,17 @@
    "path": "/api/v1/fee-schedules",
    "permission": "practice-setup:read"
   },
+  "listImagingReports": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/imaging-reports",
+   "permission": "results:read"
+  },
   "listInboxItems": {
    "audit": {
     "action": "R",
@@ -1424,6 +1435,17 @@
    "method": "GET",
    "path": "/api/v1/lab-providers",
    "permission": "lab-providers:read"
+  },
+  "listLabResults": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/lab-results",
+   "permission": "results:read"
   },
   "listLocations": {
    "audit": {
