@@ -20,7 +20,7 @@ from .. import schemas, service
 from ..reference import LocationRow
 from ..repository import AppointmentRow
 
-NOW = datetime(2026, 11, 3, 18, 0, tzinfo=UTC)  # noon in Chicago
+NOW = datetime(2026, 11, 3, 20, 0, tzinfo=UTC)  # noon in San Jose
 ROOM = uuid4()
 
 
@@ -43,7 +43,7 @@ def _row(world: World) -> AppointmentRow:
         id=uuid4(), version=1, status=world.appointment, start=world.start,
         end=world.start + timedelta(minutes=20), minutes=20, patient_id=uuid4(),
         provider_id=None, location_id=None, facility_id=FACILITY_A,
-        time_zone="America/Chicago", type_id=None, type_code=None, type_name=None, reason=None,
+        time_zone="America/Los_Angeles", type_id=None, type_code=None, type_name=None, reason=None,
         comment=None, patient_instruction=None, same_day_add_on=False, overbook=False,
         cancel_code=None, cancel_text=None, cancelled_at=None, rescheduled_from_id=None,
         encounter_id=None, visit_status=None, visit_status_at=None, room_name=None,

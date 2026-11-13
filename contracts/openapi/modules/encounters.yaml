@@ -78,7 +78,7 @@ paths:
                     reasons: &id015
                     - text: Question about a refill
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-04T14:10:00Z'
                     participants: &id016
                     - role: rendering
@@ -169,7 +169,7 @@ paths:
                     appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-03T15:02:00Z'
                     participants: &id010
                     - role: rendering
@@ -475,7 +475,7 @@ paths:
                     appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-03T15:02:00Z'
                     participants: *id010
                     diagnoses: *id011
@@ -570,7 +570,7 @@ paths:
                     types: *id014
                     reasons: *id015
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-04T14:10:00Z'
                     participants: *id016
                     diagnoses: *id017

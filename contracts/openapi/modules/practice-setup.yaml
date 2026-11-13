@@ -59,7 +59,7 @@ paths:
                       id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                       code: MAIN
                       name: Test Clinic Main Street
-                      timeZone: America/Chicago
+                      timeZone: America/Los_Angeles
                       address: &id001
                         lines:
                         - 200 Test Avenue
@@ -123,7 +123,7 @@ paths:
                 value:
                   code: MAIN
                   name: Test Clinic Main Street
-                  timeZone: America/Chicago
+                  timeZone: America/Los_Angeles
                   address: *id001
                   phone: '+12175550110'
                   npi: '1234567893'
@@ -3475,8 +3475,8 @@ components:
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
-          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API;
-            `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
+          description: IANA time zone, e.g. `America/Los_Angeles`. Appointments display in this zone (D40). Required by the
+            API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
           x-phi: none
         address: &id034
           $ref: ../components/schemas/Address.yaml

@@ -26,7 +26,7 @@ from app.core.deps import DEV_USERS, CurrentUser
 from app.db.models import MAPPERS
 from app.db.seed.starter import NOTE_TEMPLATES
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
-from app.modules.scheduling.tests.conftest import Practice, setup_session
+from app.modules.scheduling.tests.conftest import ZONE, Practice, setup_session
 from app.modules.scheduling.tests.test_check_in_live import _check_in, _sql, _today_appointment
 
 from .test_notes_live import _icd, _terminology
@@ -528,7 +528,7 @@ def test_a_patients_visits_are_listed(client: Any, practice: Practice,
     assert [x["id"] for x in client("md").get(path).json()["items"]] == [first]
     asked = client("md").get(path, params={"status": "entered-in-error"}).json()["items"]
     assert [x["id"] for x in asked] == [second]
-    today = dt.datetime.now(dt.UTC).astimezone(ZoneInfo("America/Chicago")).date()
+    today = dt.datetime.now(dt.UTC).astimezone(ZoneInfo(ZONE)).date()
     assert [x["id"] for x in client("md").get(path, params={
         "dateFrom": today.isoformat(), "dateTo": today.isoformat()}).json()["items"]] == [first]
     tomorrow = (today + dt.timedelta(days=1)).isoformat()

@@ -214,18 +214,18 @@ def test_the_interval_counts_from_the_visits_day_in_the_facilitys_zone() -> None
     assert service.due_date(date(2026, 11, 3), 3, "month") == date(2027, 2, 3)
     assert service.due_date(date(2027, 1, 31), 1, "month") == date(2027, 2, 28)
     assert service.due_date(date(2028, 1, 31), 1, "month") == date(2028, 2, 29)
-    # 03:30 UTC on 4 November is still 3 November in Chicago: the visit's day there counts.
-    late = datetime(2026, 11, 4, 3, 30, tzinfo=UTC)
+    # 07:30 UTC on 4 November is still 3 November (23:30) in San Jose: the visit's day there counts.
+    late = datetime(2026, 11, 4, 7, 30, tzinfo=UTC)
     asked = schemas.FollowUpRequest(
         interval=schemas.FollowUpInterval(value=1, unit="week"), status="open",
         requested_by=MD, requested_at=late)
-    text = service.follow_up_text(asked, late, "America/Chicago", None)
+    text = service.follow_up_text(asked, late, "America/Los_Angeles", None)
     assert text is not None and "November 10, 2026" in text
     assert "November 11" in (service.follow_up_text(asked, late, "UTC", None) or "")
     booked = asked.model_copy(update={"status": "booked"})
-    on = datetime(2027, 2, 2, 15, 0, tzinfo=UTC)
-    assert service.follow_up_text(booked, late, "America/Chicago", on) == (
+    on = datetime(2027, 2, 2, 17, 0, tzinfo=UTC)
+    assert service.follow_up_text(booked, late, "America/Los_Angeles", on) == (
         "Your next visit is booked for February 2, 2027 at 9:00 AM.")
     for closed in ("declined", "withdrawn"):
         assert service.follow_up_text(asked.model_copy(update={"status": closed}), late,
-                                      "America/Chicago", None) is None
+                                      "America/Los_Angeles", None) is None

@@ -4917,7 +4917,7 @@ paths:
                         providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                         facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                         overbook: false
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -5043,7 +5043,7 @@ paths:
                         reasonForVisit: Follow-up on blood pressure
                         sameDayAddOn: false
                         overbook: false
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -5153,7 +5153,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5243,7 +5243,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5268,7 +5268,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5373,7 +5373,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5505,7 +5505,7 @@ paths:
                         sameDayAddOn: false
                         overbook: false
                     nextCursor: bzoyMA
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -5604,7 +5604,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5718,7 +5718,7 @@ paths:
                       startAt: '2026-11-03T15:00:00Z'
                       endAt: '2026-11-03T15:20:00Z'
                       durationMinutes: 20
-                      timeZone: America/Chicago
+                      timeZone: America/Los_Angeles
                       reasonForVisit: Follow-up on blood pressure
                       sameDayAddOn: false
                       overbook: false
@@ -5834,7 +5834,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -5934,7 +5934,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -6050,7 +6050,7 @@ paths:
                         status: checked-in
                         visitStatus: checked-in
                     date: '2026-11-03'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     facilityName: Test Clinic Main Street
                 staff:
                   summary: Staff view
@@ -6085,7 +6085,7 @@ paths:
                           note: Recheck blood pressure.
                           status: open
                     date: '2026-11-03'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     facilityName: Test Clinic Main Street
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -6149,7 +6149,7 @@ paths:
                       - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                         code: MAIN
                         name: Test Clinic Main Street
-                        timeZone: America/Chicago
+                        timeZone: America/Los_Angeles
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -6456,7 +6456,7 @@ paths:
                     startAt: '2026-11-03T15:40:00Z'
                     endAt: '2026-11-03T16:00:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -6565,7 +6565,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -6996,7 +6996,7 @@ paths:
                     reasons:
                       - text: Question about a refill
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-04T14:10:00Z'
                     participants:
                       - role: rendering
@@ -7083,7 +7083,7 @@ paths:
                     appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-03T15:02:00Z'
                     participants:
                       - role: rendering
@@ -7219,7 +7219,7 @@ paths:
                     appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-03T15:02:00Z'
                     participants:
                       - role: rendering
@@ -7459,7 +7459,7 @@ paths:
                     appointmentId: 1e2f3a4b-5c6d-4e7f-9a8b-9c0d1e2f3a4b
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     locationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-03T15:02:00Z'
                     participants:
                       - role: rendering
@@ -7913,7 +7913,7 @@ paths:
                     reasons:
                       - text: Question about a refill
                     facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     startedAt: '2026-11-04T14:10:00Z'
                     participants:
                       - role: rendering
@@ -14082,7 +14082,7 @@ paths:
                       - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                         code: MAIN
                         name: Test Clinic Main Street
-                        timeZone: America/Chicago
+                        timeZone: America/Los_Angeles
                         address:
                           lines:
                             - 200 Test Avenue
@@ -14146,7 +14146,7 @@ paths:
                 value:
                   code: MAIN
                   name: Test Clinic Main Street
-                  timeZone: America/Chicago
+                  timeZone: America/Los_Angeles
                   address:
                     lines:
                       - 200 Test Avenue
@@ -14183,7 +14183,7 @@ paths:
                     id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     code: MAIN
                     name: Test Clinic Main Street
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     address:
                       lines:
                         - 200 Test Avenue
@@ -14265,7 +14265,7 @@ paths:
                     id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     code: MAIN
                     name: Test Clinic Main Street
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     address:
                       lines:
                         - 200 Test Avenue
@@ -14353,7 +14353,7 @@ paths:
                     id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                     code: MAIN
                     name: Test Clinic Main Street
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     address:
                       lines:
                         - 200 Test Avenue
@@ -21227,7 +21227,7 @@ paths:
                       - id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
                         startAt: '2026-11-05T15:30:00Z'
                         endAt: '2026-11-05T15:50:00Z'
-                        timeZone: America/Chicago
+                        timeZone: America/Los_Angeles
                         status: booked
                         facility:
                           id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21257,7 +21257,7 @@ paths:
                       - id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
                         startAt: '2026-10-01T14:00:00Z'
                         endAt: '2026-10-01T14:20:00Z'
-                        timeZone: America/Chicago
+                        timeZone: America/Los_Angeles
                         status: fulfilled
                         facility:
                           id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21362,7 +21362,7 @@ paths:
                     id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
                     startAt: '2026-11-05T15:30:00Z'
                     endAt: '2026-11-05T15:50:00Z'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     status: booked
                     facility:
                       id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21454,7 +21454,7 @@ paths:
                     id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
                     startAt: '2026-11-05T15:30:00Z'
                     endAt: '2026-11-05T15:50:00Z'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     status: booked
                     facility:
                       id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21557,7 +21557,7 @@ paths:
                     id: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
                     startAt: '2026-11-05T15:30:00Z'
                     endAt: '2026-11-05T15:50:00Z'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     status: cancelled
                     facility:
                       id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21671,7 +21671,7 @@ paths:
                     id: d5e6f7a8-b9c0-4d1e-8f2a-3b4c5d6e7f8a
                     startAt: '2026-11-06T16:00:00Z'
                     endAt: '2026-11-06T16:20:00Z'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     status: booked
                     facility:
                       id: 5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c
@@ -21768,7 +21768,7 @@ paths:
                           state: IL
                           postalCode: '62701'
                           country: US
-                        timeZone: America/Chicago
+                        timeZone: America/Los_Angeles
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -30935,7 +30935,7 @@ components:
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
-          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
+          description: IANA time zone, e.g. `America/Los_Angeles`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
           x-phi: none
         address:
           $ref: '#/components/schemas/Address'
@@ -31024,7 +31024,7 @@ components:
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
-          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
+          description: IANA time zone, e.g. `America/Los_Angeles`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
           x-phi: none
         address:
           $ref: '#/components/schemas/Address'
@@ -31073,7 +31073,7 @@ components:
           type: string
           maxLength: 64
           pattern: ^[A-Za-z]+(/[A-Za-z0-9_+-]+)+$
-          description: IANA time zone, e.g. `America/Chicago`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
+          description: IANA time zone, e.g. `America/Los_Angeles`. Appointments display in this zone (D40). Required by the API; `facility.timezone` is still nullable in the schema, so NOT NULL is migration item A45.
           x-phi: none
         address:
           $ref: '#/components/schemas/Address'
