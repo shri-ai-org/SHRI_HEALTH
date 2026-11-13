@@ -30,8 +30,11 @@ COPY src ./src
 COPY dev ./dev
 COPY front-office ./front-office
 COPY doctors-portal ./doctors-portal
-# The patient portal is the root app's own build (vite.portal.config.ts: base /portal/).
+# The patient portal is the root app's own build (vite.portal.config.ts: base /portal/). Its
+# static files (public/: theme-init.js, the icons) are copied into dist-portal by Vite; without
+# them portal.html keeps "/theme-init.js", which falls through to the front office's HTML.
 COPY portal.html vite.portal.config.ts ./
+COPY public ./public
 RUN rm -rf front-office/node_modules doctors-portal/node_modules \
  && npm ci --ignore-scripts --no-audit --no-fund
 RUN BASE_PATH="${SHRI_BASE_PATH}/" npm run build -w front-office \

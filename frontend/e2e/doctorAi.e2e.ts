@@ -212,6 +212,52 @@ test('the assistant answers from the chart with sources, or says it is not in th
   expect(asked).toEqual(['What medications is this patient on?', 'Has the patient ever had surgery?'])
 })
 
+test('a partial answer shows what the chart says, and that it does not say it all', async ({ page, request }) => {
+  const { patientId } = await checkedInVisit(request)
+  await page.route('**/api/v1/ai/suggested-questions*', (route) => json(route, 200, { pageType: 'chart', questions: ['Summarize the recent visits.'] }))
+  await page.route('**/api/v1/ai/chart-questions', (route) => json(route, 202, operation('ai.chart-question', 'chart-answer', 'answer-1')))
+  await page.route('**/api/v1/ai/chart-answers/*', (route) => json(route, 200, {
+    id: randomUUID(), patientId, pageType: 'chart', question: 'Summarize the recent visits.', aiGenerated: true, createdAt: NOW,
+    generatedBy: { modelName: 'Claude (stub)', pipelineVersion: 'test' }, insufficientEvidence: true,
+    statements: [{ sequence: 1, text: 'The last finished visit was a diabetes follow-up.', sources: [{ resourceType: 'Encounter', resourceId: randomUUID(), label: 'Visit' }] }] }))
+
+  await page.goto(`${DOCTORS_URL}/patient/${patientId}/record`)
+  await page.getByRole('button', { name: 'Assistant' }).click()
+  await page.getByRole('button', { name: 'Summarize the recent visits.' }).click()
+  await expect(page.getByText('The last finished visit was a diabetes follow-up.')).toBeVisible()
+  await expect(page.getByText('The chart doesn’t fully answer this.')).toBeVisible()
+  await expect(page.getByText('Not in the chart.')).toHaveCount(0)
+})
+
+test('when the AI refuses or fails, the assistant stays open and says so on the question', async ({ page, request }) => {
+  const { patientId } = await checkedInVisit(request)
+  let refuse = true
+  await page.route('**/api/v1/ai/suggested-questions*', (route) => json(route, 200, { pageType: 'chart', questions: ['What medications is this patient on?'] }))
+  await page.route('**/api/v1/ai/chart-questions', (route) => refuse
+    ? json(route, 409, { type: 'about:blank', title: 'Conflict', status: 409, code: 'feature-disabled', detail: 'AI is switched off for this feature.' })
+    : json(route, 202, operation('ai.chart-question', 'chart-answer', 'answer-1')))
+  await page.route('**/api/v1/ai/chart-answers/*', (route) => json(route, 200, {
+    id: randomUUID(), patientId, pageType: 'chart', question: 'Any allergies?', aiGenerated: true, createdAt: NOW,
+    generatedBy: { modelName: 'Claude (stub)', pipelineVersion: 'test' }, insufficientEvidence: true, statements: [] }))
+
+  await page.goto(`${DOCTORS_URL}/patient/${patientId}/record`)
+  await page.getByRole('button', { name: 'Assistant' }).click()
+  await page.getByRole('button', { name: 'What medications is this patient on?' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'AI is unavailable right now.' })).toBeVisible()
+  // The drawer and the bubble stay; the next question can be asked.
+  await expect(page.getByLabel('Ask the assistant')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Assistant', exact: true }).first()).toBeVisible()
+  await page.getByLabel('Ask the assistant').fill('Has the patient had surgery?')
+  await page.getByRole('button', { name: 'Ask' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'AI is unavailable right now.' })).toHaveCount(2)
+  // When the AI is back, the same drawer answers.
+  refuse = false
+  await page.getByLabel('Ask the assistant').fill('Any allergies?')
+  await page.getByRole('button', { name: 'Ask' }).click()
+  await expect(page.getByText('Not in the chart.')).toBeVisible()
+  await expect(page.getByLabel('Ask the assistant')).toBeVisible()
+})
+
 test('with AI off for the clinic, the summary card leaves the record and the record still works', async ({ page, request }) => {
   const { patientId } = await checkedInVisit(request)
   await page.route('**/api/v1/ai/chart-summaries', (route) => json(route, 409, {
