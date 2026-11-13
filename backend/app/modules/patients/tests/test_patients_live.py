@@ -7,6 +7,7 @@ where ``TEST_DATABASE_URL`` is set. Synthetic data only.
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -430,10 +431,14 @@ def _directory_pharmacy(name: str, *, active: bool = True) -> str:
     pharmacy = uuid.uuid4()
     admin = create_engine(sync_url(), poolclass=NullPool)
     with admin.begin() as c:
-        c.execute(text("INSERT INTO admin.pharmacy (id, ncpdp_id, name, phone, city, state, "
-                       "is_mail_order, is_active) VALUES (:i, :n, :name, '+12175550190', "
-                       "'Springfield', 'IL', false, :a)"),
-                  {"i": pharmacy, "n": f"{pharmacy.int % 10**7:07d}", "name": name, "a": active})
+        # A random NCPDP ID, tried again on the rare clash with another test's (unique column).
+        while c.execute(text(
+                "INSERT INTO admin.pharmacy (id, ncpdp_id, name, phone, city, state, "
+                "is_mail_order, is_active) VALUES (:i, :n, :name, '+12175550190', "
+                "'Springfield', 'IL', false, :a) ON CONFLICT (ncpdp_id) DO NOTHING RETURNING id"),
+                {"i": pharmacy, "n": f"{secrets.randbelow(10**7):07d}", "name": name,
+                 "a": active}).first() is None:
+            pass
     admin.dispose()
     return str(pharmacy)
 
