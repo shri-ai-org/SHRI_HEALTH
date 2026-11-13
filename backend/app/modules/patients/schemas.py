@@ -173,6 +173,9 @@ class Patient(Out):
 
 
 class SearchCriteria(Closed):
+    # What was typed in a search box, from one letter (D117): every word matches the start of a
+    # name or of the MRN. Enough on its own.
+    query: Annotated[str, _text(100, min_length=1, pattern=r"\S")] | None = None
     family: Annotated[str, _text(100, min_length=2)] | None = None
     given: Annotated[str, _text(100, min_length=1)] | None = None
     birth_date: date | None = None

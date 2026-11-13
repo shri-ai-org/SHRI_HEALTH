@@ -137,6 +137,27 @@ def test_search_needs_an_identifier_or_two_criteria(as_user: Client) -> None:
     assert problem_code(response) == "business-rule-violation"
 
 
+def test_search_from_one_typed_letter(as_user: Client) -> None:
+    """D117: a search box sends what was typed; one letter is enough."""
+    created = register(as_user)
+    for typed in ("k", "Kai", "lind", "kaia lind", created["mrn"][:3]):
+        response = as_user("fd").post("/api/v1/patients/search",
+                                      json={"criteria": {"query": typed}})
+        assert response.status_code == 200, (typed, response.text)
+        assert created["id"] in [i["id"] for i in response.json()["items"]], typed
+    missing = as_user("fd").post("/api/v1/patients/search", json={"criteria": {"query": "kaia zz"}})
+    assert missing.status_code == 200 and missing.json()["items"] == []
+
+
+def test_a_typed_search_needs_a_letter_and_patients_search(as_user: Client) -> None:
+    for blank in ("", "   "):
+        response = as_user("fd").post("/api/v1/patients/search",
+                                      json={"criteria": {"query": blank}})
+        assert response.status_code == 422, (blank, response.text)
+    assert as_user("dsp").post("/api/v1/patients/search",
+                               json={"criteria": {"query": "k"}}).status_code == 403
+
+
 def test_search_refuses_a_bad_cursor_and_needs_patients_search(as_user: Client) -> None:
     bad = as_user("fd").post("/api/v1/patients/search", json={
         "criteria": {"mrn": "TEST-000001"}, "cursor": "bm90LWFuLW9mZnNldA"})

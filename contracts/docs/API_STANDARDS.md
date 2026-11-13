@@ -389,7 +389,7 @@ Response: `200` with the list envelope of `PatientSummary` items.
 
 | Rule | Detail |
 |---|---|
-| Minimum criteria | Patient search needs either an **exact identifier** (MRN, driver's license number, member ID, or the **full phone number**) or at least two criteria (for example family name of 2 or more characters + date of birth). Stops browsing the whole patient list. |
+| Minimum criteria | Patient search needs **what was typed in a search box** (`query`, from one letter, D117: every word matches the start of a name or of the MRN, at most 10 results per screen), an **exact identifier** (MRN, driver's license number, member ID, or the **full phone number**), or at least two criteria (for example family name of 2 or more characters + date of birth). The front desk often doesn't know a patient's full name or MRN; every search is audited with the patients it returned, so browsing stays visible (D117, amending D65). |
 | Phone search | The phone number is patient data, so it is only ever sent in the body. **Exact match on the full number only**, compared as normalized digits (E.164). **No partial-number search in the MVP**: partial matching makes it easy to fish through records (Vimal's answer to M7, 2026-10-22). |
 | Result cap | At most 50 results per page for patient search |
 | Logging | Criteria values are never logged. Audit records which criteria **fields** were used and which patient IDs were returned (SECURITY_MODEL §6). |

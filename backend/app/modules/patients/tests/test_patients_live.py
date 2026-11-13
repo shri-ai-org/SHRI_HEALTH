@@ -403,6 +403,28 @@ def test_search_treats_percent_and_underscore_as_letters(client: Any) -> None:
     assert brien.json()["id"] in [i["id"] for i in prefix]  # a real prefix still matches
 
 
+def test_a_typed_search_matches_the_start_of_any_name_or_the_mrn(client: Any) -> None:
+    """D117: every typed word starts a first, last or previous name, or the MRN; literal text;
+    ordered by last name, then first name."""
+    tag = uuid.uuid4().hex[:6]
+    zed = client("fd").post("/api/v1/patients", json=_body(f"Qzb{tag}Zed", identifiers=[])).json()
+    abe = client("fd").post("/api/v1/patients", json=_body(f"Qza{tag}Abe", identifiers=[])).json()
+
+    def ids(typed: str) -> list[str]:
+        found = client("fd").post("/api/v1/patients/search",
+                                  json={"criteria": {"query": typed}, "limit": 50})
+        assert found.status_code == 200, (typed, found.text)
+        return [i["id"] for i in found.json()["items"]]
+
+    both = ids("qz")
+    assert both.index(abe["id"]) < both.index(zed["id"])          # by last name
+    assert ids(f"qza{tag}") == [abe["id"]]
+    assert abe["id"] in ids(f"ma QZA{tag}")                        # first name + last name
+    assert ids(f"zz QZA{tag}") == []                               # every word must match
+    assert abe["id"] in ids(abe["mrn"][:-1].lower())               # the MRN's start
+    assert ids(f"%{tag}") == [] and ids(f"_za{tag}") == []         # literal, never a pattern
+
+
 def _directory_pharmacy(name: str, *, active: bool = True) -> str:
     """A pharmacy in the platform directory (synthetic; the directory has no clinic)."""
     pharmacy = uuid.uuid4()

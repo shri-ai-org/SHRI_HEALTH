@@ -320,6 +320,11 @@ class FakeRepository:
                 continue
             if criteria.mrn and p.mrn != criteria.mrn:
                 continue
+            if criteria.query:
+                names = [p.name.family.lower(), *(g.lower() for g in p.name.given or [])]
+                if not all(any(n.startswith(w) for n in names) or p.mrn.lower().startswith(w)
+                           for w in criteria.query.lower().split()):
+                    continue
             out.append(schemas.PatientSummary(
                 id=p.id, name=p.name, birth_date=p.birth_date, gender=p.gender, mrn=p.mrn,
                 phone_last4=p.phones[0].number[-4:] if p.phones else None,

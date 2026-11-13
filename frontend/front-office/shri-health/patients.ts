@@ -116,25 +116,20 @@ function reconcile(incoming: Patient[], full: boolean): void {
 export type SearchPlan = { criteria: PatientSearchRequestCriteria } | { needMore: string }
 
 /**
- * What the app bar's one search box can ask the API (SHRI_HEALTH API_STANDARDS §14.3: an exact
- * identifier, or at least two of last name, first name and date of birth). A 10-digit mobile or
- * an MRN is exact; a name needs both first and last names.
+ * What the app bar's one search box asks the API. A full 10-digit phone is an exact phone search;
+ * anything else is what was typed (`query`, D117), from the first letter: every word matches the
+ * start of a first, last, preferred or previous name, or of the MRN.
  */
 export function planSearch(query: string): SearchPlan {
   const q = query.trim()
+  if (!q) return { needMore: 'Type a name, an MRN or a 10-digit mobile.' }
   const digits = q.replace(/\D/g, '')
   if (digits.length >= 10 && /^[+\d\s()-]+$/.test(q)) return { criteria: { phone: toE164(digits) } }
-  if (/\d/.test(q) && /^[A-Za-z0-9-]+$/.test(q)) return { criteria: { mrn: q.toUpperCase() } }
-  const words = q.split(/\s+/).filter((w) => w.length > 0)
-  if (words.length >= 2 && words[words.length - 1]!.length >= 2) {
-    return { criteria: { given: words[0]!, family: words[words.length - 1]! } }
-  }
-  return { needMore: 'Type the first and last name, a 10-digit mobile, or the MRN.' }
+  return { criteria: { query: q } }
 }
 
-/** Searches the API and puts the matches in the store. Returns them, best first as the API orders them. */
 export async function searchPatientsOnServer(criteria: PatientSearchRequestCriteria, signal?: AbortSignal): Promise<Patient[]> {
-  const res = await apiSearchPatients({ criteria, limit: 8 }, signal ? { signal } : undefined)
+  const res = await apiSearchPatients({ criteria, limit: 10 }, signal ? { signal } : undefined)
   const found = res.status === 200 ? res.data.items.map(fromSummary) : []
   reconcile(found, false)
   return found

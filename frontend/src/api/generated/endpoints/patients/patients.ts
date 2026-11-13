@@ -150,7 +150,7 @@ export const getSearchPatientsUrl = () => {
 }
 
 /**
- * Finds patients by name, date of birth, phone or identifier (inventory #28). Criteria go in the body, never in the URL (D13, ADR-0005). Phone is an exact match on the full number. Restricted patients appear with summary fields only and `restricted: true`. At most 50 per page.
+ * Finds patients by name, date of birth, phone or identifier (inventory #28). Criteria go in the body, never in the URL (D13, ADR-0005). A search box sends `query` from the first letter typed (D117): every word matches the start of a name or of the MRN. Phone is an exact match on the full number. Restricted patients appear with summary fields only and `restricted: true`. At most 50 per page. Every search is audited with the patients it returned.
  * @summary Search patients
  */
 export const searchPatients = async (patientSearchRequest: PatientSearchRequest, options?: Parameters<typeof apiFetch>[1]): Promise<searchPatientsResponse> => {
