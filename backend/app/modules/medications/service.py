@@ -234,7 +234,9 @@ def to_prescription(row: PrescriptionRow) -> schemas.Prescription:
         days_supply=int(row.days_supply) if row.days_supply is not None else None,
         refills=row.refills, substitution_allowed=row.substitution_allowed,
         pharmacy_id=row.pharmacy_id, note_to_pharmacy=row.note_to_pharmacy,
-        prescriber_id=row.signed_by, signed_at=row.signed_at,
+        prescriber_id=row.signed_by,
+        prescriber_display_name=row.signer_name[:200] if row.signer_name else None,
+        signed_at=row.signed_at,
         transmission=schemas.Transmission(
             status=t.status, updated_at=t.updated_at,
             message=t.message if t.status in ("rejected", "error") else None)
