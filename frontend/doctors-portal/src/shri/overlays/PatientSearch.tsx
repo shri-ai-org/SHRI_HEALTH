@@ -129,7 +129,8 @@ function Palette() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14px] font-medium">{p.name}</span>
                     <span className="block truncate text-[12px] tabular-nums text-sh-text-3">
-                      {p.uhid} · {p.age}/{p.sex} · {p.bed ?? 'outpatient'}
+                      {/* With the API a search result has no bed or place, so nothing is said about one. */}
+                      {REAL_API ? `${p.uhid} · ${p.age}/${p.sex}` : `${p.uhid} · ${p.age}/${p.sex} · ${p.bed ?? 'outpatient'}`}
                     </span>
                   </span>
                   <Icon icon={ChevronRight} size={16} className="text-sh-chev" />

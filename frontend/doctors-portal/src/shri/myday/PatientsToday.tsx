@@ -23,6 +23,8 @@ import { Card, CountBubble, Icon, Pill, StatusPill } from '../ui/primitives'
 
 import { rowPatient, useMyDay } from './useMyDay'
 
+/** The place as a reader sees it (Vimal: a clinic session is "Clinic"); the rows' own label stays the key ('OPD' is matched elsewhere). */
+const PLACE_WORD: Record<string, string> = { OPD: 'Clinic' }
 const PLACE_KEY: Record<string, Place> = { OPD: 'opd', Teleconsult: 'tele', Telestroke: 'tele', Ward: 'ward', ICU: 'icu', ED: 'ed' }
 const PLACE_ICON: Record<Place, LucideIcon> = { opd: UserRound, tele: Video, ward: BedDouble, icu: HeartPulse, ed: Ambulance }
 const MARK_TONE: Record<RowMark['tone'], Tone> = { critical: 'crit', attention: 'warn', normal: 'norm', neutral: 'neu' }
@@ -93,7 +95,7 @@ export function PatientsToday({ className }: { className?: string }) {
     ) : d.stroke ? (
       <p>No spoke is waiting on a telestroke consult.</p>
     ) : patientTab === 'opd' ? (
-      <p>No one is booked into OPD today.</p>
+      <p>No visits are booked today.</p>
     ) : (
       <p>No inpatients are assigned to you. An admission under your name would put them here.</p>
     )
@@ -121,7 +123,7 @@ export function PatientsToday({ className }: { className?: string }) {
               </button>
             )}
             <div role="tablist" aria-label="Patients Today" className="flex items-center gap-[4px]">
-              <Tab active={patientTab === 'opd'} icon={UserRound} label="OPD" count={d.opd.length} onClick={() => setPatientTab('opd')} />
+              <Tab active={patientTab === 'opd'} icon={UserRound} label="Today’s visits" count={d.opd.length} onClick={() => setPatientTab('opd')} />
               {!REAL_API && <Tab active={patientTab === 'ip'} icon={BedDouble} label="Inpatients" count={d.inpatients.length} onClick={() => setPatientTab('ip')} />}
             </div>
           </>
@@ -137,7 +139,7 @@ export function PatientsToday({ className }: { className?: string }) {
         ref={listRef}
         onScroll={measure}
         role={d.stroke ? undefined : 'tabpanel'}
-        aria-label={d.stroke ? 'Telestroke requests from the spokes' : patientTab === 'opd' ? "Today's OPD patients" : 'Inpatients under you'}
+        aria-label={d.stroke ? 'Telestroke requests from the spokes' : patientTab === 'opd' ? "Today's visits" : 'Inpatients under you'}
         className={cn(
           // A 6px gutter whose thumb shows on hover; Firefox (no ::-webkit-scrollbar) gets its thin bar instead.
           '-mx-[6px] min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-transparent [&:hover::-webkit-scrollbar-thumb]:bg-sh-line-strong supports-[not_selector(::-webkit-scrollbar)]:[scrollbar-width:thin]',
@@ -198,8 +200,8 @@ function PatientRowItem({ row, showKind }: { row: PatientListRow; showKind: bool
       <span
         className="sh-place relative inline-flex size-[42px] items-center justify-center rounded-[14px] bg-(--p-bg) text-(--p-fg)"
         data-place={place}
-        title={row.place.label}
-        aria-label={row.place.label}
+        title={PLACE_WORD[row.place.label] ?? row.place.label}
+        aria-label={PLACE_WORD[row.place.label] ?? row.place.label}
         role="img"
       >
         <Icon icon={PLACE_ICON[place]} size={20} />

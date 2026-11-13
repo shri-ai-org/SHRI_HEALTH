@@ -13,8 +13,12 @@ import type { ReactNode } from 'react'
 import { HUB, type Patient } from '@/data/kit'
 import { useUI } from '@/store/ui'
 
+import { clinicName } from '../../../shri-health/opd'
+
 import { Dialog } from './Dialog'
 import { Pill } from './primitives'
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 export interface PrintSection {
   heading: string
@@ -44,7 +48,12 @@ export function PrintPreview({
   footer?: ReactNode
 }) {
   const toast = useUI((s) => s.toast)
-  const printer = patient?.bed ? `${patient.bed.split('-')[0]} ward printer` : 'OPD front-desk printer'
+  // With the API: the clinic's own name from the API (never the sample hospital), U.S. wording, and
+  // the patient's MRN; no letterhead line at all when the names weren't read.
+  const hub = REAL_API ? clinicName() : HUB.name
+  // U.S. paper with the API: Letter where the sample screens said A4 (A5 stays A5).
+  const size = REAL_API && paper === 'A4' ? 'Letter' : paper
+  const printer = REAL_API ? 'Front-desk printer' : patient?.bed ? `${patient.bed.split('-')[0]} ward printer` : 'OPD front-desk printer'
 
   return (
     <Dialog
@@ -52,8 +61,8 @@ export function PrintPreview({
       onClose={onClose}
       width={760}
       icon={Printer}
-      title={`Print preview · ${paper}`}
-      subtitle={`${HUB.name} · ${printer}`}
+      title={`Print preview · ${size}`}
+      subtitle={hub ? `${hub} · ${printer}` : printer}
       footer={
         <>
           {footer}
@@ -65,7 +74,7 @@ export function PrintPreview({
             size="lg"
             icon={Printer}
             onClick={() => {
-              toast({ tone: 'success', title: 'Sent to print', detail: `${title} · ${paper} · ${printer}.` })
+              toast({ tone: 'success', title: 'Sent to print', detail: `${title} · ${size} · ${printer}.` })
               onClose()
               try {
                 window.print()
@@ -81,19 +90,21 @@ export function PrintPreview({
     >
       <article
         className="mx-auto max-h-[60dvh] overflow-y-auto rounded-[12px] px-[32px] py-[28px] shadow-sh-pop"
-        style={{ maxWidth: paper === 'A5' ? '30rem' : '40rem', background: 'var(--paper)', color: 'var(--paper-ink)' }}
+        style={{ maxWidth: size === 'A5' ? '30rem' : '40rem', background: 'var(--paper)', color: 'var(--paper-ink)' }}
       >
         <header className="pb-[12px]" style={{ borderBottom: '1px solid var(--paper-line)' }}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--paper-muted)' }}>
-            {HUB.name}
-          </p>
+          {hub && (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--paper-muted)' }}>
+              {hub}
+            </p>
+          )}
           <h1 className="mt-[4px] text-[20px] font-bold">{title}</h1>
           {patient && (
             <p className="mt-[4px] text-[14px]">
               <span className="font-semibold">{patient.name}</span>
-              {patient.nameNative && <span className="ml-[6px]">{patient.nameNative}</span>} · {patient.age}/{patient.sex} ·{' '}
-              <span className="tabular-nums">{patient.uhid}</span>
-              {patient.bed && ` · ${patient.bed}`}
+              {!REAL_API && patient.nameNative && <span className="ml-[6px]">{patient.nameNative}</span>} · {patient.age}/{patient.sex} ·{' '}
+              <span className="tabular-nums">{REAL_API ? `MRN ${patient.uhid}` : patient.uhid}</span>
+              {!REAL_API && patient.bed && ` · ${patient.bed}`}
             </p>
           )}
           {meta && (

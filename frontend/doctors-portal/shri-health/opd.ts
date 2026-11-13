@@ -158,18 +158,33 @@ export function hasPermission(permission: string): boolean {
 /** The signed-in user (roles, practitioner), known once loadClinic() has run. */
 export const signedInUser = (): SessionUser | undefined => signedIn
 
+/** The clinic's own names (GET /me's organization, the user's facility), for printouts; none until read. */
+let clinicNames: { organization?: string; facility?: string } = {}
+
+/** "Clinic · Facility" as the API names them, or undefined when they weren't read (never sample data). */
+export function clinicName(): string | undefined {
+  const { organization, facility } = clinicNames
+  return [organization, facility && facility !== organization ? facility : undefined].filter(Boolean).join(' · ') || undefined
+}
+
 /** The user's facility (GET /me, or the session where /me isn't built yet) and its time zone. */
 export async function userFacility(): Promise<BookableFacility | undefined> {
   const user = await getMe()
     .then((res) => {
       permissions = (res.data as Me).permissions
+      clinicNames = { organization: (res.data as Me).organization?.name }
       return (res.data as Me).user
     })
-    .catch(async () => ((await getSession()).data as Session).user)
+    .catch(async () => {
+      const session = (await getSession()).data as Session
+      clinicNames = { organization: session.organization?.name }
+      return session.user
+    })
   signedIn = user
   const facilities = ((await listBookableFacilities({ limit: 100 })).data as { items: BookableFacility[] }).items
   const facility = facilities.find((f) => user.facilityIds.includes(f.id)) ?? facilities[0]
   if (facility) setFacilityTimeZone(facility.timeZone)
+  if (facility) clinicNames = { ...clinicNames, facility: facility.name }
   return facility
 }
 

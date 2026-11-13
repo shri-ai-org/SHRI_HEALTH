@@ -56,7 +56,7 @@ export type ItemKind = ActivityKind | 'blocked' | 'free' | 'off'
 
 export const KIND_LABEL: Record<ItemKind, string> = {
   brief: 'Morning brief',
-  opd: 'OPD',
+  opd: 'Clinic',
   tele: 'Teleconsult',
   ward: 'Ward round',
   paper: 'Paperwork',

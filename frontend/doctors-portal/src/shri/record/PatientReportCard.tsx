@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 
 import { encounterForPatient } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
+import { clinicDate } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
 import { activeMedicines, conditionFor, pastNotesFor, type ConditionStatus } from '@/data/record'
 
@@ -21,7 +22,7 @@ import { medicationsFor } from '../../../shri-health/medications'
 import { nextOf, pastNotesFor as notesOnServer } from '../../../shri-health/record'
 import { Card, PillTag, StatusPill } from '../ui/primitives'
 
-const VISIT_WORD = { IP: 'Inpatient', OP: 'OPD', ED: 'ED', TELE: 'Teleconsult' } as const
+const VISIT_WORD = { IP: 'Inpatient', OP: 'Clinic', ED: 'ED', TELE: 'Teleconsult' } as const
 
 /** The status's icon, so the word never rides on colour alone. */
 const STATUS_ICON: Record<ConditionStatus, LucideIcon> = {
@@ -33,6 +34,11 @@ const STATUS_ICON: Record<ConditionStatus, LucideIcon> = {
 }
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** A day in the clinic's zone, U.S. style ("Nov 13, 2026"), with the API; the sample screens keep their own. */
+function sinceDay(at: Date | string): string {
+  return REAL_API ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(clinicDate(at)) : formatDate(typeof at === 'string' ? new Date(at) : at)
+}
 
 export function PatientReportCard({ patient: p, className }: { patient: Patient; className?: string }) {
   // SHRI_HEALTH: with the API, the medicines (listMedications), the last note and the next booking are
@@ -90,7 +96,7 @@ export function PatientReportCard({ patient: p, className }: { patient: Patient;
             </span>
           )}
         </Fact>
-        <Fact label="Prescriptions" sub={meds[0] && `since ${formatDate(meds[0].since)} · ${meds[0].by}`}>
+        <Fact label="Prescriptions" sub={meds[0] && `since ${sinceDay(meds[0].since)} · ${meds[0].by}`}>
           {meds.length === 0 ? 'Nothing current' : meds.slice(0, 3).map((m) => [m.drug, m.dose, m.frequency].filter(Boolean).join(' ')).join(' · ')}
           {meds.length > 3 && <span className="text-sh-text-3"> · +{meds.length - 3} more</span>}
         </Fact>
