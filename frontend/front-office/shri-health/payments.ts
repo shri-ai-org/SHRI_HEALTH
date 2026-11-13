@@ -34,17 +34,27 @@ export interface CopayForm {
 export class CopayRefusal extends Error {
   readonly status: number
   readonly pointer: string | null
+  /** M11: the visit's existing payment, when the server refused a second copay (409). */
+  readonly paymentId: string | null
 
-  constructor(message: string, status: number, pointer: string | null = null) {
+  constructor(message: string, status: number, pointer: string | null = null, paymentId: string | null = null) {
     super(message)
     this.status = status
     this.pointer = pointer
+    this.paymentId = paymentId
   }
 }
+
+/** M11: the server refused a second copay for this visit (409 with the existing payment's ID). */
+export const isSecondCopay = (r: CopayRefusal) => r.status === 409 && r.paymentId !== null
 
 function refusal(e: unknown): CopayRefusal {
   if (e instanceof ApiError) {
     const first = Array.isArray(e.problem.errors) ? e.problem.errors[0] : undefined
+    const paymentId = typeof e.problem.paymentId === 'string' ? e.problem.paymentId : null
+    if (e.status === 409 && paymentId) {
+      return new CopayRefusal('A copay is already recorded for this visit. A second one can’t be taken unless the first is refunded.', 409, first?.pointer ?? null, paymentId)
+    }
     return new CopayRefusal(problemMessage(e), e.status, first?.pointer ?? null)
   }
   return new CopayRefusal(e instanceof Error ? e.message : String(e), 0)
