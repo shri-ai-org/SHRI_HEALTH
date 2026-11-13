@@ -12,9 +12,18 @@ export const NOW = new Date(2026, 8, 21, 8, 40, 0) // Mon 21 Sep 2026, 08:40 IST
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-/** `21-Sep-2026`. Never MM/DD. */
+/**
+ * SHRI_HEALTH: with the API (a U.S. clinic), dates and times read U.S. style ("Nov 13, 2026",
+ * "9:40 AM"); the sample screens keep the formats below. The same date fields are read either
+ * way (a clinic-time Date reads as the clinic's day), so only the wording changes (final audit,
+ * 13 Nov).
+ */
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** `21-Sep-2026`. Never MM/DD. With the API: `Sep 21, 2026`. */
 export function formatDate(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d
+  if (REAL_API) return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
   return `${pad(date.getDate())}-${MONTHS[date.getMonth()]}-${date.getFullYear()}`
 }
 
@@ -24,16 +33,20 @@ export function formatDateLong(d: Date | string): string {
   return `${DAYS[date.getDay()]} ${formatDate(date)}`
 }
 
-/** `14:30`. §5.4 — 24-hour in every clinical context, never 2:30 PM. */
+/** `14:30`. §5.4 — 24-hour in every clinical context, never 2:30 PM. With the API: `2:30 PM` (U.S.). */
 export function formatTime(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d
+  if (REAL_API) {
+    const h = date.getHours()
+    return `${h % 12 || 12}:${pad(date.getMinutes())} ${h < 12 ? 'AM' : 'PM'}`
+  }
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-/** `21-Sep-2026 14:30`. */
+/** `21-Sep-2026 14:30`. With the API: `Sep 21, 2026, 2:30 PM`. */
 export function formatDateTime(d: Date | string): string {
   const date = typeof d === 'string' ? new Date(d) : d
-  return `${formatDate(date)} ${formatTime(date)}`
+  return REAL_API ? `${formatDate(date)}, ${formatTime(date)}` : `${formatDate(date)} ${formatTime(date)}`
 }
 
 /**
