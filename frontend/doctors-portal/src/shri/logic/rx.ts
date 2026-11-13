@@ -36,8 +36,16 @@ export function proposedBasket(patientId: string): RxLine[] {
 /** The durations a line offers, in days (30 and 90 are the usual U.S. days supply for a maintenance drug). */
 export const DURATIONS = [3, 5, 7, 14, 30, 90, 180]
 
-/** The routes and frequencies a line offers after its own. */
-export const ROUTE_FREQUENCIES = ['IV · 12-hourly', 'Oral · once daily']
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/**
+ * The routes and frequencies a line offers after its own. With the API, U.S. wording: the sample's
+ * "12-hourly" is "every 12 hours", next to the usual daily counts. The contract carries the sig as
+ * text (`dosageText`), so these are words, not codes.
+ */
+export const ROUTE_FREQUENCIES = REAL_API
+  ? ['Oral · once daily', 'Oral · twice daily', 'Oral · three times daily', 'Oral · every 12 hours', 'Oral · at bedtime', 'IV · every 12 hours']
+  : ['IV · 12-hourly', 'Oral · once daily']
 
 /** A line added from the formulary states nothing yet: the old screen's placeholders, and no duration. */
 export function newLine(drug: string): Omit<RxLine, 'id'> {
