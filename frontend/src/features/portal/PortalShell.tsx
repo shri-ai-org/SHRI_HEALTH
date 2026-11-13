@@ -4,6 +4,7 @@ import { cn } from '../../design-system/lib/cn'
 import { usePortalApi } from './api/portalApi'
 import { useResource } from './api/useResource'
 import { accentFor } from './accent'
+import { ClinicZone } from './clinicZone'
 import { pathEnabled } from './features'
 import { Link, useRouter } from './router'
 import { useSession } from './session'
@@ -165,7 +166,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
       {open === 'mobile' ? <MobileNav path={path} unread={unread} onClose={() => setOpen('none')} onSignOut={() => signOut('signed-out')} /> : null}
 
       <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-12 outline-none">
-        {children}
+        <ClinicZone>{children}</ClinicZone>
       </main>
 
       <footer className="border-t-4 border-(--accent) bg-surface-1">

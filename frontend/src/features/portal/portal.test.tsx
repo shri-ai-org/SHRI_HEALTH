@@ -287,7 +287,7 @@ describe('appointments (B8a)', () => {
     await user.click(screen.getByRole('button', { name: 'Schedule' }))
     expect(await screen.findByText(/Appointment is scheduled successfully on/)).toBeInTheDocument()
     const [book] = server.to('POST', '/portal/me/appointments')
-    expect(book?.body).toEqual({ facilityId: IDS.facility, appointmentTypeId: IDS.officeVisit, providerId: IDS.provider, startAt: `${futureWeekday().iso}T15:00:00.000Z`, reasonCode: 'follow-up' })
+    expect(book?.body).toEqual({ facilityId: IDS.facility, appointmentTypeId: IDS.officeVisit, providerId: IDS.provider, startAt: `${futureWeekday().iso}T17:00:00.000Z`, reasonCode: 'follow-up' })
     expect(book?.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
   })
 

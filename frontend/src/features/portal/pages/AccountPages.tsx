@@ -7,12 +7,12 @@ import { toProblem, useResource } from '../api/useResource'
 import { useRouter } from '../router'
 import { SignaturePad, type SignaturePadHandle } from '../SignaturePad'
 import { AsyncPanel, ErrorSummary, formatInstantShort, PageHeader } from '../ui'
+import { useClinicTimeZone } from '../clinicZone'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const NAME = /^[A-Za-z][A-Za-z .'-]*$/
 
 /** Times with no facility (when a request was sent, a signature saved) show in the patient's own zone. */
-const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /* ---------- Demographics and Profile Information ---------- */
 
@@ -208,6 +208,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function DemographicsForm({ profile, onEdit, onSent }: { profile: PortalProfile; onEdit: () => void; onSent: () => void }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const { navigate } = useRouter()
   const [initial] = useState(() => formFrom(profile))
@@ -291,7 +292,7 @@ function DemographicsForm({ profile, onEdit, onSent }: { profile: PortalProfile;
           <ul className="list-disc pl-5">
             {profile.pendingChangeRequests.map((r) => (
               <li key={r.id}>
-                Sent {formatInstantShort(r.submittedAt, BROWSER_TZ)}: {changedFieldNames(r.changes)}
+                Sent {formatInstantShort(r.submittedAt, tz)}: {changedFieldNames(r.changes)}
               </li>
             ))}
           </ul>
@@ -400,6 +401,7 @@ function DemographicsForm({ profile, onEdit, onSent }: { profile: PortalProfile;
 /* ---------- E-Signature ---------- */
 
 export function ESignaturePage() {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const pad = useRef<SignaturePadHandle>(null)
   const [empty, setEmpty] = useState(true)
@@ -412,7 +414,7 @@ export function ESignaturePage() {
     try {
       const s = await api.saveSignature(pad.current.toDataUrl())
       pad.current.clear()
-      setNotice({ tone: 'success', text: `Signature saved ${formatInstantShort(s.savedAt, BROWSER_TZ)}. Select View to see it.` })
+      setNotice({ tone: 'success', text: `Signature saved ${formatInstantShort(s.savedAt, tz)}. Select View to see it.` })
     } catch (err) {
       setNotice({ tone: 'critical', text: problemCopy(toProblem(err)).message })
     } finally {

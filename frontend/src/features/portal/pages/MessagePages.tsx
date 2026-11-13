@@ -8,13 +8,13 @@ import { toProblem, useResource } from '../api/useResource'
 import { Link, useRouter } from '../router'
 import { useSession } from '../session'
 import { AsyncPanel, ErrorSummary, matches, PageHeader, Pager, SearchBox, usePaged } from '../ui'
+import { useClinicTimeZone } from '../clinicZone'
 
 type Folder = 'inbox' | 'sent' | 'trash'
 const TITLES: Record<Folder, string> = { inbox: 'Inbox', sent: 'Sent', trash: 'Trash' }
-const TZ = 'America/Chicago'
-
-function when(instant: string): string {
-  return new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(instant))
+/** When a message was sent, in the clinic's zone (D40). */
+function when(instant: string, tz: string | null): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz ?? 'UTC', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(instant))
 }
 
 /** Folder list with counts, as in the old portal's left column. */
@@ -62,6 +62,7 @@ export function MessagesPage({ folder }: { folder: Folder }) {
 }
 
 function MessageTable({ folder, items, onChanged, onRead }: { folder: Folder; items: Message[]; onChanged: () => void; onRead: (id: string) => void }) {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const toast = useToast()
   const { navigate } = useRouter()
@@ -74,7 +75,7 @@ function MessageTable({ folder, items, onChanged, onRead }: { folder: Folder; it
   const [busy, setBusy] = useState(false)
   const subjects = Array.from(new Set(items.map((m) => m.subject)))
   const who = (m: Message) => (folder === 'sent' ? m.to.displayName : m.from.displayName)
-  const shown = items.filter((m) => (subject === 'All' || m.subject === subject) && matches(q, who(m), m.subject, m.body, when(m.sentAt)))
+  const shown = items.filter((m) => (subject === 'All' || m.subject === subject) && matches(q, who(m), m.subject, m.body, when(m.sentAt, tz)))
   const paged = usePaged(shown, 10)
   const allOnPage = paged.rows.length > 0 && paged.rows.every((m) => selected.includes(m.id))
 
@@ -172,7 +173,7 @@ function MessageTable({ folder, items, onChanged, onRead }: { folder: Folder; it
                       {unread ? <span className="sr-only">Unread. </span> : null}
                       {who(m)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-ink-muted">{when(m.sentAt)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-muted">{when(m.sentAt, tz)}</td>
                     <td className="px-3 py-2">
                       <button type="button" onClick={() => read(m)} className={cn('min-h-11 text-left text-primary-700 underline-offset-2 hover:underline', unread && 'font-semibold')}>
                         {m.subject}
@@ -201,7 +202,7 @@ function MessageTable({ folder, items, onChanged, onRead }: { folder: Folder; it
             <dt className="font-medium text-ink-subtle">To</dt>
             <dd className="text-ink">{open.to.displayName}</dd>
             <dt className="font-medium text-ink-subtle">Date</dt>
-            <dd className="text-ink">{when(open.sentAt)}</dd>
+            <dd className="text-ink">{when(open.sentAt, tz)}</dd>
             <dt className="font-medium text-ink-subtle">Subject</dt>
             <dd className="text-ink">{open.subject}</dd>
             <dt className="font-medium text-ink-subtle">Message</dt>

@@ -103,7 +103,7 @@ function Notes({ patient: p }: { patient: Patient }) {
             <span className="inline-flex items-center gap-[10px]">
               This visit
               <PillTag tone={record.status === 'signed' ? 'norm' : 'warn'} size="sm" icon={record.status === 'signed' ? Signature : PenLine}>
-                {record.status === 'signed' ? `Signed ${record.signedAt ? formatTime(new Date(record.signedAt)) : ''}` : 'Draft'}
+                {record.status === 'signed' ? `Signed ${record.signedAt ? formatTime(record.signedAt) : ''}` : 'Draft'}
               </PillTag>
             </span>
           }

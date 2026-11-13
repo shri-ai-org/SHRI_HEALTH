@@ -5,6 +5,7 @@ import { usePortalApi } from '../../api/portalApi'
 import type { PortalDocument } from '../../api/types'
 import { toProblem, useResource } from '../../api/useResource'
 import { AsyncPanel, Card, formatInstantShort, formatShortDate, matches, PageHeader, saveBlob, SearchBox, Table } from '../../ui'
+import { useClinicTimeZone } from '../../clinicZone'
 
 /* ---------- Patient Documents ---------- */
 
@@ -144,6 +145,7 @@ const REPORTS = [
 ]
 
 export function ReportsPage() {
+  const tz = useClinicTimeZone()
   const api = usePortalApi()
   const toast = useToast()
   const report = useResource(() => api.getPatientReport(), [])
@@ -193,7 +195,7 @@ export function ReportsPage() {
                 <p className="text-ink-muted">
                   {r.patient.name} · Born {formatShortDate(r.patient.birthDate)} · {r.patient.sex} · {r.patient.address} · {formatPhone(r.patient.phone)}
                   <br />
-                  Generated {formatInstantShort(r.generatedAt, 'America/Chicago')}
+                  Generated {formatInstantShort(r.generatedAt, tz)}
                 </p>
                 <ReportList title="Medical Problems" items={r.issues.map((h) => `${h.title} (${h.diagnosis})${h.endDate ? ', resolved' : ''}`)} />
                 <ReportList title="Allergies" items={r.allergies.map((a) => `${a.title}: ${a.reaction}`)} />
