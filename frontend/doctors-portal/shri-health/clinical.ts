@@ -44,6 +44,7 @@ import { rxNormProduct } from './formulary'
 import { maybeEncounter } from './encounter'
 import { read } from './resource'
 import { finished } from './aiChart'
+import { WAITING_STATUSES, pollStatus } from './rxStatusPoll'
 import { AiFeatureDown } from './aiStatus'
 
 import type { RxLineEdit as ScreenRxLineEdit } from '@/store/clinical'
@@ -180,6 +181,8 @@ interface NoteState {
   overrideHardStop: (args: { encounterId: string; lineId: string; reason: string; reasonText?: string; prescriber: string; coSigner: string; auditEvent: string }) => void
   /** Resolves true once every prescription is signed and sent; false when the API refused one. */
   signRx: (args: { encounterId: string; by: string; registrationNo: string }) => Promise<boolean>
+  /** After Sign, reads the signed lines' pharmacy status again until it settles; returns the stop. */
+  pollRxStatus: (encounterId: string) => () => void
 }
 
 const RXNORM = 'http://www.nlm.nih.gov/research/umls/rxnorm'
@@ -747,6 +750,28 @@ export const useClinical = create<NoteState>()((set, get) => {
         useUI.getState().toast({ tone: 'critical', title: 'The prescription was not signed', detail: signRefusal(error) })
         return false
       })
+    },
+
+    pollRxStatus: (encounterId) => {
+      const hidden = () => document.visibilityState === 'hidden'
+      const onVisibility = () => {
+        if (hidden()) stop()
+      }
+      const stop = pollStatus({
+        pending: () =>
+          (get().prescriptions[encounterId]?.added ?? [])
+            .map((l) => l.id)
+            .filter((id) => get().rxServer[id]?.signed && WAITING_STATUSES.includes(get().rxServer[id]?.transmission?.status ?? '')),
+        // Only the status changes on screen; a failed read keeps the last one the server gave.
+        read: async (id) => {
+          const transmission = ((await getPrescription(id)).data as Prescription | undefined)?.transmission
+          if (transmission) set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], transmission } } })
+        },
+        isHidden: hidden,
+        onStop: () => document.removeEventListener('visibilitychange', onVisibility),
+      })
+      document.addEventListener('visibilitychange', onVisibility)
+      return stop
     },
 
     confirmProblem: (problemId, by, at) => set({ problemConfirmations: { ...get().problemConfirmations, [problemId]: { by, at } } }),
