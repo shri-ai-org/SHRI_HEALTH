@@ -11,6 +11,12 @@
  * authentication; reason mandatory; BOTH identities recorded." Its fields open
  * empty every time, so a PIN typed once never waits in a closed dialog (the
  * old dialog kept it after Cancel).
+ *
+ * SHRI_HEALTH: with the API, both gates take `withApi`. The contract's override
+ * (`overrideAlert`, D97, D110) is the prescriber's own reason, at least 3
+ * characters, and only MD and APP may give it: no second signer, no PIN and no
+ * sample staff list. The hard stop then shows the server's rule and finding,
+ * without the sample's alternatives or capability note.
  */
 
 import { Check, OctagonAlert, ShieldAlert, ShieldCheck, Signature, TriangleAlert, Undo2 } from 'lucide-react'
@@ -39,6 +45,7 @@ export function HardStopGate({
   onCancel,
   capabilityId,
   overrideBlocked,
+  withApi = false,
 }: {
   open: boolean
   /** What was blocked. */
@@ -54,6 +61,8 @@ export function HardStopGate({
   capabilityId: string
   /** Why this persona cannot start an override — the capability it lacks. */
   overrideBlocked?: string
+  /** With the API: the server's rule, overridden with the prescriber's own reason. */
+  withApi?: boolean
 }) {
   const aiActive = useAiActive()
   const alternativesId = useId()
@@ -69,7 +78,7 @@ export function HardStopGate({
       icon={OctagonAlert}
       width={640}
       title="Prescription blocked"
-      subtitle={`${rule} · this is a deterministic rule, not a model output`}
+      subtitle={`${rule} · this is a fixed rule, not a model output`}
       footer={
         <>
           <Pill variant="control" size="lg" icon={Undo2} onClick={onCancel}>
@@ -84,7 +93,7 @@ export function HardStopGate({
             className="disabled:opacity-40"
             onClick={onOverride}
           >
-            Override — needs a second consultant
+            {withApi ? 'Override with a reason' : 'Override — needs a second consultant'}
           </Pill>
         </>
       }
@@ -93,12 +102,15 @@ export function HardStopGate({
         <div className="rounded-[16px] bg-sh-crit-bg px-[16px] py-[12px]">
           <p className="text-[14px] font-semibold text-sh-crit-fg">{drug} cannot be signed for this patient.</p>
           <p className="mt-[6px] text-[14px]/[1.5] text-sh-text">{finding}</p>
-          <p className="mt-[8px] text-[12px] tabular-nums text-sh-text-2">
-            Allergy documented {documentedAt} by {documentedBy}.
-          </p>
+          {!withApi && (
+            <p className="mt-[8px] text-[12px] tabular-nums text-sh-text-2">
+              Allergy documented {documentedAt} by {documentedBy}.
+            </p>
+          )}
         </div>
 
         {/* The distinction that makes the whole demo work: with the AI off, the static tables still block. */}
+        {!withApi && (
         <div className="flex items-start gap-[10px] rounded-[16px] bg-sh-inner px-[16px] py-[12px] text-[13px]/[1.55] text-sh-text-2">
           <Icon icon={ShieldCheck} size={16} className="mt-[2px] shrink-0 text-sh-text" />
           <p>
@@ -115,9 +127,11 @@ export function HardStopGate({
             )}
           </p>
         </div>
+        )}
 
         {overrideBlocked && <p className="text-[13px] font-medium text-sh-warn-fg">{overrideBlocked}</p>}
 
+        {alternatives.length > 0 && (
         <div>
           <h3 id={alternativesId} className="text-[13px] font-semibold text-sh-text-2">
             Three alternatives with no beta-lactam cross-reactivity
@@ -147,6 +161,7 @@ export function HardStopGate({
             ))}
           </ul>
         </div>
+        )}
       </div>
     </Dialog>
   )
@@ -158,15 +173,7 @@ export interface DualSignature {
   coSigner: string
 }
 
-export function DualSignatureGate({
-  open,
-  what,
-  auditEvent,
-  prescriber,
-  onCancel,
-  onConfirm,
-  coSignerOptions,
-}: {
+interface OverrideGateProps {
   open: boolean
   what: string
   auditEvent: string
@@ -174,7 +181,98 @@ export function DualSignatureGate({
   onCancel: () => void
   onConfirm: (args: DualSignature) => void
   coSignerOptions: { name: string; identifier: string }[]
-}) {
+  /** With the API: the prescriber's own reason only (overrideAlert); `coSignerOptions` is not used. */
+  reasonOnly?: boolean
+}
+
+export function DualSignatureGate({ reasonOnly = false, ...props }: OverrideGateProps) {
+  return reasonOnly ? <ReasonOverrideGate {...props} /> : <TwoPersonGate {...props} />
+}
+
+/** The contract's override needs at least this many characters of reason (AlertOverride.reason). */
+const MIN_REASON = 3
+
+/** With the API: the prescriber's own reason and responsibility, nothing else (D97, D110). */
+function ReasonOverrideGate({ open, what, auditEvent, prescriber, onCancel, onConfirm }: Omit<OverrideGateProps, 'reasonOnly'>) {
+  const [reasonText, setReasonText] = useState('')
+  const [attested, setAttested] = useState(false)
+  const [wasOpen, setWasOpen] = useState(open)
+  const id = useId()
+
+  // Every opening starts empty — reset while rendering the change, not in an effect after it.
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) {
+      setReasonText('')
+      setAttested(false)
+    }
+  }
+
+  const ready = reasonText.trim().length >= MIN_REASON && attested
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      role="alertdialog"
+      tone="crit"
+      icon={ShieldAlert}
+      width={560}
+      title="Override this alert"
+      subtitle="Your reason is recorded with the alert and audited."
+      footer={
+        <>
+          <Pill variant="control" size="lg" onClick={onCancel}>
+            Cancel
+          </Pill>
+          <Pill
+            variant="crit"
+            size="lg"
+            icon={Signature}
+            disabled={!ready}
+            className="disabled:opacity-40"
+            onClick={() => {
+              if (!ready) return
+              onConfirm({ reason: 'Other', reasonText: reasonText.trim(), coSigner: '' })
+            }}
+          >
+            Override and proceed
+          </Pill>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-[16px]">
+        <Alert tone="crit" icon={ShieldAlert} title="You are proceeding past a safety alert">
+          {what} This is audited as <code className="font-mono text-[12px] text-sh-text">{auditEvent}</code>.
+        </Alert>
+
+        <Field label="Reason for overriding" htmlFor={`${id}-reason`} required>
+          <TextArea
+            id={`${id}-reason`}
+            rows={3}
+            placeholder="Why you are going ahead (at least 3 characters)…"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+          />
+        </Field>
+
+        <CheckboxRow checked={attested} onChange={setAttested} className="-mx-[10px] w-[calc(100%+20px)]">
+          I accept responsibility for overriding this alert. <span className="text-sh-text-3">Prescriber: {prescriber}</span>
+        </CheckboxRow>
+      </div>
+    </Dialog>
+  )
+}
+
+function TwoPersonGate({
+  open,
+  what,
+  auditEvent,
+  prescriber,
+  onCancel,
+  onConfirm,
+  coSignerOptions,
+}: Omit<OverrideGateProps, 'reasonOnly'>) {
   const [reason, setReason] = useState<RejectionReason>('Other')
   const [reasonText, setReasonText] = useState('')
   // The choice is held by identifier: several consultants can share a name.

@@ -114,7 +114,9 @@ function Prescription({ enc }: { enc: Encounter }) {
   // signed-in user's role; the sample personas keep their own rule.
   const mayPrescribe = REAL_API ? (signedInUser()?.roles.some((r) => r === 'MD' || r === 'APP') ?? false) : canPrescribe(persona)
   const signRule = REAL_API ? 'Only a physician (MD) or an advanced practice provider (APP) can sign prescriptions' : 'This persona may draft, not sign — controlled classes need a consultant'
-  const mayOverride = can(persona, 'rx.override')
+  // D110: with the API only MD and APP override an alert (the contract's alerts:override); the sample
+  // personas keep their capability.
+  const mayOverride = REAL_API ? mayPrescribe : can(persona, 'rx.override')
   const locked = record.status === 'signed' || forced === 'LOCKED'
   // D110 (Vimal on #271): with the API only MD and APP draft or edit a prescription; anyone else
   // sees it read-only, with no drug search, add or Remove (the server refuses their writes).
@@ -208,6 +210,13 @@ function Prescription({ enc }: { enc: Encounter }) {
 
   function signOverride(line: BasketLine, sig: DualSignature) {
     const auditEvent = line.stop?.auditEvent ?? PENICILLIN_HARD_STOP.auditEvent
+    if (REAL_API) {
+      // The contract's override is the prescriber's own reason (overrideAlert), sent as written.
+      overrideHardStop({ encounterId: enc.id, lineId: line.id, reason: sig.reasonText, prescriber: me.name, coSigner: '', auditEvent })
+      setDualFor(null)
+      toast({ tone: 'critical', title: 'Alert overridden', detail: `${line.drug} · your reason is recorded with the alert.` })
+      return
+    }
     overrideHardStop({ encounterId: enc.id, lineId: line.id, reason: sig.reason, reasonText: sig.reasonText, prescriber: me.name, coSigner: sig.coSigner, auditEvent })
     setDualFor(null)
     audit({
@@ -261,7 +270,7 @@ function Prescription({ enc }: { enc: Encounter }) {
             )}
             {overridden.length > 0 && (
               <PillTag tone="crit" size="sm" icon={ShieldAlert}>
-                Overridden · dual signature
+                {REAL_API ? 'Alert overridden' : 'Overridden · dual signature'}
               </PillTag>
             )}
           </>
@@ -361,11 +370,27 @@ function Prescription({ enc }: { enc: Encounter }) {
               )
             }
           >
-            Documented allergy. A rule, not a model output{aiActive ? '' : ' — the AI is currently off and it fired anyway'}.
+            {REAL_API ? (
+              <>{l.stop?.finding} A fixed rule, not a model output. Override it with your reason, or remove the drug.</>
+            ) : (
+              <>Documented allergy. A rule, not a model output{aiActive ? '' : ' — the AI is currently off and it fired anyway'}.</>
+            )}
           </Alert>
         ))}
 
         {overridden.map((l) => (
+          REAL_API ? (
+            <Alert key={l.id} tone="crit" icon={ShieldAlert} title="Alert overridden">
+              <div className="flex flex-col gap-[2px]">
+                <span className="font-semibold text-sh-text">{l.drug}</span>
+                {l.override?.prescriber && <span>Prescriber: {l.override.prescriber}</span>}
+                <span>Override reason: {l.override?.reason}</span>
+                <span className="tabular-nums">
+                  <code className="font-mono text-[12px] text-sh-text">{l.override?.auditEvent}</code> · {l.override && formatDateTime(new Date(l.override.at))}
+                </span>
+              </div>
+            </Alert>
+          ) : (
           <Alert key={l.id} tone="crit" icon={ShieldAlert} title="Hard stop overridden with a dual signature">
             <div className="flex flex-col gap-[2px]">
               <span className="font-semibold text-sh-text">{l.drug}</span>
@@ -379,6 +404,7 @@ function Prescription({ enc }: { enc: Encounter }) {
               </span>
             </div>
           </Alert>
+          )
         ))}
 
         {/* ARC-07 — the catalogue and the basket side by side once there is room for both. */}
@@ -500,7 +526,14 @@ function Prescription({ enc }: { enc: Encounter }) {
         documentedAt={gateLine?.stop?.documentedAt ?? PENICILLIN_HARD_STOP.documentedAt}
         documentedBy={gateLine?.stop?.documentedBy ?? PENICILLIN_HARD_STOP.documentedBy}
         alternatives={gateLine?.stop?.alternatives ?? PENICILLIN_HARD_STOP.alternatives}
-        overrideBlocked={mayOverride ? undefined : 'Overriding a hard stop needs the rx.override capability, which this role does not hold. Choose an alternative or remove the drug.'}
+        withApi={REAL_API}
+        overrideBlocked={
+          mayOverride
+            ? undefined
+            : REAL_API
+              ? 'Only a physician (MD) or an advanced practice provider (APP) can override an alert. Remove the drug, or ask one of them.'
+              : 'Overriding a hard stop needs the rx.override capability, which this role does not hold. Choose an alternative or remove the drug.'
+        }
         onAcceptAlternative={(drug) => gateLine && takeAlternative(gateLine, drug)}
         onOverride={() => {
           if (!gateLine || !mayOverride) return
@@ -510,13 +543,15 @@ function Prescription({ enc }: { enc: Encounter }) {
         onCancel={() => gateLine && removeLine(gateLine)}
       />
 
-      {/* G4 — reason AND a second consultant, both identities recorded. */}
+      {/* G4 — reason AND a second consultant, both identities recorded. With the API: the
+          prescriber's own reason only (overrideAlert, D97, D110); the sample staff list is not used. */}
       <DualSignatureGate
+        reasonOnly={REAL_API}
         open={dualLine !== undefined && mayOverride}
         what={`You are prescribing ${dualLine?.drug ?? 'a contraindicated drug'}. ${dualLine?.stop?.finding ?? ''}`.trim()}
         auditEvent={dualLine?.stop?.auditEvent ?? PENICILLIN_HARD_STOP.auditEvent}
         prescriber={me.name}
-        coSignerOptions={STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => ({ name: s.name, identifier: s.identifier }))}
+        coSignerOptions={REAL_API ? [] : STAFF.filter((s) => s.identifierKind === 'HPR').map((s) => ({ name: s.name, identifier: s.identifier }))}
         onCancel={() => {
           setDualFor(null)
           if (dualLine) setGateFor(dualLine.id)
@@ -736,6 +771,24 @@ function RxLineCard({
         <p key={g} className="mt-[12px] flex items-start gap-[8px] rounded-[12px] bg-sh-warn-bg px-[12px] py-[8px] text-[13px] font-medium text-sh-warn-fg">
           <Icon icon={CircleAlert} size={14} className="mt-[2px] shrink-0" />
           {g}
+        </p>
+      ))}
+
+      {/* The server's warning and info alerts (a duplicate medication, say): shown on the line they
+          concern, in the gaps' look, and never blocking Sign (Vimal, 13 Nov). */}
+      {line.notes.map((n) => (
+        <p
+          key={n.id}
+          role="note"
+          className={cn(
+            'mt-[12px] flex items-start gap-[8px] rounded-[12px] px-[12px] py-[8px] text-[13px] font-medium',
+            n.severity === 'warning' ? 'bg-sh-warn-bg text-sh-warn-fg' : 'bg-sh-inner text-sh-text-2',
+          )}
+        >
+          <Icon icon={CircleAlert} size={14} className="mt-[2px] shrink-0" />
+          <span>
+            <span className="font-semibold">{n.title}:</span> {n.message} <span className="font-normal">This doesn&rsquo;t stop signing.</span>
+          </span>
         </p>
       ))}
 
