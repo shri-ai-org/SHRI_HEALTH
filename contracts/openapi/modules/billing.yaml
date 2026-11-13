@@ -126,9 +126,7 @@ paths:
           description: 404. `not-found` (no such payment in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
-            (the card session is not `captured`, or was already used); `patient-merged` (the patient was merged into another
-            record).
+          description: "409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition` (the card session is not `captured`, or was already used; or the visit already has a payment, see below); `patient-merged` (the patient was merged into another record). **One copay per visit (M11):** a payment with an `appointmentId` (or `encounterId`) is refused when that visit already has a payment that is not a refund and has not been refunded. The answer is `invalid-state-transition` with `errors` `[{in: body, pointer: /appointmentId (or /encounterId), code: not-allowed-value}]` and `paymentId`, the existing payment, so the desk can open its receipt. Nothing is written (no payment, no receipt). After a refund of that payment, a new payment for the visit is allowed. A payment with neither `appointmentId` nor `encounterId` (a balance payment) is never refused by this rule. The same request replayed with the same Idempotency-Key gets the original `201`."
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`card`

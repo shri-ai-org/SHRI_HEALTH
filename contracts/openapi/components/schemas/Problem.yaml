@@ -73,6 +73,10 @@ properties:
     $ref: './Id.yaml'
     description: The restricted patient, for `break-glass-required`.
     x-phi: internal-id
+  paymentId:
+    $ref: './Id.yaml'
+    description: The visit's existing payment, for `invalid-state-transition` on `recordPayment` (one copay per visit).
+    x-phi: internal-id
   feature:
     description: The AI feature that is switched off, for `feature-disabled`.
     type: string
