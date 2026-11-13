@@ -88,7 +88,7 @@ def test_the_dev_users_see_their_practice_through_the_api_role(
         assert set(scalars("SELECT id FROM admin.facility")) == {
             FACILITY_A, starter.sid(starter.FACILITY, 12)}
         assert sorted(scalars("SELECT timezone FROM admin.facility")) == [
-            "America/Chicago", "America/New_York"]
+            "America/Los_Angeles", "America/New_York"]
         assert sorted(scalars("SELECT code FROM admin.appointment_type")) == [
             "ANNUAL", "FU", "NEW", "TELE-FU"]
         assert sorted(scalars("SELECT code FROM admin.note_template")) == [
@@ -151,4 +151,9 @@ def test_facilities_have_a_synthetic_address(migrator_engine: Engine,
                               "WHERE f.tenant_id IN (:a, :b)"),
                          {"a": CLINIC_A, "b": CLINIC_B}).all()
     assert len(rows) == 3
-    assert all(r.name.endswith("(synthetic)") and "Sample Avenue" in r.line[0] for r in rows)
+    assert all(r.name.endswith("(synthetic)") for r in rows)
+    # The demo clinic's main office: an invented number on a real San Jose street (13 Nov); the
+    # other offices keep invented streets.
+    by_city = {r.city: (r.line[0], r.state) for r in rows}
+    assert by_city["San Jose"] == ("1200 The Alameda", "CA")
+    assert all("Sample Avenue" in r.line[0] for r in rows if r.city != "San Jose")

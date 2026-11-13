@@ -204,7 +204,7 @@ def test_staff_details_and_clinicians_records_stay_out_of_reach(
         c.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
         c.execute(text("INSERT INTO clinical.address (id, tenant_id, practitioner_id, line, city, "
                        "state, postal_code, country, use) VALUES (gen_random_uuid(), :t, :p, "
-                       "ARRAY['1 Home Street'], 'Springfield', 'IL', '62704', 'US', 'home')"),
+                       "ARRAY['1 Home Street'], 'San Jose', 'CA', '95112', 'US', 'home')"),
                   {"t": chart["tenant"], "p": practitioner.id})
     with portal_engine.begin() as c:
         _as_patient(c, chart)

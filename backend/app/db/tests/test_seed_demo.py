@@ -14,12 +14,14 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS, FACILITY_A
+from app.db.models import MAPPERS, systems
 from app.db.seed import demo, starter
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, open_session
 from app.db.tests.test_seed import _snapshot, migrator_engine
 
 pytestmark = [pytest.mark.db, SKIP_WITHOUT_DATABASE]
+M = MAPPERS
 __all__ = ["migrator_engine"]       # a fixture, used by name
 
 COUNTED = ("admin.pharmacy", "admin.payer", "admin.practice_payer", "admin.consent_requirement",
@@ -79,10 +81,11 @@ def test_the_front_desk_sees_the_demo_day(migrator_engine: Engine,
                                   "WHERE type_code = 'MR'") if r.patient_id in ours]
     assert len(mrns) == len(ours) and all(m.startswith("RFM-") for m in mrns)
     day = rows("SELECT a.start, t.code FROM clinical.appointment a JOIN admin.appointment_type t "
-               "ON t.id = a.ext_appointment_type_id WHERE a.start::date = '2026-11-20' "
+               f"ON t.id = a.ext_appointment_type_id WHERE a.start::date = '{demo.DEMO_DAY}' "
                "ORDER BY a.start")
-    assert [r.code for r in day] == ["NEW", "FU", "FU", "ANNUAL"]
-    assert day[0].start.isoformat() == "2026-11-20T15:00:00+00:00"      # 9:00 in Chicago
+    assert [r.code for r in day] == ["NEW", "FU", "FU", "ANNUAL", "FU", "FU", "FU"]
+    nine = dt.datetime.combine(demo.DEMO_DAY, dt.time(9), ZoneInfo("America/Los_Angeles"))
+    assert day[0].start == nine                                  # 9:00 at the San Jose office
     assert len(rows("SELECT 1 FROM clinical.coverage WHERE status = 'active'")) >= 4
     required = {r.kind for r in rows("SELECT kind FROM admin.consent_requirement "
                                      "WHERE is_required AND is_active")}
@@ -196,7 +199,7 @@ def test_a_shown_patient_has_every_registration_field(migrator_engine: Engine,
 
 
 # ============================================================== the shown patients, no database
-ON_THE_DEMO_DAY = dt.date(2026, 11, 20)
+ON_THE_DEMO_DAY = dt.date(2026, 11, 20)  # ages are the demo's, whatever day the seed books
 
 
 def _age(born: dt.date) -> int:
@@ -236,7 +239,7 @@ def test_each_history_patients_conditions() -> None:
         assert 3 <= len(h.visits) <= 4 and h.allergies and h.medications
         assert h.family and h.surgeries
         assert len({v.day for v in h.visits}) == len(h.visits)
-        assert all(dt.date(2025, 11, 11) <= v.day < ON_THE_DEMO_DAY for v in h.visits)
+        assert all(dt.date(2025, 11, 11) <= v.day < demo.DEMO_DAY for v in h.visits)
 
 
 def test_the_portal_accounts_have_their_posted_ids() -> None:
@@ -290,7 +293,7 @@ def test_the_seed_uses_the_keycloak_accounts_ids_and_names() -> None:
 
 
 # ======================================================================= the all-day schedule
-ZONES = ("America/Chicago", "America/New_York")
+ZONES = ("America/Los_Angeles", "America/New_York")
 
 
 def _all_day_rules(admin_engine: Engine, zone: str) -> list[Any]:
@@ -335,8 +338,8 @@ def test_every_provider_has_weekly_all_day_rules_with_no_end_date(
 
 @pytest.mark.parametrize("now", [
     dt.datetime(2026, 11, 20, 18, 0, tzinfo=dt.UTC),          # the demo day, midday
-    dt.datetime(2026, 11, 20, 5, 59, 30, tzinfo=dt.UTC),      # 23:59:30 in Chicago
-    dt.datetime(2026, 11, 20, 6, 0, 30, tzinfo=dt.UTC),       # 00:00:30 in Chicago
+    dt.datetime(2026, 11, 20, 7, 59, 30, tzinfo=dt.UTC),      # 23:59:30 in San Jose
+    dt.datetime(2026, 11, 20, 8, 0, 30, tzinfo=dt.UTC),       # 00:00:30 in San Jose
     dt.datetime(2026, 11, 20, 4, 59, 30, tzinfo=dt.UTC),      # 23:59:30 in New York
     dt.datetime(2026, 11, 20, 5, 0, 30, tzinfo=dt.UTC),       # 00:00:30 in New York
 ])
@@ -349,7 +352,7 @@ def test_a_revisit_14_days_out_has_free_times_whatever_the_hour(
         assert {s.provider_id for s in later} == {r.provider_id for r in
                                                   _all_day_rules(admin_engine, zone)}
         assert len(later) >= 70 * len(starter.PROVIDERS)     # 00:00 to 23:40, every 20 min
-    tomorrow = _free(admin_engine, "America/Chicago", dt.date(2026, 11, 21), now)
+    tomorrow = _free(admin_engine, "America/Los_Angeles", dt.date(2026, 11, 21), now)
     assert tomorrow                                          # just before midnight too
 
 
@@ -412,7 +415,7 @@ def test_the_500_are_the_same_people_every_run_and_obviously_fictional(
     assert len(set(numbers)) == 500 and not set(numbers) & {p.n for p in demo.PATIENTS}
     synthea = re.compile(r"^[A-Z][a-z]+\d{2,3}$")         # D112: names with digits
     assert all(synthea.match(p.given) and synthea.match(p.family) for p in first)
-    assert all(re.fullmatch(r"\+12175550[12]\d\d", p.phone) for p in first)  # 555-01xx
+    assert all(re.fullmatch(r"\+14085550[12]\d\d", p.phone) for p in first)  # 555-01xx
     assert all(p.visit is None for p in first)         # the demo day is unchanged
     ages = [(dt.date(2026, 11, 20) - p.birth_date).days // 365 for p in first]
     assert min(ages) >= 6 and max(ages) <= 86
@@ -457,3 +460,167 @@ def test_no_two_seed_kinds_share_a_number() -> None:
                     used.setdefault(number, []).append(name.id)  # type: ignore[attr-defined]
     shared = {n: names for n, names in used.items() if len(names) > 1}
     assert shared == {21: ["USER_ROLE", "PHARMACY"]}
+
+
+def test_the_demo_day_is_the_reset_day_in_san_jose_unless_set(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vimal's run check on #85: rehearsals before the 20th see the demo patients that day. The
+    day turns at midnight in San Jose (08:00 UTC in November, 13:30 IST), never at UTC's."""
+    monkeypatch.delenv("SHRI_DEMO_DAY", raising=False)
+    before = dt.datetime(2026, 11, 13, 7, 59, 59, tzinfo=dt.UTC)       # 23:59:59 in San Jose
+    after = dt.datetime(2026, 11, 13, 8, 0, 0, tzinfo=dt.UTC)          # 00:00:00 there
+    assert demo._demo_day(before) == dt.date(2026, 11, 12)
+    assert demo._demo_day(after) == dt.date(2026, 11, 13)
+    # The next daylight-saving change, Sunday 14 March 2027: that midnight is still PST (08:00
+    # UTC), the next one PDT (07:00 UTC).
+    assert demo._demo_day(dt.datetime(2027, 3, 14, 7, 59, 59, tzinfo=dt.UTC)) == \
+        dt.date(2027, 3, 13)
+    assert demo._demo_day(dt.datetime(2027, 3, 14, 8, 0, tzinfo=dt.UTC)) == dt.date(2027, 3, 14)
+    assert demo._demo_day(dt.datetime(2027, 3, 15, 6, 59, 59, tzinfo=dt.UTC)) == \
+        dt.date(2027, 3, 14)
+    assert demo._demo_day(dt.datetime(2027, 3, 15, 7, 0, tzinfo=dt.UTC)) == dt.date(2027, 3, 15)
+    monkeypatch.setenv("SHRI_DEMO_DAY", " 2026-11-20 ")
+    assert demo._demo_day(before) == dt.date(2026, 11, 20)              # the setting wins
+    monkeypatch.setenv("SHRI_DEMO_DAY", " ")
+    assert demo._demo_day(after) == dt.date(2026, 11, 13)               # blank: the default
+
+
+@pytest.mark.parametrize("value", ["20 Nov", "2026-11-31", "20261120", "2026-11-20T00:00",
+                                   "2026-W47-5"])
+def test_an_invalid_demo_day_is_refused_with_the_format(
+        monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("SHRI_DEMO_DAY", value)
+    with pytest.raises(ValueError, match=r"SHRI_DEMO_DAY must be a date as YYYY-MM-DD"):
+        demo._demo_day()
+
+
+def test_the_demo_clinic_has_both_ai_features_on(migrator_engine: Engine,
+                                                admin_engine: Engine) -> None:
+    """A feature without a row is off (modules/ai), so a reset without these leaves the AI off.
+    A second run changes nothing."""
+    _seed(migrator_engine)
+    _seed(migrator_engine)
+    with admin_engine.connect() as c:
+        rows = c.execute(text("SELECT feature, is_enabled FROM admin.ai_feature_setting "
+                              "WHERE tenant_id = :t ORDER BY feature"), {"t": CLINIC_A}).all()
+    assert [tuple(r) for r in rows] == [("ambient-documentation", True), ("chart-summary", True)]
+
+
+def test_a_history_patient_was_registered_before_the_first_visit(
+        migrator_engine: Engine, admin_engine: Engine) -> None:
+    from app.db.seed.history import HISTORY
+
+    _seed(migrator_engine)
+    with admin_engine.connect() as c:
+        found = c.execute(text("SELECT id, created_at FROM clinical.patient WHERE tenant_id = :t"),
+                          {"t": CLINIC_A}).all()
+    created: dict[Any, dt.datetime] = {r.id: r.created_at for r in found}
+    for n, h in HISTORY.items():
+        assert created[sid(demo.PATIENT, n)] == h.visits[0].start - dt.timedelta(days=7)
+    others = [p for p in demo.PATIENTS if not p.history]
+    assert all(created[sid(demo.PATIENT, p.n)].date() >= dt.date(2026, 11, 1) for p in others)
+
+
+# ================================================== an additive run (`deploy.sh up`) and a reset
+def _ai(admin_engine: Engine) -> dict[str, bool]:
+    with admin_engine.connect() as c:
+        rows = c.execute(text("SELECT feature, is_enabled FROM admin.ai_feature_setting "
+                              "WHERE tenant_id = :t"), {"t": CLINIC_A}).all()
+    return {r.feature: r.is_enabled for r in rows}
+
+
+def test_an_additive_run_restores_a_missing_ai_row_on_and_keeps_a_deliberate_off(
+        migrator_engine: Engine, admin_engine: Engine) -> None:
+    """D118: a switch-off in the AI settings persists until switched back on or the next reset;
+    `up`'s seed only fills a missing row, as ON."""
+    _seed(migrator_engine)
+    with admin_engine.begin() as c:
+        c.execute(text("UPDATE admin.ai_feature_setting SET is_enabled = false, reason = :r "
+                       "WHERE tenant_id = :t AND feature = 'ambient-documentation'"),
+                  {"r": "Switched off for a rehearsal (synthetic)", "t": CLINIC_A})
+        c.execute(text("DELETE FROM admin.ai_feature_setting WHERE tenant_id = :t "
+                       "AND feature = 'chart-summary'"), {"t": CLINIC_A})
+    try:
+        _seed(migrator_engine)
+        assert _ai(admin_engine) == {"ambient-documentation": False, "chart-summary": True}
+    finally:
+        with admin_engine.begin() as c:
+            c.execute(text("UPDATE admin.ai_feature_setting SET is_enabled = true, reason = NULL "
+                           "WHERE tenant_id = :t"), {"t": CLINIC_A})
+
+
+def test_an_additive_run_leaves_live_work_alone(migrator_engine: Engine, admin_engine: Engine,
+                                                app_engine: Engine) -> None:
+    """A patient registered live keeps the next MRN, a visit booked live stays, and the seed
+    adds no second copy of anything (no AI request or suggestion either: it writes none)."""
+    _seed(migrator_engine)
+    db = open_session(app_engine, CLINIC_A, DEV_USERS["fd"].id)
+    try:
+        mrn = db.execute(text("SELECT system, value FROM admin.next_mrn()")).one()
+        live = M["patient"](gender="female", birth_date=dt.date(1990, 1, 2))
+        live.identifier = [M["identifier"](system=mrn.system, value=mrn.value, use="usual",
+                                           type_system=systems.V2_0203, type_code="MR")]
+        live.name = [M["human_name"](family="Liveregistered77", given=["Avery402"],
+                                     use="official")]
+        db.add(live)
+        db.flush()
+        start = dt.datetime.combine(demo.DEMO_DAY, dt.time(15, 0), demo.CLINIC_ZONE)
+        booked = M["appointment"](status="booked", subject_patient_id=live.id, start=start,
+                                  end=start + dt.timedelta(minutes=20), minutes_duration=20,
+                                  ext_facility_id=FACILITY_A)
+        db.add(booked)
+        db.commit()
+        live_id, booked_id, live_mrn = live.id, booked.id, mrn.value
+    finally:
+        conn = db.bind
+        db.close()
+        conn.close()  # type: ignore[union-attr]
+
+    def counts() -> tuple[int, ...]:
+        with admin_engine.connect() as c:
+            return tuple(c.execute(text(f"SELECT count(*) FROM {t} WHERE tenant_id = :t"),
+                                   {"t": CLINIC_A}).scalar_one()
+                         for t in ("clinical.patient", "clinical.appointment",
+                                   "clinical.identifier", "admin.ai_request",
+                                   "admin.ai_suggestion", "admin.ai_feature_setting"))
+    before = counts()
+    _seed(migrator_engine)
+    assert counts() == before
+    with admin_engine.connect() as c:
+        assert c.execute(text("SELECT status FROM clinical.appointment WHERE id = :a"),
+                         {"a": booked_id}).scalar_one() == "booked"
+        assert c.execute(text("SELECT value FROM clinical.identifier WHERE patient_id = :p"),
+                         {"p": live_id}).scalar_one() == live_mrn
+        taken = c.execute(text("SELECT value FROM clinical.identifier i JOIN clinical.patient p "
+                               "ON p.id = i.patient_id WHERE p.tenant_id = :t AND i.type_code = "
+                               "'MR' GROUP BY value HAVING count(*) > 1"),
+                          {"t": CLINIC_A}).all()
+    assert taken == []                                       # no MRN given twice
+
+
+def test_the_reset_check_passes_on_the_demo_data_and_names_what_is_wrong(
+        migrator_engine: Engine) -> None:
+    """reset.verify (the reset's last step): nothing to report on a fresh seed; an AI feature
+    switched off, a lost portal account and too few visits each give their own phrase."""
+    from app.db.seed import reset
+
+    _seed(migrator_engine)
+    with Session(migrator_engine) as db, db.begin():
+        db.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))  # as the seed
+        found = reset.summary(db)
+        assert reset.verify(db, found) == []
+        db.execute(text("UPDATE admin.ai_feature_setting SET is_enabled = false, reason = 'x' "
+                        "WHERE feature = 'chart-summary'"))
+        db.execute(text("UPDATE admin.portal_account SET status = 'disabled', "
+                        "disabled_at = now(), disabled_reason = 'x' WHERE keycloak_user_id = :s"),
+                   {"s": demo.PORTAL_USERS[0][3]})
+        db.execute(text("UPDATE clinical.appointment SET status = 'cancelled', "
+                        "ext_cancelled_at = now() WHERE status = 'booked' "
+                        "AND (start AT TIME ZONE 'America/Los_Angeles')::date = :d"),
+                   {"d": demo.DEMO_DAY})                      # every visit that day
+        problems = reset.verify(db, found)
+        db.rollback()
+    assert problems == [
+        "AI feature not on: chart-summary",
+        f"0 visits booked on the demo day {demo.DEMO_DAY}, expected at least 6",
+        f"portal account missing or on another chart: {demo.PORTAL_USERS[0][3]}"]

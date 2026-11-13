@@ -9,7 +9,8 @@ Layers, each building on the one before, through the same insert-if-missing buil
   templates, the MRN counter (as onboarding creates it) and an ``app_user`` row per dev user;
 - ``demo``: the starter layer plus a pharmacy, more payers, the consent requirements, and
   synthetic patients with coverage, a preferred pharmacy and appointments on the demo day
-  (Fri 20 Nov). The demo users linked to Keycloak come with Thulasi's demo realm. Then, in a
+  (the reset day, or ``SHRI_DEMO_DAY``; the demo is Fri 20 Nov). The demo clinic's two AI
+  features are on. The demo users linked to Keycloak come with Thulasi's demo realm. Then, in a
   second transaction, demo patients 2 to 5's clinical history (history.py: past visits with
   vitals and a signed note, problems, allergies, medications, family, social and surgical
   history), written through ``app.db.fhir_store`` and skipped for a patient who has it;

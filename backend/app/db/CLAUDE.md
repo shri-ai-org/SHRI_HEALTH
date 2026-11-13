@@ -594,6 +594,7 @@ stays, as the test's only allowed overlap.
 | 59 | `PA_FOLLOW_UP` (demo) | past visit's follow-up request | #293 (past visits) |
 | 60 | `PA_REASON` (demo) | past visit's reason | #293 (past visits) |
 | 61 | `A_REASON` (demo) | demo-day appointment's reason | #293 (past visits) |
+| 62 | `AI_FEATURE` (demo) | the demo clinic's AI feature switch | Vimal's run check on #85 |
 
 ## Rules that never bend
 

@@ -179,6 +179,13 @@ def _free_time(c: Client, v: Visit, day: dt.date, after: dt.datetime) -> str | N
     return None
 
 
+def _visit_day(v: Visit) -> dt.date:
+    """The visit's day in the facility's time zone: after 16:00 in San Jose (PST) its UTC date is
+    already the next day, and the status board and the revisit count in facility days."""
+    return dt.datetime.fromisoformat(v.start.replace("Z", "+00:00")).astimezone(
+        ZoneInfo(v.zone)).date()
+
+
 # ------------------------------------------------------------------ the steps (D108)
 def register(c: Client, v: Visit) -> str:
     # A new synthetic person each run (Synthea-style digits, D112), so runs never match each other.
@@ -228,7 +235,7 @@ def check_in(c: Client, v: Visit) -> str:
                 {"selfPay": True}).json()
     v.encounter = js["encounterId"]
     board = _items(c.call("fd", "GET", f"/status-board?facilityId={v.facility}"
-                          f"&date={v.start[:10]}"))
+                          f"&date={_visit_day(v)}"))
     if not any(row.get("appointmentId") == v.appointment for row in board):
         raise StepFailed("checked in, but the visit isn't on the status board")
     return "checked in; on the status board"
@@ -316,9 +323,7 @@ def check_out(c: Client, v: Visit) -> str:
                   {"noteId": v.note}, expect=(202,))
     c.wait(made, "md")
     c.call("fd", "GET", f"/encounters/{v.encounter}/after-visit-summary/download-url")
-    visit_day = dt.datetime.fromisoformat(v.start.replace("Z", "+00:00")).astimezone(
-        ZoneInfo(v.zone)).date()
-    revisit_day = visit_day + dt.timedelta(days=REVISIT_DAYS)    # the follow-up's 2 weeks
+    revisit_day = _visit_day(v) + dt.timedelta(days=REVISIT_DAYS)  # the follow-up's 2 weeks
     start = _free_time(c, v, revisit_day, dt.datetime.now(dt.UTC))
     if start is None:
         raise StepFailed(f"no free time on {revisit_day}, {REVISIT_DAYS} days out, for the "
