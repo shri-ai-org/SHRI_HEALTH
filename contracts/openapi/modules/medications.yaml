@@ -584,6 +584,7 @@ paths:
                     createdAt: '2026-11-20T15:20:00Z'
                     updatedAt: '2026-11-20T15:23:00Z'
                     prescriberId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    prescriberDisplayName: Dr. Lowe58
                     signedAt: '2026-11-20T15:23:00Z'
         '401': &a12
           $ref: ../components/responses/Unauthorized.yaml
@@ -1111,6 +1112,7 @@ paths:
                     createdAt: '2026-11-20T15:20:00Z'
                     updatedAt: '2026-11-20T15:23:00Z'
                     prescriberId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                    prescriberDisplayName: Dr. Lowe58
                     signedAt: '2026-11-20T15:23:00Z'
         '400':
           $ref: ../components/responses/BadRequest.yaml
@@ -1627,6 +1629,13 @@ components:
         prescriberId:
           $ref: ../components/schemas/Id.yaml
           description: Who signed it.
+          x-phi: none
+        prescriberDisplayName:
+          type: string
+          maxLength: 200
+          readOnly: true
+          description: The signer's name as shown on screens (staff, not patient data), for the prescription's banner. Present
+            once signed.
           x-phi: none
         signedAt:
           $ref: ../components/schemas/Timestamp.yaml
