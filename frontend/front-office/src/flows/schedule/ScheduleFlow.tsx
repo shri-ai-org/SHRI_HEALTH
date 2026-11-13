@@ -7,6 +7,7 @@ import { DepartmentChips } from '../../components/clinician/DepartmentChips'
 import { SharedDayHeader } from '../../components/clinician/SharedDayHeader'
 import { AppointmentWhen } from '../../components/appointment/AppointmentSummary'
 import { Alert } from '../../components/ui/Alert'
+import { Button } from '../../components/ui/Button'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStoreValue } from '../../hooks/useStore'
 import { useNow } from '../../hooks/useNow'
@@ -21,7 +22,7 @@ import {
   getToday,
 } from '../../domain/selectors'
 import { bookAppointment, rebookUnpaidAppointment } from '../../domain/actions'
-import { bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
+import { bookableTypesFor, bookOnServer, isServerProvider, loadSchedule } from '../../../shri-health/scheduling'
 import { ApiError, REAL_API, newIdempotencyKey, problemMessage } from '../../../shri-health/client'
 import { formatMoney, sumItems } from '../../utils/billing'
 import { dayWithDate, relativeDayLabel } from '../../utils/dates'
@@ -149,6 +150,8 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
   const [slot, setSlot] = useState(start.slot)
   const [consultMode, setConsultMode] = useState<ConsultMode>(start.mode)
   const [reason, setReason] = useState('')
+  // M10: the visit type the desk chooses for a server doctor ('' = the mode's first type).
+  const [visitTypeId, setVisitTypeId] = useState('')
   const [showReason, setShowReason] = useState(false)
   const [changingPatient, setChangingPatient] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -225,8 +228,9 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
         return
       }
     }
-    // A time the desk already chose on the doctor's page is booked for this patient.
-    if (providerId && date && slot && !smart) {
+    // A time the desk already chose on the doctor's page is booked for this patient (a server
+    // doctor's waits for the type, the reason and Book appointment, M10).
+    if (providerId && date && slot && !smart && !(REAL_API && isServerProvider(providerId))) {
       bookPick(next, { providerId, date, slot })
       return
     }
@@ -269,8 +273,9 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
       if (nextProvider === providerId && nextDate === date && nextSlot === slot) setSlot(null)
       return
     }
-    // Tapping a free time books it for the patient straight away.
-    if (patient) bookPick(patient, { providerId: nextProvider, date: nextDate, slot: nextSlot })
+    // Tapping a free time books it for the patient straight away; with the API, a server doctor's
+    // time is chosen first, then booked with its type and reason (M10, RUN_CHECK 29).
+    if (patient && !(REAL_API && isServerProvider(nextProvider))) bookPick(patient, { providerId: nextProvider, date: nextDate, slot: nextSlot })
     else applyPick({ providerId: nextProvider, date: nextDate, slot: nextSlot }, false)
   }
 
@@ -314,11 +319,11 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
   // before a visit), so the booking is confirmed at once. Rebooking an unpaid booking does not apply.
   async function bookOnServerPick(who: Patient, pick: Pick, mode: ConsultMode) {
     if (booking) return
-    const id = `${who.patientId}|${pick.providerId}|${pick.date}|${pick.slot}|${mode}`
+    const id = `${who.patientId}|${pick.providerId}|${pick.date}|${pick.slot}|${mode}|${chosenTypeId}|${reason.trim()}`
     if (attempt.current?.pick !== id) attempt.current = { key: newIdempotencyKey(), pick: id }
     setBooking(true)
     try {
-      const booked = await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined, followUpOfEncounterId }, attempt.current.key)
+      const booked = await bookOnServer({ patientId: who.patientId, ...pick, mode, reason: reason.trim() || undefined, appointmentTypeId: chosenTypeId || undefined, followUpOfEncounterId }, attempt.current.key)
       attempt.current = null
       // The revisit, booked from check-out: back to check-out instead of the profile.
       if (onBooked) {
@@ -360,6 +365,11 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
   const currentIndex = steps.findIndex((step) => !step.done)
   const rail = steps.map((step, index) => ({ ...step, current: index === currentIndex }))
 
+  // M10: a server doctor's time is booked from the bar, with a visit type and a reason.
+  const serverBooking = REAL_API && serverDoctor && Boolean(patient && provider && date && slot)
+  const visitTypes = bookableTypesFor(consultMode)
+  const chosenTypeId = visitTypes.some((t) => t.id === visitTypeId) ? visitTypeId : (visitTypes[0]?.id ?? '')
+
   const confirmBar = (
     <div className="flex flex-col gap-2.5">
       {error ? <Alert tone="critical" live>{error}</Alert> : null}
@@ -367,7 +377,7 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
       <div className="grid grid-cols-1 items-center gap-3 xl:grid-cols-[minmax(0,1fr)_15rem_auto]">
         {/* Review — the booking as one sentence, or the next thing to do. */}
         <div className="min-w-0" aria-live="polite">
-          {ready && patient && provider && date && slot ? (
+          {(ready || serverBooking) && patient && provider && date && slot ? (
             <p className="text-sm leading-relaxed text-ink-muted max-sm:line-clamp-2 max-sm:text-xs">
               <span className="font-semibold text-ink">{patient.name}</span> with <span className="font-semibold text-ink">{provider.name}</span>{' '}
               <span className="whitespace-nowrap">({department})</span> ·{' '}
@@ -388,9 +398,27 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
             </p>
           )}
         </div>
-        {/* The optional reason — a link until it is wanted, so it never
-            crowds the bar. */}
-        {showReason || reason ? (
+        {/* With the API and a server doctor (M10): the visit type and the reason, then Book. */}
+        {serverBooking ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[10rem] flex-col gap-1 text-xs font-medium text-ink-muted">
+              Visit type
+              <select value={chosenTypeId} onChange={(event) => setVisitTypeId(event.target.value)} className={inputClass}>
+                {visitTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.minutes} min)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-xs font-medium text-ink-muted">
+              Reason for the visit
+              <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Cough for a week, say" maxLength={120} className={inputClass} />
+            </label>
+          </div>
+        ) : /* The optional reason — a link until it is wanted, so it never
+            crowds the bar. */
+        showReason || reason ? (
           <input
             value={reason}
             onChange={(event) => setReason(event.target.value)}
@@ -418,6 +446,11 @@ function AppointmentFlow({ params, onClose, onBooked, followUpOfEncounterId, fol
             </p>
             <p className="text-lg font-bold tabular-nums tracking-tight text-ink">{formatMoney(total)}</p>
           </div>
+          {serverBooking && patient && provider && date && slot ? (
+            <Button onClick={() => bookPick(patient, { providerId: provider.providerId, date, slot })} disabled={booking || !chosenTypeId}>
+              {booking ? 'Booking…' : 'Book appointment'}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
