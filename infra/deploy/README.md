@@ -39,7 +39,7 @@ This writes a settings file with a fresh random value for every secret, mode 600
 | `SHRI_HTTPS_PORT` | `443` | `9443` (any free port) |
 | `TLS_MODE` | `provided`, with `TLS_CERT_FILE` (full chain) and `TLS_KEY_FILE` | `self-signed` |
 | `SHRI_DEMO` | `true` for the demo, `false` otherwise | `true` |
-| `SHRI_DEMO_DAY` | demo only: the day the seed books the demo patients on, `YYYY-MM-DD` (`2026-11-20` for the demo); empty for the day the seed runs | empty |
+| `SHRI_DEMO_DAY` | **empty**: the demo patients are booked on the day the seed runs in the clinic's time zone, so the reset on 20 Nov after 13:30 IST gives the demo day. A date (`YYYY-MM-DD`) only to rehearse a particular day, then empty again; passed to the seed only when set | empty |
 | `SHRI_STATE_DIR` | outside the repository, e.g. `/etc/shri/shri-state` | the default is fine |
 
 `SHRI_STATE_DIR` gets OpenBao's unseal key and root token (`openbao.env`, mode 600) on the first deploy, and the self-signed certificate. **Losing `openbao.env` loses every encrypted field and file.** Keep a copy where the settings file's backup is.

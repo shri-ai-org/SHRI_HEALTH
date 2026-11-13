@@ -64,9 +64,11 @@ SHRI_DEMO_SKIP_AUTH_CODE=false
 # morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
 # SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
 SHRI_DEMO_AI_SCREENS=false
-# The day the demo seed books the demo patients on, YYYY-MM-DD (seed/demo.py, SHRI_DEMO_DAY);
-# empty: the day the seed runs, in the clinic's time zone. Only with SHRI_DEMO=true. For the reset
-# before the demo on 20 November: 2026-11-20.
+# Leave empty: the demo patients are then booked on the day the seed runs, in the clinic's time
+# zone (San Jose), so every rehearsal has a full day, and the reset on 20 Nov after 13:30 IST gives
+# the demo day. A date (YYYY-MM-DD, seed/demo.py) only to rehearse a particular day; never left
+# set, or later rehearsals get an empty list. Only with SHRI_DEMO=true; passed to the seed only
+# when set.
 SHRI_DEMO_DAY=
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
@@ -158,6 +160,9 @@ load_env() {
         [ "${SHRI_DEMO:-false}" = true ] || die "SHRI_DEMO_DAY needs SHRI_DEMO=true (it moves the demo data)"
         [[ "$SHRI_DEMO_DAY" =~ ^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] \
             || die "SHRI_DEMO_DAY is a date, YYYY-MM-DD, or empty for the day the seed runs"
+        DEMO_DAY_ARGS=(-e "SHRI_DEMO_DAY=$SHRI_DEMO_DAY")
+    else
+        DEMO_DAY_ARGS=()   # unset: the seed's own default, the day it runs
     fi
     PROJECT="${SHRI_PROJECT:-shri-deploy}"
     [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
@@ -256,7 +261,7 @@ demo_reset() {
     # This host holds synthetic data only, and the demo never runs in production (checked above).
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
         $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 \
-        -e SHRI_DEMO_DAY="$SHRI_DEMO_DAY" --entrypoint python api -m app.db.seed demo
+        "${DEMO_DAY_ARGS[@]}" --entrypoint python api -m app.db.seed demo
 }
 
 load_codes() {
@@ -306,7 +311,7 @@ reset() {
     # SEED_ALLOW_STAGING=1 (#159); this host is a demo host (checked above).
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
         $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 \
-        -e SHRI_DEMO_DAY="$SHRI_DEMO_DAY" --entrypoint python api -m app.db.seed reset
+        "${DEMO_DAY_ARGS[@]}" --entrypoint python api -m app.db.seed reset
     load_codes
     say "Demo accounts (Keycloak, fixed IDs)"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
