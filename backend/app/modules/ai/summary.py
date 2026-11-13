@@ -107,12 +107,29 @@ PROMPT = PromptRef(id=None, code=PROMPT_CODE, version=1, feature=AIFeature.CHART
                    template=SUMMARY_V1, output_schema=SUMMARY_SCHEMA)
 
 
+#: The longest chart line the model is sent; free text from outside (a lab's conclusion) is cut.
+LINE_MAX = 500
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
+def one_line(text: str) -> str:
+    """Chart text as one line: control characters and line breaks become spaces, runs of spaces
+    collapse, and it is cut at LINE_MAX, so free text (a lab's conclusion, a note) can never start
+    a numbered line of its own ("S7: ...") that the model would take for another record."""
+    flat = " ".join(_CONTROL.sub(" ", text).split())
+    return flat if len(flat) <= LINE_MAX else flat[:LINE_MAX - 1].rstrip() + "…"
+
+
 @dataclass(frozen=True)
 class ChartLine:
-    """One numbered line the model sees, and the record behind it."""
+    """One numbered line the model sees, and the record behind it. Its text is always one line
+    (one_line), whoever builds it, for every prompt that numbers chart lines."""
     text: str
     source: SourceRef
     label: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", one_line(self.text))
 
 
 @dataclass(frozen=True)
