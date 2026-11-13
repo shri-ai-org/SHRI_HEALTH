@@ -91,6 +91,10 @@ function Prescription({ enc }: { enc: Encounter }) {
   // Subscribing to the prescriptions map re-renders on every change to this encounter's record.
   useClinical((s) => s.prescriptions[enc.id])
   const signRx = useClinical((s) => s.signRx)
+  const pollRxStatus = useClinical((s) => s.pollRxStatus)
+  // The pharmacy-status poll started by Sign; leaving the screen stops it.
+  const stopPoll = useRef<(() => void) | undefined>(undefined)
+  useEffect(() => () => stopPoll.current?.(), [])
   const addRxLine = useClinical((s) => s.addRxLine)
   const editRxLine = useClinical((s) => s.editRxLine)
   const removeRxLine = useClinical((s) => s.removeRxLine)
@@ -238,6 +242,10 @@ function Prescription({ enc }: { enc: Encounter }) {
       return
     }
     if (!(await signRx({ encounterId: enc.id, by: me.name, registrationNo: me.identifier }))) return
+    if (REAL_API) {
+      stopPoll.current?.()
+      stopPoll.current = pollRxStatus(enc.id)
+    }
     audit({
       event: 'RX.SIGNED',
       actor: me.name,
@@ -607,7 +615,6 @@ function Prescription({ enc }: { enc: Encounter }) {
   )
 }
 
-/** One basket line, with AI-206's dose adjustment and AI-305's completeness gap. */
 /** A signed prescription's transmission, in words (TransmissionStatus), with its tone. */
 const TRANSMISSION: Record<string, { text: string; tone: 'norm' | 'neu' | 'crit' }> = {
   'not-sent': { text: 'Not sent to the pharmacy yet', tone: 'neu' },
@@ -618,6 +625,7 @@ const TRANSMISSION: Record<string, { text: string; tone: 'norm' | 'neu' | 'crit'
   error: { text: 'Not delivered to the pharmacy', tone: 'crit' },
 }
 
+/** One basket line, with AI-206's dose adjustment and AI-305's completeness gap. */
 function RxLineCard({
   line,
   encounterId,
