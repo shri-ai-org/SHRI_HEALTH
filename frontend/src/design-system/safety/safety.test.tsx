@@ -63,10 +63,10 @@ describe('SharedStatusBoard', () => {
   it('shows initials, time in the facility zone and status only', async () => {
     render(
       <SharedStatusBoard
-        timeZone="America/Chicago"
+        timeZone="America/Los_Angeles"
         items={[
-          { appointmentId: '1', initials: 'RK', startAt: '2026-11-03T14:30:00Z', status: 'checked-in', visitStatus: 'roomed' },
-          { appointmentId: '2', initials: 'Ramona Kuhlman', startAt: '2026-11-03T15:00:00Z', status: 'booked' },
+          { appointmentId: '1', initials: 'RK', startAt: '2026-11-03T16:30:00Z', status: 'checked-in', visitStatus: 'roomed' },
+          { appointmentId: '2', initials: 'Ramona Kuhlman', startAt: '2026-11-03T17:00:00Z', status: 'booked' },
         ]}
       />,
     )

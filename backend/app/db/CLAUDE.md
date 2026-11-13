@@ -390,8 +390,12 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   - **A new clinical table** gets a policy from the generator (`portal_rules`), or goes in
     `PORTAL_NEVER` or `PORTAL_REFERENCE`.
   - **Held items (D90):** a hold is an `admin.release_hold` row. The portal lists held items
-    with `SELECT * FROM admin.portal_held_items()` (type, ID and date only) and shows them as
-    held.
+    with `SELECT * FROM admin.portal_held_records()` (migration 0022): `item_type`, `item_id`,
+    `patient_id` and `hold_active`, one row per held item of the session patient, only items
+    the portal would show once released (each table's portal rule without its hold clause);
+    never the reason, the clinician or the content. Show the `hold_active` rows as held. 0011's
+    `admin.portal_held_items()` (type, ID and date of every active hold) stays unchanged until
+    the portal's visit-summary read moves off it, and is dropped after the demo.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
