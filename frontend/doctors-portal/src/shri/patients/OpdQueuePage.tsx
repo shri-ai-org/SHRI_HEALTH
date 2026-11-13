@@ -20,7 +20,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { maybeEncounter } from '@/data/clinical'
 import { NOW, formatElapsed, formatTime } from '../../../shri-health/format'
-import { patient } from '../../../shri-health/kit'
+import { primeSummaries, summaryPatient as patient } from '../../../shri-health/kit'
 import { isFollowUp } from '@/data/myday'
 import { useUI } from '@/store/ui'
 
@@ -55,6 +55,9 @@ export function OpdQueuePage() {
   const toast = useUI((s) => s.toast)
   const start = useOpd((s) => s.start)
   const all = useOpdLive().filter((r) => !(REAL_API && r.live === 'Seen'))
+  // B1: the rows' names, ages and sexes from one summary read (as the home, #365), never each
+  // row's chart: a restricted chart's read is a 403 that would hide the whole page.
+  primeSummaries(all.map((r) => r.patientId))
   const [view, setView] = useState<'list' | 'board'>('list')
 
   const followUpOnly = params.get('type') === 'follow-up'
