@@ -448,7 +448,9 @@ def test_no_two_seed_kinds_share_a_number() -> None:
     import ast
 
     used: dict[int, list[str]] = {}
-    for module in (starter, demo):
+    from app.db.seed import results
+
+    for module in (starter, demo, results):
         source = Path(module.__file__ or "").read_text()
         for node in ast.parse(source).body:
             if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Tuple)
@@ -460,6 +462,7 @@ def test_no_two_seed_kinds_share_a_number() -> None:
                     used.setdefault(number, []).append(name.id)  # type: ignore[attr-defined]
     shared = {n: names for n, names in used.items() if len(names) > 1}
     assert shared == {21: ["USER_ROLE", "PHARMACY"]}
+    assert demo.AI_FEATURE not in used                       # a single number, not a range
 
 
 def test_the_demo_day_is_the_reset_day_in_san_jose_unless_set(
