@@ -168,7 +168,11 @@ export function PortalApp({ api }: { api: PortalApi }) {
   )
 }
 
-type GateState = { kind: 'checking' } | { kind: 'signed-out'; reason?: SignedOutReason } | { kind: 'signed-in'; session: PortalSession }
+type GateState =
+  | { kind: 'checking' }
+  | { kind: 'leaving' }
+  | { kind: 'signed-out'; reason?: SignedOutReason }
+  | { kind: 'signed-in'; session: PortalSession }
 
 function Gate({ api }: { api: PortalApi }) {
   const { path, navigate } = useRouter()
@@ -218,6 +222,21 @@ function Gate({ api }: { api: PortalApi }) {
 
   const signOut = useCallback(
     (reason: 'signed-out' | 'expired' = 'signed-out') => {
+      if (reason === 'signed-out') {
+        // The patient chose to sign out: the session ends here and at the patient realm, then the
+        // realm's sign-in form opens (it always asks, prompt=login), so someone else can sign in at
+        // once. If the call fails, the page says "signed out" and starts nothing, as before.
+        signedInRef.current = false
+        setState({ kind: 'leaving' })
+        api.signOut().then(
+          () => {
+            setCsrfToken(null)
+            api.startSignIn()
+          },
+          () => ended('signed-out'),
+        )
+        return
+      }
       void api.signOut().catch(() => undefined)
       ended(reason)
     },
@@ -248,6 +267,14 @@ function Gate({ api }: { api: PortalApi }) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
         <Spinner label="Opening your portal" />
+      </div>
+    )
+  }
+
+  if (state.kind === 'leaving') {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <Spinner label="Signing out" />
       </div>
     )
   }

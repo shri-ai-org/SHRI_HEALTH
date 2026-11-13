@@ -172,7 +172,7 @@ describe('home and menus', () => {
     expect(within(account).getAllByRole('link').map((l) => l.textContent)).toEqual(['Demographics', 'E-Signature', 'Password and security'])
     // Password, multi-factor and recovery are the patient realm's own pages (D85).
     expect(within(account).getByRole('link', { name: 'Password and security' })).toHaveAttribute('href', '/kc/realms/shri-patients/account')
-    expect(within(account).getByRole('button', { name: 'Log out' })).toBeInTheDocument()
+    expect(within(account).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 })
 
@@ -475,6 +475,15 @@ describe('portal shell', () => {
     setup()
     await screen.findByRole('region', { name: 'Alerts and Reminders' })
     expect(screen.getByRole('contentinfo')).toContainElement(screen.getByRole('link', { name: 'Source code' }))
+  })
+
+  it('signs out at the server, then goes straight to the sign-in form for the next person', async () => {
+    const { server, user, startSignIn } = setup()
+    await screen.findByRole('region', { name: 'Alerts and Reminders' })
+    await user.click(screen.getByRole('button', { name: /account menu/ }))
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+    expect(server.to('POST', '/portal/auth/logout')).toHaveLength(1)
   })
 
   it('has no Change Password page any more', async () => {

@@ -1,4 +1,5 @@
-import { Check, Moon, Sun } from 'lucide-react'
+import { Check, LogOut, Moon, Sun } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { PERSONA_LIST, PERSONA_SPECS, type PersonaId } from '@/atlas/personas'
@@ -6,6 +7,8 @@ import { STAFF_FOR_PERSONA, staff } from '@/data/kit'
 import { useAI } from '@/store/ai'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
+
+import { useSession as useApiSession } from '../../../../../src/api/session'
 
 import { useShri } from '../../state/store'
 import { Icon, Toggle } from '../../ui/primitives'
@@ -17,7 +20,9 @@ const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 /**
  * §6.7 — who is working, "Sign in as" over the old build's seven personas and
- * the ◆ AI fabric switch. There is no sign-out: the portal has no sign-in. Switching persona is the old
+ * the ◆ AI fabric switch. With the API (real sign-in) the personas go and **Sign out** comes: it
+ * ends our session and the Keycloak session, then goes straight to the sign-in form, so another
+ * account can sign in at once (src/api/session.tsx). Switching persona is the old
  * behaviour: the rail and the actions change, the persona lands where the
  * atlas says, and a toast names both. Under 360px the app bar has no room for
  * the theme toggle, so it lives here.
@@ -35,6 +40,8 @@ export function UserMenu() {
   const me = useCurrentStaff()
   const navigate = useNavigate()
   const note = PERSONA_SPECS[persona].note
+  const { signOut } = useApiSession()
+  const [leaving, setLeaving] = useState(false)
 
   function switchPersona(p: PersonaId) {
     setPersona(p)
@@ -98,6 +105,21 @@ export function UserMenu() {
           <span className="text-[14px] font-medium">{theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}</span>
         </MenuRow>
       </div>
+      {REAL_API ? (
+        <div className="mt-[4px] border-t border-sh-line pt-[6px]">
+          <MenuRow
+            disabled={leaving}
+            onClick={() => {
+              setLeaving(true)
+              void signOut()
+            }}
+            className="text-sh-crit-fg"
+          >
+            <Icon icon={LogOut} size={16} />
+            <span className="text-[14px] font-medium">{leaving ? 'Signing out…' : 'Sign out'}</span>
+          </MenuRow>
+        </div>
+      ) : null}
     </Menu>
   )
 }
