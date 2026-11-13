@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Wallet } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { cn } from '../../utils/cn'
@@ -8,6 +8,7 @@ import { newIdempotencyKey } from '../../../shri-health/client'
 import {
   COPAY_METHODS,
   CopayRefusal,
+  isSecondCopay,
   receiptUrl,
   recordCopay,
   suggestedCopay,
@@ -34,8 +35,13 @@ export function CopayAtCheckOut({ patientId, appointmentId, encounterId, onPaid 
   const [paid, setPaid] = useState<Payment | null>(null)
   const [busy, setBusy] = useState<'pay' | 'receipt' | null>(null)
   const [error, setError] = useState<CopayRefusal | null>(null)
-  // One key per attempt, reused only to retry the very same request (a timeout, a 5xx).
-  const [payKey, setPayKey] = useState(newIdempotencyKey())
+  /** M11: the server already has a copay for this visit (its 409 on a second one). */
+  const [already, setAlready] = useState(false)
+  // M11: one key per attempt, reused only to retry the very same request (a dropped connection, a
+  // timeout, a 5xx); a changed form is a new attempt with a new key.
+  const attempt = useRef<{ body: string; key: string } | null>(null)
+  // M11: a second click while the first is on its way does nothing (the button is disabled too).
+  const inFlight = useRef(false)
 
   useEffect(() => {
     let live = true
@@ -50,16 +56,23 @@ export function CopayAtCheckOut({ patientId, appointmentId, encounterId, onPaid 
   }, [appointmentId])
 
   async function pay() {
+    if (inFlight.current) return
+    inFlight.current = true
     setBusy('pay')
     setError(null)
+    const body = JSON.stringify(form)
+    if (attempt.current?.body !== body) attempt.current = { body, key: newIdempotencyKey() }
     try {
-      const payment = await recordCopay(patientId, appointmentId, encounterId, form, payKey)
+      const payment = await recordCopay(patientId, appointmentId, encounterId, form, attempt.current.key)
+      attempt.current = null
       setPaid(payment)
-      setPayKey(newIdempotencyKey())
       onPaid?.(payment)
     } catch (e) {
-      setError(e as CopayRefusal)
+      const r = e as CopayRefusal
+      if (isSecondCopay(r)) setAlready(true)
+      setError(r)
     } finally {
+      inFlight.current = false
       setBusy(null)
     }
   }
@@ -79,14 +92,18 @@ export function CopayAtCheckOut({ patientId, appointmentId, encounterId, onPaid 
     }
   }
 
-  const tone = paid
+  const tone = paid || already
     ? 'border-[color-mix(in_oklab,var(--color-hue-green)_28%,var(--color-border-soft))] bg-[color-mix(in_oklab,var(--color-hue-green)_8%,var(--color-surface-1))]'
     : 'border-[color-mix(in_oklab,var(--color-hue-amber)_28%,var(--color-border-soft))] bg-[color-mix(in_oklab,var(--color-hue-amber)_8%,var(--color-surface-1))]'
   const fieldError = (pointer: string) => (error?.pointer === pointer ? error.message : null)
 
   return (
     <div className={cn('rounded-xl border px-3.5 py-2.5', tone)} data-testid="copay">
-      {paid ? (
+      {already && !paid ? (
+        <p className="text-sm font-semibold text-ink" data-testid="copay-already">
+          Copay paid · already recorded for this visit
+        </p>
+      ) : paid ? (
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-ink" data-testid="copay-paid">
             Copay paid · {formatMoney(Number(paid.amount.value))} · {COPAY_METHODS.find((m) => m.value === paid.method)?.label ?? paid.method}
