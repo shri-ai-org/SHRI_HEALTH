@@ -41,7 +41,7 @@ test("the note's ICD-10 code comes back after a reload, so Sign stays possible",
     await page.getByPlaceholder(`Type the ${section.toLowerCase()}, or press the microphone…`).fill(text)
   }
   await page.getByRole('combobox', { name: 'Search ICD-10' }).fill('hypertension')
-  await page.getByRole('option').first().click({ timeout: 15_000 })
+  await page.getByRole('option', { disabled: false }).first().click({ timeout: 15_000 })
   const coded = page.getByText(/^Coded [A-Z][0-9]/).first()
   await expect(coded).toBeVisible()
   const code = (await coded.innerText()).match(/Coded ([A-Z][0-9A-Z.]+)/)?.[1]
