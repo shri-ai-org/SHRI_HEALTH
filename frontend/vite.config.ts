@@ -29,6 +29,9 @@ const mockProxy: ProxyOptions = {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), ...(realApi?.stubSessions ? [sessionStub(realApi)] : [])],
+  // `SHRI_API=real npm run dev`: the portal hides its sample-data screens, as its production build
+  // does (features.ts, M4); with the contract mock (and in unit tests) they stay.
+  define: { __SHRI_REAL_API__: JSON.stringify(Boolean(realApi)) },
   server: {
     proxy: {
       '/api/v1': realApi ? realApiProxy(realApi) : mockProxy,
