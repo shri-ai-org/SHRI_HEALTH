@@ -1,28 +1,41 @@
-// TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md). Neither care-entry nor the
-// doctors' portal has an insurance screen, so demo step 3 uses the screen Claude built earlier
-// until Minalini decides after the demo. Rooming (step 6) is now care-entry's rooming sheet
-// (src/flows/rooming/RoomingFlow.tsx). Delete this file, its route in src/App.tsx and the
-// @source lines in src/index.css together.
-import { useParams } from 'react-router'
+// The patient's insurance (demo step 3; M9, RUN_CHECK 28). Neither care-entry nor the doctors'
+// portal has an insurance screen (frontend/docs/SCREEN_PORT.md), so the coverage panel Claude built
+// earlier (src/features/patients/insurance) is shown at /patients/:uhid/insurance, opened from the
+// patient profile's Insurance button, under the front office's own page header, until Minalini
+// decides after the demo. The old /temporary/insurance/:patientId address redirects here.
+import { ChevronLeft } from 'lucide-react'
+import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { InsurancePanel } from '../../src/features/patients/insurance/InsurancePanel'
 import { ToastProvider } from '../../src/design-system'
+import { PageHeader } from '../src/components/layout/PageHeader'
+import { useStoreValue } from '../src/hooks/useStore'
+import { getPatientById } from '../src/domain/selectors'
 
-function TemporaryLabel({ step }: { step: string }) {
+/** `/patients/:uhid/insurance`: the patient's coverages, with the way back to their profile. */
+export function PatientInsurancePage() {
+  const { uhid = '' } = useParams()
+  const patient = useStoreValue(getPatientById, uhid)
   return (
-    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-      TEMPORARY — no source screen · demo step {step}
-    </p>
+    <div>
+      <Link
+        to={`/patients/${uhid}`}
+        className="focus-ring mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg text-sm font-semibold text-primary-text hover:underline"
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        Patient profile
+      </Link>
+      {/* The patient, then the panel's own "Insurance" section with Add insurance. */}
+      <PageHeader title={patient ? patient.name : 'Patient insurance'} subtitle={patient ? `MRN ${patient.uhid}` : undefined} />
+      <ToastProvider>
+        <InsurancePanel patientId={uhid} />
+      </ToastProvider>
+    </div>
   )
 }
 
-/** Demo step 3: the patient's coverages (`/temporary/insurance/:patientId`). */
-export function TemporaryInsurance() {
+/** The demo's earlier address, kept working. */
+export function TemporaryInsuranceRedirect() {
   const { patientId = '' } = useParams()
-  return (
-    <ToastProvider>
-      <TemporaryLabel step="3, insurance" />
-      <InsurancePanel patientId={patientId} />
-    </ToastProvider>
-  )
+  return <Navigate to={`/patients/${patientId}/insurance`} replace />
 }

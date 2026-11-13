@@ -1,5 +1,5 @@
 import type { CSSProperties, ElementType } from 'react'
-import { BedDouble, CalendarPlus, Copy, LogOut } from 'lucide-react'
+import { BedDouble, CalendarPlus, Copy, LogOut, ShieldCheck } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
 import { useToast } from '../../hooks/useToast'
@@ -24,6 +24,8 @@ export interface PatientActions {
   discharge: () => void
   /** Show or hide the Payment History panel beside the timeline. */
   togglePayments: () => void
+  /** With the API: the patient's insurance (demo step 3; M9, RUN_CHECK 28). */
+  insurance?: () => void
 }
 
 /**
@@ -100,6 +102,8 @@ export function PatientHeader({
             // Admit is India's inpatient flow: hidden with the SHRI_HEALTH API (US wording change, 2026-11-04).
             <Action icon={BedDouble} label="Admit" hue={HUES.orange} onClick={actions.admit} />
           )}
+          {/* With the API: the patient's insurance, in the green Payment History has without it (M9). */}
+          {REAL_API && actions.insurance ? <Action icon={ShieldCheck} label="Insurance" hue={HUES.green} onClick={actions.insurance} /> : null}
           {/* Bills at the counter are India-only: hidden with the SHRI_HEALTH API. */}
           {REAL_API ? null : (
             <Action

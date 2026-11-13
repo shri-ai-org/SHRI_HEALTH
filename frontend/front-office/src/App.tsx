@@ -26,7 +26,7 @@ import { todayKey } from './domain/time'
 import { useStoreValue } from './hooks/useStore'
 import { getAdmissionById } from './domain/admissionSelectors'
 // TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md): demo steps 3 and 6.
-import { TemporaryInsurance } from '../shri-health/TemporaryRoutes'
+import { PatientInsurancePage, TemporaryInsuranceRedirect } from '../shri-health/TemporaryRoutes'
 
 /**
  * Starts the page afresh when its query changes — Register opened from the
@@ -94,8 +94,8 @@ function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<FrontOfficeHomePage />} />
-            {/* TEMPORARY — no source screen: insurance (demo step 3). Rooming (step 6) is the rooming sheet. */}
-            <Route path="/temporary/insurance/:patientId" element={<TemporaryInsurance />} />
+            {/* Insurance (demo step 3, M9): from the patient profile; the old address redirects. */}
+            <Route path="/temporary/insurance/:patientId" element={<TemporaryInsuranceRedirect />} />
 
             {/* Patients — one list; finding a patient is the search in the app bar */}
             {/* Patients — one place, three views: everyone, outpatients, inpatients */}
@@ -104,6 +104,7 @@ function App() {
             <Route path="/patients/inpatients" element={<InpatientsPage />} />
             <Route path="/patients/search" element={<Navigate to="/patients" replace />} />
             <Route path="/patients/:uhid" element={<PatientProfilePage />} />
+            <Route path="/patients/:uhid/insurance" element={<PatientInsurancePage />} />
             <Route
               path="/register/new"
               element={
