@@ -19,6 +19,14 @@ The order of the checks:
    - an amount that isn't positive (``/amount/value``, ``out-of-range``);
    - an ``appointmentId`` or ``encounterId`` that isn't this patient's, or an encounter that
      isn't the given appointment's (``invalid-reference``).
+4. ``409 invalid-state-transition``: the visit (the appointment, or the encounter and its
+   appointment) already has a payment that stands, one that isn't a refund and has no refund
+   pointing at it (Vimal's M11 on #85). Its ``errors`` names ``/appointmentId`` (or
+   ``/encounterId``) with ``not-allowed-value``, and ``paymentId`` the payment, so the desk can
+   open its receipt. Nothing is written. The check runs under a lock on the visit's row, so two
+   desks can't both record one. A payment tied to no visit (a balance payment) is never refused,
+   and after a refund the visit can be paid again. A replay with the same Idempotency-Key gets
+   the first answer from core, before this runs.
 
 There is no restricted-chart check: payment is collected at check-in or check-out, so it works
 for a restricted patient as check-in does (the contract; SECURITY_MODEL §5.2).
@@ -98,6 +106,13 @@ async def record_payment(db: AsyncSession, repo: PaymentRepository, store: FileS
     errors += await reference_errors(db, repo, patient_id, body)
     if errors:
         raise _rule(errors)
+    if body.appointment_id is not None or body.encounter_id is not None:
+        paid = await repo.visit_payment(db, body.appointment_id, body.encounter_id)
+        if paid is not None:
+            where = "/appointmentId" if body.appointment_id is not None else "/encounterId"
+            raise Conflict("The visit already has a payment", code="invalid-state-transition",
+                           errors=[field_error("body", where, "not-allowed-value")],
+                           paymentId=str(paid))
 
     practice = await repo.practice(db)
     payment_id, collected_at = uuid4(), _now()

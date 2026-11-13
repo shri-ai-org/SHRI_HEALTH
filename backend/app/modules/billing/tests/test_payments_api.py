@@ -256,3 +256,34 @@ def test_the_shape_is_validated(as_user: Client, world: World, body: dict[str, A
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "validation-failed"
     assert not world.payments
+
+
+# ------------------------------------------------------------------- 409: the visit is paid (M11)
+def test_a_second_payment_for_the_same_visit_is_refused(as_user: Client, world: World,
+                                                        store: MemoryFileStore) -> None:
+    patient_id, appointment_id, encounter_id = _patient(world), uuid4(), uuid4()
+    world.appointments[CLINIC_A] = {appointment_id: patient_id}
+    world.encounters[CLINIC_A] = {encounter_id: EncounterLink(patient_id, appointment_id)}
+    first = _pay(as_user("fd"), patient_id, cash(appointmentId=str(appointment_id)))
+    assert first.status_code == 201
+
+    again = _pay(as_user("fd"), patient_id, cash(appointmentId=str(appointment_id)))
+    by_encounter = _pay(as_user("fd"), patient_id, cash(encounterId=str(encounter_id)))
+
+    assert again.status_code == by_encounter.status_code == 409
+    assert again.json()["code"] == "invalid-state-transition"
+    assert _field_errors(again) == [("/appointmentId", "not-allowed-value")]
+    assert _field_errors(by_encounter) == [("/encounterId", "not-allowed-value")]
+    assert again.json()["paymentId"] == by_encounter.json()["paymentId"] == first.json()["id"]
+    assert len(world.payments) == 1 and len(store.objects) == 1   # one payment, one receipt
+
+
+def test_another_visit_and_a_payment_tied_to_no_visit_are_not_refused(
+        as_user: Client, world: World) -> None:
+    patient_id, one, two = _patient(world), uuid4(), uuid4()
+    world.appointments[CLINIC_A] = {one: patient_id, two: patient_id}
+    assert _pay(as_user("fd"), patient_id, cash(appointmentId=str(one))).status_code == 201
+    assert _pay(as_user("fd"), patient_id, cash(appointmentId=str(two))).status_code == 201
+    for _ in range(2):                                  # balance payments, no visit
+        assert _pay(as_user("fd"), patient_id, cash()).status_code == 201
+    assert len(world.payments) == 4

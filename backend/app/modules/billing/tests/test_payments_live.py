@@ -9,8 +9,11 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import os
 import uuid
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -19,7 +22,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
@@ -297,3 +300,145 @@ def test_a_payment_is_audited_with_its_patient_and_no_patient_data(
     assert [r.status_code for r in refused] == [422, 422, 404], [r.text for r in refused]
     reasons = [r.reason for x in [paid, *refused] for r in audit_rows(admin, x)]
     assert phi_in([r.text for r in refused] + reasons, phi) == []
+
+
+# ------------------------------------------------------- one standing payment per visit (M11)
+def _booked(db: Session, patient: Any) -> Any:
+    now = dt.datetime.now(dt.UTC)
+    appointment = M["appointment"](status="booked", subject_patient_id=patient.id, start=now,
+                                   end=now + dt.timedelta(minutes=20))
+    db.add(appointment)
+    db.flush()
+    return appointment
+
+
+def _receipts(admin: Engine, clinic: UUID) -> int:
+    with admin.connect() as c:
+        found: int = c.execute(text(
+            "SELECT count(*) FROM admin.binary_object WHERE tenant_id = :t "
+            "AND purpose = 'receipt'"), {"t": clinic}).scalar_one()
+    return found
+
+
+def test_a_visit_is_paid_once_until_its_payment_is_refunded(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session], admin: Engine,
+        clinics: dict[UUID, UUID]) -> None:
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Owusu", "Efua")
+    visit, other = _booked(db, patient), _booked(db, patient)
+    db.commit()
+    body = {"amount": {"value": "25.00", "currency": "USD"}, "method": "cash",
+            "appointmentId": str(visit.id)}
+    first = _pay(client("fd"), patient.id, body)
+    assert first.status_code == 201
+
+    second = _pay(client("fd"), patient.id, body)
+    assert second.status_code == 409
+    problem = second.json()
+    assert problem["code"] == "invalid-state-transition"
+    assert problem["errors"] == [{"in": "body", "pointer": "/appointmentId",
+                                  "code": "not-allowed-value"}]
+    assert problem["paymentId"] == first.json()["id"]
+    assert len(_payments(admin, patient.id)) == 1
+    assert _receipts(admin, clinics[CLINIC_A]) == 1          # nothing written for the refusal
+
+    assert _pay(client("fd"), patient.id, {**body, "appointmentId": str(other.id)}
+                ).status_code == 201                         # another visit
+    for _ in range(2):                                       # balance payments, no visit
+        assert _pay(client("fd"), patient.id, {k: v for k, v in body.items()
+                                               if k != "appointmentId"}).status_code == 201
+
+    with admin.begin() as c:                                 # a refund of the first
+        c.execute(text(
+            "INSERT INTO admin.patient_payment (id, tenant_id, patient_id, appointment_id, "
+            "amount, method, collected_at, collected_by_user_id, is_refund, "
+            "refund_of_payment_id, receipt_file_id) SELECT :id, tenant_id, patient_id, "
+            "appointment_id, amount, method, now(), collected_by_user_id, true, id, "
+            "receipt_file_id FROM admin.patient_payment WHERE id = :first"),
+            {"id": uuid.uuid4(), "first": first.json()["id"]})
+    assert _pay(client("fd"), patient.id, body).status_code == 201
+
+
+# The stored answer is encrypted (core's Transit), so this needs OpenBao; it skips without it, as
+# the patients and eligibility replays do; CI requires it.
+@pytest.mark.skipif(not os.environ.get("OPENBAO_TRANSIT_ADDR")
+                    and os.environ.get("REQUIRE_OPENBAO") != "1",
+                    reason="OPENBAO_TRANSIT_ADDR not set (the stored response is encrypted)")
+def test_a_replay_with_the_same_key_gets_the_first_201_not_a_409(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session],
+        admin: Engine) -> None:
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Owusu", "Efua")
+    visit = _booked(db, patient)
+    db.commit()
+    body = {"amount": {"value": "25.00", "currency": "USD"}, "method": "cash",
+            "appointmentId": str(visit.id)}
+    key = str(uuid.uuid4())
+    first = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
+                              headers={"Idempotency-Key": key})
+    replay = client("fd").post(f"/api/v1/patients/{patient.id}/payments", json=body,
+                               headers={"Idempotency-Key": key})
+    assert first.status_code == replay.status_code == 201
+    assert replay.json()["id"] == first.json()["id"]
+    assert len(_payments(admin, patient.id)) == 1
+
+
+def test_two_desks_paying_one_visit_at_once_record_one_payment(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session],
+        admin: Engine) -> None:
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Owusu", "Efua")
+    visit = _booked(db, patient)
+    db.commit()
+    body = {"amount": {"value": "25.00", "currency": "USD"}, "method": "cash",
+            "appointmentId": str(visit.id)}
+    desk = client("fd")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(f.result().status_code for f in
+                       [pool.submit(_pay, desk, patient.id, body) for _ in range(2)])
+    assert codes == [201, 409]
+    assert len(_payments(admin, patient.id)) == 1
+
+
+def test_the_visit_lock_makes_the_second_desk_wait_for_the_first(
+        chart: Callable[[UUID], Session], clinics: dict[UUID, UUID], users: dict[str, Any],
+        tmp_path: Path) -> None:
+    """The repository's own lock, without the API: the second check waits until the first
+    desk's payment commits, and then sees it."""
+    db = chart(CLINIC_A)
+    patient = b.patient(db, "Owusu", "Efua")
+    visit = _booked(db, patient)
+    db.commit()
+    repo, clinic = SqlPaymentRepository(), clinics[CLINIC_A]
+
+    async def go() -> tuple[bool, UUID | None, UUID]:
+        engine = create_async_engine(str(TEST_DATABASE_URL), poolclass=NullPool)
+        try:
+            async with (AsyncSession(engine) as one, one.begin(),
+                        AsyncSession(engine) as two, two.begin()):
+                for s in (one, two):
+                    await s.execute(text("SET LOCAL ROLE shri_app"))
+                    await s.execute(text("SELECT set_config('app.current_tenant_id', :t, true)"),
+                                    {"t": str(clinic)})
+                    s.info["tenant_id"] = clinic
+                assert await repo.visit_payment(one, visit.id, None) is None
+                waiting = asyncio.create_task(repo.visit_payment(two, visit.id, None))
+                await asyncio.sleep(0.5)
+                blocked = not waiting.done()
+                paid = uuid.uuid4()
+                receipt = await storage.store_generated(
+                    one, storage.LocalFileStore(tmp_path / "files"), FakeFileCrypto(),
+                    purpose="receipt", content_type="application/pdf", data=b"%PDF synthetic")
+                await repo.insert_payment(one, NewPayment(
+                    id=paid, patient_id=patient.id, appointment_id=visit.id, encounter_id=None,
+                    amount=Decimal("25.00"), method="cash",
+                    collected_at=dt.datetime.now(dt.UTC),
+                    collected_by_user_id=users["fd"].id, receipt_file_id=receipt,
+                    check_number=None, note=None))
+                await one.commit()
+                return blocked, await waiting, paid
+        finally:
+            await engine.dispose()
+
+    blocked, seen, paid = asyncio.run(go())
+    assert blocked and seen == paid
