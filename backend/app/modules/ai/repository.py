@@ -48,7 +48,9 @@ from .schemas import (
 @dataclass(frozen=True)
 class Switches:
     clinic: bool    # admin.tenant.ai_enabled: the clinic-wide switch
-    feature: bool   # admin.ai_feature_setting.is_enabled; a feature with no row is off
+    # admin.ai_feature_setting.is_enabled; None when the feature was never set (no row): off,
+    # except on a demo server, where it is on (config.features_on_by_default, D118)
+    feature: bool | None
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ class FeatureState:
     feature: AIFeature
     enabled: bool
     reason: str | None = None
-    updated_at: datetime | None = None   # None: never set (off)
+    updated_at: datetime | None = None   # None: never set (config.features_on_by_default)
 
 
 @dataclass(frozen=True)
@@ -168,7 +170,7 @@ class SqlAIRepository:
         clinic = (await db.execute(select(Tenant.ai_enabled))).scalar_one_or_none()
         enabled = (await db.execute(select(AIFeatureSetting.is_enabled).where(
             AIFeatureSetting.feature == feature))).scalar_one_or_none()
-        return Switches(clinic=bool(clinic), feature=bool(enabled))
+        return Switches(clinic=bool(clinic), feature=None if enabled is None else bool(enabled))
 
     async def set_feature(self, db: AsyncSession, feature: AIFeature, enabled: bool,
                           reason: str | None = None) -> None:

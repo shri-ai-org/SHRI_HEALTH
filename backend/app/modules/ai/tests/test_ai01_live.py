@@ -525,6 +525,26 @@ def test_a_restricted_chart_needs_break_glass(
     assert granted.status_code == 202 and granted.json()["status"] == "succeeded"
 
 
+def test_on_a_demo_server_the_settings_show_never_set_features_on(
+        client: Client, practice: Practice, monkeypatch: pytest.MonkeyPatch) -> None:
+    """D118: with SHRI_AI_ON_BY_DEFAULT=true a feature never set reads as on; switching it off
+    in the settings is stored and wins."""
+    monkeypatch.setenv("SHRI_AI_ON_BY_DEFAULT", "true")
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    path = f"{API}/ai-settings"
+    first = client("adm").get(path)
+    assert first.status_code == 200
+    assert first.json() == {"clinicEnabled": True, "features": [
+        {"feature": "ambient-documentation", "enabled": True},
+        {"feature": "chart-summary", "enabled": True}]}
+    off = client("adm").put(path, json={"clinicEnabled": True, "features": [
+        {"feature": "chart-summary", "enabled": False, "reason": "Paused for the rehearsal."}]},
+        headers={"If-Match": first.headers["ETag"]})
+    assert off.status_code == 200, off.text
+    features = {f["feature"]: f["enabled"] for f in client("adm").get(path).json()["features"]}
+    assert features == {"ambient-documentation": True, "chart-summary": False}
+
+
 def test_ai_settings_read_replace_and_their_guards(client: Client, practice: Practice) -> None:
     path = f"{API}/ai-settings"
     first = client("adm").get(path)

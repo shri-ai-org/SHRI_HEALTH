@@ -51,6 +51,10 @@ SPEECH_TOKEN_ENV = "SHRI_AI_SPEECH_TOKEN"  # noqa: S105 (the variable's name, no
 #: Core's ENVIRONMENT (app.core.settings.base). Unset means production there, so the stub
 #: answers only where it is explicitly one of these.
 ENVIRONMENT_ENV = "ENVIRONMENT"
+ON_BY_DEFAULT_ENV = "SHRI_AI_ON_BY_DEFAULT"
+#: On a demo server (SHRI_DEMO=true; the deploy kit sets this from it) an AI feature that was never
+#: set is on, so AI is on after every reset; the admin's switch still turns it off (D118).
+#: Ignored in production, where a feature never set stays off until the ADR-08 decision.
 STUB_ENVIRONMENTS = frozenset({"development", "test", "staging"})
 
 
@@ -116,3 +120,10 @@ def configured_speech() -> SpeechClient:
         return UnconfiguredSpeech()
     return OpenAICompatibleSpeech(base_url=url, model=name,
                                   token=os.environ.get(SPEECH_TOKEN_ENV) or None)
+
+
+def features_on_by_default() -> bool:
+    """Whether an AI feature with no setting is on: only when ``SHRI_AI_ON_BY_DEFAULT`` is
+    ``true`` (a demo server) and the environment isn't production (D118)."""
+    wanted = os.environ.get(ON_BY_DEFAULT_ENV, "").strip().lower() == "true"
+    return wanted and os.environ.get(ENVIRONMENT_ENV, "").strip().lower() != "production"

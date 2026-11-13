@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import PreconditionFailed, PreconditionRequired, ValidationFailed, field_error
 from app.db.models.enums import AIFeature
 
+from .config import features_on_by_default
 from .repository import AIRepository, FeatureState, SettingsState
 from .schemas import AiFeatureSetting, AiSettings, AiSettingsUpdate
 
@@ -34,7 +35,7 @@ FEATURES = (AIFeature.AMBIENT_DOCUMENTATION, AIFeature.CHART_SUMMARY)
 def as_contract(state: SettingsState) -> AiSettings:
     features = []
     for feature in FEATURES:
-        found = state.features.get(feature, FeatureState(feature, False))
+        found = state.features.get(feature, FeatureState(feature, features_on_by_default()))
         features.append(AiFeatureSetting(feature=feature.value, enabled=found.enabled,
                                          reason=None if found.enabled else found.reason,
                                          updated_at=found.updated_at))
