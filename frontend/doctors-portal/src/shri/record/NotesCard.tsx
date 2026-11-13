@@ -5,12 +5,19 @@
  * types. Each note is a draft until signed — it can be edited, with the mic
  * adding to it, or discarded first; signed, it is part of the record. Drafts
  * first, then the signed, newest first. The Notes tab has every note.
+ *
+ * SHRI_HEALTH (M7, RUN_CHECK 7): with the API the card lists the server's signed notes, as the
+ * Notes tab does (`pastNotesFor`, newest first), and has no mic or +: those made notes that stayed
+ * in this browser and were never saved. Notes are written and signed in the visit.
  */
 
 import { Mic, NotebookPen, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import type { Patient } from '@/data/kit'
+
+import { formatDate, formatTime } from '../../../shri-health/format'
+import { pastNotesFor } from '../../../shri-health/record'
 
 import { cn } from '../lib/cn'
 import { useVoiceNotesFor } from '../logic/record'
@@ -20,7 +27,50 @@ import { Card, CountBubble, RoundButton } from '../ui/primitives'
 
 import { VoiceNoteRow } from './VoiceNoteRow'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/** How many signed notes the card shows; the Notes tab has them all. */
+const SHOWN = 5
+
 export function NotesCard({ patient: p, className }: { patient: Patient; className?: string }) {
+  return REAL_API ? <ServerNotesCard patient={p} className={className} /> : <BrowserNotesCard patient={p} className={className} />
+}
+
+/** With the API: the patient's signed notes from the server, newest first, each opening the Notes tab. */
+function ServerNotesCard({ patient: p, className }: { patient: Patient; className?: string }) {
+  const notes = pastNotesFor(p.id)
+  return (
+    <Card
+      titleSize="sm"
+      title="Consultation notes"
+      aria-label={`Consultation notes on ${p.name}`}
+      right={notes.length > 0 ? <CountBubble className="bg-sh-control">{notes.length}</CountBubble> : undefined}
+      className={cn('min-h-0', className)}
+    >
+      {notes.length === 0 ? (
+        <EmptyState compact icon={NotebookPen} why="No signed notes yet. A note is written and signed in the visit." />
+      ) : (
+        <ul className="-mx-[4px] flex min-h-0 flex-1 flex-col gap-[6px] overflow-y-auto px-[4px]" aria-label="Signed notes, newest first">
+          {notes.slice(0, SHOWN).map((n) => (
+            <li key={n.id}>
+              <Link to={`/patient/${p.id}/notes`} className="flex min-h-[44px] flex-col justify-center rounded-[10px] px-[8px] py-[6px] hover:bg-sh-inner">
+                <span className="text-[14px] font-medium text-sh-text">{n.setting}</span>
+                <span className="text-[12px] tabular-nums text-sh-text-3">
+                  {formatDate(n.at)} {formatTime(n.at)} · {n.by}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link to={`/patient/${p.id}/notes`} className="mt-auto inline-flex min-h-[44px] items-center self-start pt-[6px] text-[13px] font-medium text-sh-text-2 underline-offset-2 hover:underline">
+        All consultation notes
+      </Link>
+    </Card>
+  )
+}
+
+function BrowserNotesCard({ patient: p, className }: { patient: Patient; className?: string }) {
   const open = useShri((s) => s.openNoteModal)
   const all = useVoiceNotesFor(p.id)
   const notes = [...all.filter((n) => n.status === 'draft'), ...all.filter((n) => n.status !== 'draft')]

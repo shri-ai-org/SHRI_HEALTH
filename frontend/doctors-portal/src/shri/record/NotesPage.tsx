@@ -25,6 +25,8 @@ import { Card, CountBubble, Icon, Pill, PillTag, RoundButton } from '../ui/primi
 import { RecordFrame } from './RecordFrame'
 import { VoiceNoteRow } from './VoiceNoteRow'
 
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 const SOAP: { key: 'subjective' | 'objective' | 'assessment' | 'plan'; label: string }[] = [
   { key: 'subjective', label: 'Subjective' },
   { key: 'objective', label: 'Objective' },
@@ -39,7 +41,8 @@ export function NotesPage() {
     <RecordFrame
       id={id}
       section="notes"
-      actions={(p) => (
+      // With the API there is no dictated browser note (M7): notes are written and signed in the visit.
+      actions={REAL_API ? undefined : (p) => (
         <RoundButton icon={Mic} size={48} iconSize={19} variant="accent" label="Add note" onClick={() => openNoteModal({ kind: 'patient', patientId: p.id, listening: true })} />
       )}
     >
