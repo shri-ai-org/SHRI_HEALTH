@@ -9,6 +9,7 @@ the module serves (scheduling's facility_scope.py runs it). Synthetic data only.
 from __future__ import annotations
 
 import hashlib
+import secrets
 import uuid
 from typing import Any
 
@@ -66,9 +67,12 @@ def _payer(p: Practice) -> str:
 def _pharmacy(p: Practice) -> str:
     """A pharmacy in the platform directory (synthetic; the directory has no clinic)."""
     pharmacy = uuid.uuid4()
-    _sql(p, "INSERT INTO admin.pharmacy (id, ncpdp_id, name, is_mail_order, is_active) "
-         "VALUES (:i, :n, 'Scope Pharmacy (synthetic)', false, true)", i=pharmacy,
-         n=f"{pharmacy.int % 10**7:07d}")
+    # A random NCPDP ID, tried again on the rare clash with another test's (unique column).
+    while _sql(p, "INSERT INTO admin.pharmacy (id, ncpdp_id, name, is_mail_order, is_active) "
+               "VALUES (:i, :n, 'Scope Pharmacy (synthetic)', false, true) "
+               "ON CONFLICT (ncpdp_id) DO NOTHING", i=pharmacy,
+               n=f"{secrets.randbelow(10**7):07d}").rowcount == 0:
+        pass
     return str(pharmacy)
 
 
