@@ -39,6 +39,7 @@ This writes a settings file with a fresh random value for every secret, mode 600
 | `SHRI_HTTPS_PORT` | `443` | `9443` (any free port) |
 | `TLS_MODE` | `provided`, with `TLS_CERT_FILE` (full chain) and `TLS_KEY_FILE` | `self-signed` |
 | `SHRI_DEMO` | `true` for the demo, `false` otherwise | `true` |
+| `SHRI_DEMO_DAY` | **empty**: the demo patients are booked on the day the seed runs in the clinic's time zone, so the reset on 20 Nov after 13:30 IST gives the demo day. A date (`YYYY-MM-DD`) only to rehearse a particular day, then empty again; passed to the seed only when set | empty |
 | `SHRI_STATE_DIR` | outside the repository, e.g. `/etc/shri/shri-state` | the default is fine |
 
 `SHRI_STATE_DIR` gets OpenBao's unseal key and root token (`openbao.env`, mode 600) on the first deploy, and the self-signed certificate. **Losing `openbao.env` loses every encrypted field and file.** Keep a copy where the settings file's backup is.
@@ -174,7 +175,7 @@ In order:
 1. Stops the API and the worker.
 2. Drops the application database and creates it again empty, as the master user (`postgres/recreate-database.sql`): UTF-8 with the builtin C.UTF-8 locale (D33), owned by `shri_migrator`, `CONNECT` for the service roles only. The service roles belong to the server, so they and their passwords stay. It refuses `postgres`, the templates and `keycloak`.
 3. Adds the extensions, as the master user.
-4. Runs `python -m app.db.seed reset` as `shri_migrator` (Anand's half): the migrations to head, then the demo data. It refuses a database that already has tables.
+4. Runs `python -m app.db.seed reset` as `shri_migrator` (Anand's half): the migrations to head, then the demo data, booked on `SHRI_DEMO_DAY` (empty: the day of the reset). It refuses a database that already has tables.
    Then loads the diagnosis and drug codes (`python -m app.db.terminology all`, as `shri_migrator`): the pinned ICD-10-CM and RxNorm releases, checked by SHA-256. The downloads are kept in the `shri-terminology` volume, so a host fetches each release once.
 5. Puts the demo accounts back (`infra/keycloak/reset-demo-users.sh`): enabled again, with the authenticators they already have.
 6. Starts the API and the worker, and runs the health check.

@@ -17,6 +17,7 @@ import type { Tone } from '../mocks/types'
 import { useAppointments } from './schedule'
 import { appointmentsOf, nextOf } from '../../../shri-health/record'
 import { usePatientProblems } from '../../../shri-health/history'
+import { usePatientImagingReports, usePatientLabResults } from '../../../shri-health/results'
 import { formatTime as clinicTime } from '../../../shri-health/format'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
@@ -37,10 +38,10 @@ export const SECTION_META: Record<RecordSection, { label: string; short: string;
 }
 
 // SHRI_HEALTH: the History tab (gap 86) reads the API only, so it isn't in the sample screens. With
-// the API, Test results (S-06-13) and Imaging reports (S-06-12) have no service yet, so they have no
-// screen (ShriApp NO_SERVICE) and no tab: a tab must never lead to "No screen at this address".
+// the API, Test results (S-06-13) and Imaging reports (S-06-12) read listLabResults and
+// listImagingReports (shri-health/results.ts).
 export const SECTION_ORDER: RecordSection[] = REAL_API
-  ? ['record', 'condition', 'history', 'notes', 'prescriptions', 'appointments']
+  ? ['record', 'condition', 'history', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
   : ['record', 'condition', 'results', 'reports', 'notes', 'prescriptions', 'appointments']
 
 /** A condition's status in this build's tones — stable is the quiet one, the clinical hues for the rest (`STATUS_TONE`). */
@@ -86,12 +87,15 @@ export function useSectionCounts(p: Patient): Record<Exclude<RecordSection, 'rec
   const voice = useVoiceNotesFor(p.id)
   const session = useSessionNotesFor(p.id)
   const problems = useProblemsFor(p.id)
+  // SHRI_HEALTH: with the API the two counts are the server's (no count for a role that can't read them).
+  const labs = REAL_API ? usePatientLabResults(p.id) : null
+  const imaging = REAL_API ? usePatientImagingReports(p.id) : null
   return {
     condition: problems.length,
     // No count on the History tab: it would read four lists on every record page.
     history: undefined,
-    results: resultsFor(p.id).length,
-    reports: reportsFor(p.id).length,
+    results: labs ? (labs.denied ? undefined : labs.items.length) : resultsFor(p.id).length,
+    reports: imaging ? (imaging.denied ? undefined : imaging.items.length) : reportsFor(p.id).length,
     notes: pastNotesFor(p.id).length + voice.length + session.length,
     prescriptions: activeMedicines(p.id).length,
     appointments: appointmentsOf(book, p.id).length,

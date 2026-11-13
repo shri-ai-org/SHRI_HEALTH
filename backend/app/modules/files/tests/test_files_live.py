@@ -30,6 +30,7 @@ from app.core.deps import CLINIC_A, CLINIC_B, DEV_USER_HEADER, DEV_USERS, Curren
 from app.core.download_tokens import DownloadTokens
 from app.db.models import MAPPERS
 from app.db.tests import builders as b
+from app.db.tests.audit_coverage import audit_problems, audit_rows
 from app.db.tests.conftest import (
     TEST_DATABASE_URL,
     make_tenant,
@@ -387,3 +388,27 @@ def test_attached_files_follow_their_patient(
                                  role_code="billing", period_start=dt.date(2026, 1, 1)))
     db.commit()
     assert client("bil").get(f"/api/v1/files/{card}/download-url").status_code == 200
+
+
+def test_an_upload_is_audited_with_no_patient_data(
+        client: Callable[[str], TestClient], admin: Engine, clinics: dict[UUID, UUID]) -> None:
+    fd = client("fd")
+    asked = fd.post("/api/v1/files/upload-url", headers={"Idempotency-Key": str(uuid.uuid4())},
+                    json={"purpose": "insurance-card", "contentType": "image/jpeg",
+                          "sizeBytes": len(JPEG), "sha256": hashlib.sha256(JPEG).hexdigest()})
+    assert asked.status_code == 201, asked.text
+    file_id = asked.json()["fileId"]
+    target = _path(asked.json()["uploadUrl"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(JPEG)
+    refused = client("fd-b").post(f"/api/v1/files/{file_id}/complete")    # another clinic's
+    completed = client("fd").post(f"/api/v1/files/{file_id}/complete")
+
+    assert refused.status_code == 404, refused.text
+    assert completed.status_code == 202, completed.text
+    # An unattached upload has no patient: the contract names none for either operation.
+    assert audit_problems(admin, asked, "createUploadUrl", tenant=clinics[CLINIC_A]) == []
+    assert audit_problems(admin, completed, "completeUpload", tenant=clinics[CLINIC_A],
+                          entity=file_id) == []
+    rows = [r for x in (asked, refused, completed) for r in audit_rows(admin, x)]
+    assert [r.reason for r in rows] == [None] * len(rows)

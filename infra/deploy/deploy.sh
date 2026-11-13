@@ -64,6 +64,12 @@ SHRI_DEMO_SKIP_AUTH_CODE=false
 # morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
 # SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
 SHRI_DEMO_AI_SCREENS=false
+# Leave empty: the demo patients are then booked on the day the seed runs, in the clinic's time
+# zone (San Jose), so every rehearsal has a full day, and the reset on 20 Nov after 13:30 IST gives
+# the demo day. A date (YYYY-MM-DD, seed/demo.py) only to rehearse a particular day; never left
+# set, or later rehearsals get an empty list. Only with SHRI_DEMO=true; passed to the seed only
+# when set.
+SHRI_DEMO_DAY=
 # self-signed (a local hostname) or provided (TLS_CERT_FILE and TLS_KEY_FILE, the real certificate).
 TLS_MODE=self-signed
 TLS_CERT_FILE=
@@ -149,6 +155,15 @@ load_env() {
         false) export SHRI_WEB_AI=off ;;
         *) die "SHRI_DEMO_AI_SCREENS is true or false" ;;
     esac
+    SHRI_DEMO_DAY="${SHRI_DEMO_DAY:-}"
+    if [ -n "$SHRI_DEMO_DAY" ]; then
+        [ "${SHRI_DEMO:-false}" = true ] || die "SHRI_DEMO_DAY needs SHRI_DEMO=true (it moves the demo data)"
+        [[ "$SHRI_DEMO_DAY" =~ ^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] \
+            || die "SHRI_DEMO_DAY is a date, YYYY-MM-DD, or empty for the day the seed runs"
+        DEMO_DAY_ARGS=(-e "SHRI_DEMO_DAY=$SHRI_DEMO_DAY")
+    else
+        DEMO_DAY_ARGS=()   # unset: the seed's own default, the day it runs
+    fi
     PROJECT="${SHRI_PROJECT:-shri-deploy}"
     [[ "$PROJECT" =~ ^shri-[a-z0-9-]+$ ]] || die "SHRI_PROJECT must start with shri- (lower case, digits, -)"
     SHRI_NET_A="${SHRI_NET_A:-172.31.250}" SHRI_NET_B="${SHRI_NET_B:-172.31.251}"
@@ -241,12 +256,12 @@ demo_reset() {
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" DEMO_PASSWORD="$DEMO_PASSWORD" \
         DEMO_SKIP_AUTH_CODE="$DEMO_SKIP_AUTH_CODE" sh "$REPO/infra/keycloak/reset-demo-users.sh"
-    say "Demo data (python -m app.db.seed demo, as shri_migrator)"
+    say "Demo data (python -m app.db.seed demo, as shri_migrator; demo day: ${SHRI_DEMO_DAY:-the day it runs})"
     # The seed refuses staging unless SEED_ALLOW_STAGING=1 (its guard against real data, #159).
     # This host holds synthetic data only, and the demo never runs in production (checked above).
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
-        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 --entrypoint python api \
-        -m app.db.seed demo
+        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 \
+        "${DEMO_DAY_ARGS[@]}" --entrypoint python api -m app.db.seed demo
 }
 
 load_codes() {
@@ -291,12 +306,12 @@ reset() {
         <"$DEPLOY/postgres/recreate-database.sql"
     $DC exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
         <"$REPO/backend/app/db/sql/00_extensions.sql"
-    say "Migrations and the demo data (python -m app.db.seed reset, as shri_migrator)"
+    say "Migrations and the demo data (python -m app.db.seed reset, as shri_migrator; demo day: ${SHRI_DEMO_DAY:-the day it runs})"
     # The reset refuses a database that has tables and, like the seed, staging without
     # SEED_ALLOW_STAGING=1 (#159); this host is a demo host (checked above).
     MIGRATION_DATABASE_URL="postgresql+psycopg://shri_migrator:${SHRI_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB}" \
-        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 --entrypoint python api \
-        -m app.db.seed reset
+        $DC run --rm --no-deps -T -e MIGRATION_DATABASE_URL -e SEED_ALLOW_STAGING=1 \
+        "${DEMO_DAY_ARGS[@]}" --entrypoint python api -m app.db.seed reset
     load_codes
     say "Demo accounts (Keycloak, fixed IDs)"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
