@@ -28,6 +28,7 @@ import {
   checkPrescriptionSafety,
   createPrescription,
   getPrescription,
+  listEncounterPrescriptions,
   listPharmacies,
   overrideAlert,
   signAndSendPrescription,
@@ -36,7 +37,7 @@ import {
 import { listNoteTemplates } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
 import { createNoteDraft, decideAiSuggestion } from '../../src/api/generated/endpoints/ai/ai'
 import { getPatient } from '../../src/api/generated/endpoints/patients/patients'
-import type { AiSuggestionDecision, Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Operation, Prescription, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
+import type { AiSuggestionDecision, Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Operation, Prescription, PrescriptionList, PrescriptionTransmission, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
 import { rxNormProduct } from './formulary'
@@ -168,7 +169,7 @@ interface NoteState {
   /** Sets the pharmacy for the visit and saves it on every draft line (If-Match). */
   chooseRxPharmacy: (encounterId: string, pharmacy: RxPharmacy) => void
   /** Per prescription: its ETag, and the alerts of its latest safety check. */
-  rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void>; signed?: boolean }>
+  rxServer: Record<string, { etag?: string; alerts: SafetyAlert[]; checkedAt?: string; queue: Promise<void>; signed?: boolean; transmission?: PrescriptionTransmission }>
   rx: (encounterId: string) => RxRecord
   addRxLine: (encounterId: string, line: Omit<RxLine, 'id'>) => string | null
   editRxLine: (encounterId: string, lineId: string, patch: RxLineEdit) => void
@@ -184,22 +185,20 @@ interface NoteState {
 const RXNORM = 'http://www.nlm.nih.gov/research/umls/rxnorm'
 const blankRx = (encounterId: string): RxRecord => ({ encounterId, status: 'draft', removedLines: [], substitutions: {}, added: [], edits: {} })
 
-// TODO(gap): no read of an encounter's prescriptions (asked on #93), so this tab remembers the
-// drafts it created, per visit, in sessionStorage.
-const rxKey = (encounterId: string) => `shri.rx:${encounterId}`
-function rememberedRx(encounterId: string): string[] {
-  try {
-    return JSON.parse(sessionStorage.getItem(rxKey(encounterId)) ?? '[]') as string[]
-  } catch {
-    return []
+/** Pages of a visit's prescriptions read at most (500): more than any visit holds. */
+const RX_PAGES = 5
+
+/** The visit's prescriptions, drafts included, oldest first (listEncounterPrescriptions, #291; gap 82). */
+async function encounterRxIds(encounterId: string): Promise<string[]> {
+  const ids: string[] = []
+  let cursor: string | undefined
+  for (let page = 0; page < RX_PAGES; page++) {
+    const data = (await listEncounterPrescriptions(encounterId, { limit: 100, ...(cursor ? { cursor } : {}) })).data as PrescriptionList
+    ids.push(...data.items.map((p) => p.id))
+    cursor = data.nextCursor ?? undefined
+    if (!cursor) break
   }
-}
-function rememberRx(encounterId: string, ids: string[]): void {
-  try {
-    sessionStorage.setItem(rxKey(encounterId), JSON.stringify(ids))
-  } catch {
-    /* private window: the drafts stay on the server, unlisted */
-  }
+  return ids
 }
 
 /** The dispensing unit an RxNorm dose form suggests: `Oral Tablet` → `tablet`, a liquid → `mL`. */
@@ -400,9 +399,12 @@ export const useClinical = create<NoteState>()((set, get) => {
   }
 
   /** Runs one write on a prescription after the ones before it. */
-  /** Reads the visit's prescriptions from the server: on first open, and again after a refusal. */
+  /**
+   * Reads the visit's prescriptions from the server, in any browser and after a reload: on first
+   * open, and again after a refusal. Each is read on its own as well, for its ETag (If-Match).
+   */
   async function loadRx(encounterId: string): Promise<void> {
-    const ids = rememberedRx(encounterId)
+    const ids = await encounterRxIds(encounterId)
     const found = await Promise.all(ids.map((id) => getPrescription(id).then((res) => ({ p: res.data as Prescription, etag: etagOf(res) }))))
     const live = found.filter(({ p }) => p.status !== 'entered-in-error')
     set({
@@ -412,9 +414,11 @@ export const useClinical = create<NoteState>()((set, get) => {
           ...blankRx(encounterId),
           added: live.map(({ p }) => toLine(p)),
           edits: Object.fromEntries(live.map(({ p }): [string, RxLineEdit] => [p.id, { quantity: p.quantity ? String(p.quantity.value) : undefined, quantityUnit: p.quantity?.unit, refills: p.refills }])),
-          status: live.length > 0 && live.every(({ p }) => p.status === 'active') ? 'signed' : 'draft' },
+          status: live.length > 0 && live.every(({ p }) => p.status === 'active') ? 'signed' : 'draft',
+          // When it was signed, from the server (the latest line's), so the read-only banner says it after a reload.
+          signedAt: live.map(({ p }) => p.signedAt).filter((at): at is string => Boolean(at)).sort().pop() },
       },
-      rxServer: { ...get().rxServer, ...Object.fromEntries(live.map(({ p, etag }) => [p.id, { etag: etag ?? undefined, alerts: p.alerts, queue: Promise.resolve(), signed: p.status === 'active' }])) },
+      rxServer: { ...get().rxServer, ...Object.fromEntries(live.map(({ p, etag }) => [p.id, { etag: etag ?? undefined, alerts: p.alerts, queue: Promise.resolve(), transmission: p.transmission, signed: p.status === 'active' }])) },
     })
     // The pharmacy already saved on the lines (another tab, or before a reload) is the visit's pharmacy.
     const saved = live.find(({ p }) => p.pharmacyId)?.p
@@ -654,7 +658,6 @@ export const useClinical = create<NoteState>()((set, get) => {
           }
           setRx({ ...rec, edits, added: (rec.added ?? []).map((l) => (l.id === pendingId ? { ...l, id: p.id } : l)) })
           set({ rxServer: { ...get().rxServer, [p.id]: { etag: etagOf(res) ?? undefined, alerts: [], queue: Promise.resolve() } } })
-          rememberRx(encounterId, [...rememberedRx(encounterId), p.id])
           await check(p.id)
         })
         .catch((error: unknown) => {
@@ -724,7 +727,10 @@ export const useClinical = create<NoteState>()((set, get) => {
           if (get().rxServer[id]?.signed) continue
           await onLine(id, async () => {
             const res = await signAndSendPrescription(id, { 'If-Match': get().rxServer[id]?.etag ?? '', 'Idempotency-Key': newIdempotencyKey() })
-            set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], etag: etagOf(res) ?? undefined, signed: true } } })
+            // The transmission status as the sign answer gives it (sent, queued, rejected…), shown on the line.
+            const transmission = (res.data as Prescription | undefined)?.transmission
+            set({ rxServer: { ...get().rxServer, [id]: { ...get().rxServer[id], etag: etagOf(res) ?? undefined, signed: true, ...(transmission ? { transmission } : {}) } } })
+            touchRecordOf(id)
           })
         }
         return true

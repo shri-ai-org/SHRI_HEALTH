@@ -18,7 +18,7 @@
  * the AI-206 dose suggestion gates Sign only while the AI is live to show it.
  */
 
-import { ArrowRight, CircleAlert, CircleDot, FileText, Lock, OctagonAlert, Pill as PillIcon, Printer, ShieldAlert, ShieldCheck, Signature, Trash2, Check } from 'lucide-react'
+import { ArrowRight, CircleAlert, CircleDot, FileText, Lock, OctagonAlert, Pill as PillIcon, Printer, Send, ShieldAlert, ShieldCheck, Signature, Trash2, Check } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -291,7 +291,7 @@ function Prescription({ enc }: { enc: Encounter }) {
               <span className="flex items-center gap-[8px] text-[13px] tabular-nums text-sh-text-2">
                 <Icon icon={Lock} size={14} />
                 {/* SHRI_HEALTH: the session carries no NPI, and A5 bilingual printing is India's, so neither shows with the API. */}
-                Signed by {record.signedBy ?? me.name}
+                Signed by {record.signedBy ?? (REAL_API ? 'the prescriber' : me.name)}
                 {!REAL_API && ` · ${record.registrationNo ?? me.identifier}`}
                 {record.signedAt && ` · ${formatClinicDateTime(record.signedAt)}`}
               </span>
@@ -347,7 +347,7 @@ function Prescription({ enc }: { enc: Encounter }) {
           )
         }
       >
-        {locked && <LockedBanner by={record.signedBy ?? me.name} at={record.signedAt ? formatClinicDateTime(record.signedAt) : formatTime(NOW)} reason="signed" />}
+        {locked && <LockedBanner by={record.signedBy ?? (REAL_API ? 'the prescriber' : me.name)} at={record.signedAt ? formatClinicDateTime(record.signedAt) : REAL_API ? formatClinicDateTime(new Date().toISOString()) : formatTime(NOW)} reason="signed" />}
 
         {!locked && (showValidation || forced === 'VALIDATION') && problems.length > 0 && (
           <ValidationSummary problems={problems} onFocusFirst={() => document.getElementById(problems[0].target)?.scrollIntoView({ block: 'center' })} />
@@ -386,7 +386,7 @@ function Prescription({ enc }: { enc: Encounter }) {
                 {l.override?.prescriber && <span>Prescriber: {l.override.prescriber}</span>}
                 <span>Override reason: {l.override?.reason}</span>
                 <span className="tabular-nums">
-                  <code className="font-mono text-[12px] text-sh-text">{l.override?.auditEvent}</code> · {l.override && formatDateTime(new Date(l.override.at))}
+                  <code className="font-mono text-[12px] text-sh-text">{l.override?.auditEvent}</code> · {l.override && formatClinicDateTime(l.override.at)}
                 </span>
               </div>
             </Alert>
@@ -608,6 +608,16 @@ function Prescription({ enc }: { enc: Encounter }) {
 }
 
 /** One basket line, with AI-206's dose adjustment and AI-305's completeness gap. */
+/** A signed prescription's transmission, in words (TransmissionStatus), with its tone. */
+const TRANSMISSION: Record<string, { text: string; tone: 'norm' | 'neu' | 'crit' }> = {
+  'not-sent': { text: 'Not sent to the pharmacy yet', tone: 'neu' },
+  queued: { text: 'Queued to send to the pharmacy', tone: 'neu' },
+  sent: { text: 'Sent to the pharmacy', tone: 'norm' },
+  accepted: { text: 'Received by the pharmacy', tone: 'norm' },
+  rejected: { text: 'Rejected by the pharmacy', tone: 'crit' },
+  error: { text: 'Not delivered to the pharmacy', tone: 'crit' },
+}
+
 function RxLineCard({
   line,
   encounterId,
@@ -632,6 +642,7 @@ function RxLineCard({
   const base = `${encounterId}:${line.id}`
   const touchpointId = `${encounterId}:dose:${line.id}`
   const blockedNow = line.stop !== undefined && line.override === undefined
+  const server = useClinical((s) => s.rxServer[line.id])
   const weight = weightKg !== undefined ? `${weightKg} kg` : 'no weight recorded'
   const routeOptions = [...new Set([line.proposedRouteFrequency, ...ROUTE_FREQUENCIES])]
   const adjustment = line.doseAdjustment
@@ -661,6 +672,16 @@ function RxLineCard({
             )}
           </p>
           {line.indication && !line.indicationCode && <p className="mt-[2px] text-[13px] text-sh-text-3">for {line.indication}</p>}
+          {/* With the API: after Sign, where the prescription is on its way to the pharmacy (as last read). */}
+          {REAL_API && server?.signed && server.transmission && (
+            <p className="mt-[6px] flex flex-wrap items-center gap-[8px] text-[13px] text-sh-text-2" role="status">
+              <PillTag tone={(TRANSMISSION[server.transmission.status] ?? TRANSMISSION['not-sent']).tone} size="xs" icon={Send} className="font-semibold">
+                {(TRANSMISSION[server.transmission.status] ?? { text: server.transmission.status }).text}
+              </PillTag>
+              {server.transmission.updatedAt && <span className="tabular-nums">{formatClinicDateTime(server.transmission.updatedAt)}</span>}
+              {server.transmission.message && <span>{server.transmission.message}</span>}
+            </p>
+          )}
         </div>
         {/* Resolve lives on the page alert above — one way in, not two. */}
         {!viewOnly && (
