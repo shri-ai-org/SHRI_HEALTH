@@ -3,11 +3,12 @@ getChartSummary; FRS §3.4; D70).
 
 **What the model sees.** The chart, read as the clinician through each module's own service
 (the reader in api.py): the recent visits with their diagnoses, the active allergies and the
-active medications, each part only with its read permission, the facility check and the
-restricted-chart check (D37). Every record is one numbered line ("S3: ..."), names and dates
-only, never an ID or other patient data. Entered-in-error records are never read. A part the
-clinician may not read, or that has no data source yet (results, the problem list), is named
-as such, so the model lists it under ``missing``.
+active medications, the problem list and recent final lab results (the latest value of each
+test and the abnormal ones of the last year), each part only with its read permission, the
+facility check and the restricted-chart check (D37). Every record is one numbered line
+("S3: ..."), names and dates only, never an ID or other patient data. Entered-in-error records
+are never read. A part the clinician may not read, or that this summary does not read (imaging
+reports), is named as such, so the model lists it under ``missing``.
 
 **What comes back.** Statements by topic, each citing the lines it rests on ("S3"). The
 gateway maps each cited line back to its record (``AiSourceLink``: resource type, our ID and a
@@ -106,12 +107,29 @@ PROMPT = PromptRef(id=None, code=PROMPT_CODE, version=1, feature=AIFeature.CHART
                    template=SUMMARY_V1, output_schema=SUMMARY_SCHEMA)
 
 
+#: The longest chart line the model is sent; free text from outside (a lab's conclusion) is cut.
+LINE_MAX = 500
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]+")
+
+
+def one_line(text: str) -> str:
+    """Chart text as one line: control characters and line breaks become spaces, runs of spaces
+    collapse, and it is cut at LINE_MAX, so free text (a lab's conclusion, a note) can never start
+    a numbered line of its own ("S7: ...") that the model would take for another record."""
+    flat = " ".join(_CONTROL.sub(" ", text).split())
+    return flat if len(flat) <= LINE_MAX else flat[:LINE_MAX - 1].rstrip() + "…"
+
+
 @dataclass(frozen=True)
 class ChartLine:
-    """One numbered line the model sees, and the record behind it."""
+    """One numbered line the model sees, and the record behind it. Its text is always one line
+    (one_line), whoever builds it, for every prompt that numbers chart lines."""
     text: str
     source: SourceRef
     label: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "text", one_line(self.text))
 
 
 @dataclass(frozen=True)

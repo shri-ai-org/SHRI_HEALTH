@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -117,3 +118,71 @@ def diagnosis_lines(found: Sequence[Any]) -> tuple[list[str], list[SourceRef]]:
         lines.append(f"{name} ({d.code.code})" if d.code.display else name)
         sources.append(SourceRef("Condition", d.id))
     return lines, sources
+
+
+#: At most this many lab lines go to the model: the latest value of each test, then abnormal
+#: values from the last ABNORMAL_DAYS days, newest first.
+LAB_LINES = 30
+LAB_REPORTS = 50
+ABNORMAL_DAYS = 365
+_FLAG = {"H": "high", "L": "low", "A": "abnormal", "HH": "critically high",
+         "LL": "critically low", "N": "normal"}
+
+
+def _amount(q: Any) -> str | None:
+    if q is None or q.value is None:
+        return None
+    return f"{q.value:g} {q.unit}" if q.unit else f"{q.value:g}"
+
+
+def _range(r: Any) -> str | None:
+    if r is None:
+        return None
+    if r.text:
+        return str(r.text)
+    low, high = _amount(r.low), _amount(r.high)
+    if low and high:
+        return f"{low} to {high}"
+    return f"above {low}" if low else (f"below {high}" if high else None)
+
+
+def lab_lines(reports: Sequence[Any], now: datetime) -> tuple[list[str], list[SourceRef]]:
+    """Lab results for a summary, from the orders reads (final, amended, corrected or appended
+    reports; final, amended or corrected values; never preliminary or entered-in-error), newest
+    report first: the latest value of each test, plus every abnormal value collected in the last
+    ABNORMAL_DAYS days, at most LAB_LINES. Each line cites its Observation (a report without
+    values cites the DiagnosticReport). Names, values and dates only; never IDs."""
+    latest: list[tuple[str, SourceRef]] = []
+    abnormal: list[tuple[str, SourceRef]] = []
+    seen: set[str] = set()
+    cutoff = now - timedelta(days=ABNORMAL_DAYS)
+    for report in reports:
+        when = report.collected_at or report.issued_at
+        day = when.date().isoformat() if when else "date unknown"
+        panel = label(report.code) or "Lab report"
+        if not report.observations:
+            if report.conclusion and panel not in seen:
+                seen.add(panel)
+                latest.append((f"{panel}, {day}: {report.conclusion}",
+                               SourceRef("DiagnosticReport", report.id)))
+            continue
+        for o in report.observations:
+            name = label(o.code) or panel
+            value = _amount(o.value) or o.value_text
+            if value is None:
+                continue
+            flag = _FLAG.get(o.interpretation or "")
+            reference = _range(o.reference_range)
+            extra = "; ".join(x for x in (flag, f"reference {reference}" if reference else None)
+                              if x)
+            text = f"{name} {value}{f' ({extra})' if extra else ''}, collected {day}"
+            line = (text, SourceRef("Observation", o.id))
+            key = ":".join(c.code for c in (o.code.codings or []) if c.code) or name
+            if key not in seen:
+                seen.add(key)
+                latest.append(line)
+            elif (o.interpretation not in (None, "N") and when is not None
+                  and when >= cutoff):
+                abnormal.append(line)
+    chosen = (latest + abnormal)[:LAB_LINES]
+    return [t for t, _ in chosen], [s for _, s in chosen]

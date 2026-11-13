@@ -67,7 +67,7 @@ def test_a_summary_is_made_read_and_decided(client: Client, practice: Practice,
     sent = claude_server.requests[-1]["messages"][0]["content"][0]["text"]
     assert "Allergy: Peanuts (high criticality)" in sent
     assert "Medication: Lisinopril 10 MG Oral Tablet, 1 tablet by mouth once daily" in sent
-    assert "Visit: " in sent and "Not available: results (not in this build)" in sent
+    assert "Visit: " in sent and "Not available: imaging reports (not in this summary)" in sent
     assert patient not in sent and encounter not in sent                # names, never IDs
     assert first.json()["status"] == "failed"                           # "{}" fits nothing
     claude_server.reply = _reply(sent)
