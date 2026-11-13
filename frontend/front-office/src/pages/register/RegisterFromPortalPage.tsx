@@ -603,7 +603,7 @@ export function RegisterFromPortalPage() {
 
       <Modal
         open={allSet}
-        title="Registration Successfull 🎊"
+        title="Patient registered"
         footer={
           <>
             {/* TODO(stage 2): the Angular app printed the form as a PDF; nothing to download yet. */}
@@ -617,11 +617,9 @@ export function RegisterFromPortalPage() {
         }
       >
         <div className="flex flex-col gap-2 text-sm text-ink">
-          <h3 className="text-lg font-semibold text-ink">All Set !!</h3>
           {/* Reworded (Minalini, 2026-11-03): the portal's "an email containing your new account credentials" isn't true at the desk. */}
           <p>The patient is registered. Their medical record number is:</p>
           {submission.mrn ? <p className="text-2xl font-semibold tracking-wide tabular-nums text-primary-text">{submission.mrn}</p> : null}
-          <h4 className="font-semibold text-ink">Thank You !!</h4>
         </div>
       </Modal>
     </div>
@@ -688,6 +686,11 @@ function Review({ form, payers, providers, onEdit }: { form: RegistrationForm; p
   const f = form.familyHistoryForm
   const h = form.Hospitalization
   const v = (value: string) => value.trim() || null
+  // V8: the date of birth as the desk reads it ("Apr 12, 1968"), not the form's YYYY-MM-DD.
+  const usDate = (iso: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+    return m ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(+m[1], +m[2] - 1, +m[3])) : v(iso)
+  }
   const list = (values: string[]) => (values.length ? values.join(', ') : null)
   const labelOf = (options: Option[], value: string) => options.find((o) => o.value === value)?.label ?? v(value)
   const surgeries = [...SURGERIES_GENERAL, ...SURGERIES_MALE, ...SURGERIES_FEMALE].filter(({ key }) => form.SurgicalHistory[key])
@@ -700,7 +703,7 @@ function Review({ form, payers, providers, onEdit }: { form: RegistrationForm; p
         <SummaryItem label="First Name" value={v(b.firstName)} />
         <SummaryItem label="Middle Name" value={v(b.middleName)} />
         <SummaryItem label="Last Name" value={v(b.lastName)} />
-        <SummaryItem label="Date of Birth" value={v(b.date)} />
+        <SummaryItem label="Date of Birth" value={usDate(b.date)} />
         <SummaryItem label="Contact" value={v(b.phoneNo)} />
         <SummaryItem label="Email" value={v(b.email)} />
       </ReviewCard>

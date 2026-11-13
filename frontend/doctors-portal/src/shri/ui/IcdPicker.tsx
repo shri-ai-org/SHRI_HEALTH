@@ -15,7 +15,8 @@
  */
 
 import { Plus, X } from 'lucide-react'
-import { useId, useMemo, useState, type KeyboardEvent } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useShri } from '../state/store'
 
 import { icdCategoriesOf, normaliseIcd, useSearchIcd, type IcdCode, type IcdEntry } from '../../../shri-health/icd10'
 
@@ -59,6 +60,19 @@ export function IcdPicker({
     return [...cats, ...found].slice(0, 10)
   }, [searched, categories])
   const open = query.trim().length >= 2
+  // V4: the list sits above a screen's sticky Sign bar, scrolls inside the room it has, and opens
+  // upward when there is more room above the field than between it and the bar.
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const barLift = useShri((s) => s.barLift)
+  const [room, setRoom] = useState<{ up: boolean; max: number }>({ up: false, max: 360 })
+  useLayoutEffect(() => {
+    if (!open || !wrapRef.current) return
+    const r = wrapRef.current.getBoundingClientRect()
+    const below = window.innerHeight - r.bottom - barLift - 12
+    const above = r.top - 72
+    const up = below < 240 && above > below
+    setRoom({ up, max: Math.max(160, Math.min(360, up ? above : below)) })
+  }, [open, barLift])
   const pickable = (e: IcdEntry) => e.leaf || allowParents || categories
 
   function pick(e: IcdEntry) {
@@ -85,7 +99,7 @@ export function IcdPicker({
   }
 
   return (
-    <div className={cn('relative max-w-[480px]', className)}>
+    <div ref={wrapRef} className={cn('relative max-w-[480px]', className)}>
       <TextInput
         id={id}
         value={query}
@@ -104,7 +118,13 @@ export function IcdPicker({
         autoComplete="off"
       />
       {open && (
-        <ul id={listId} role="listbox" aria-label="ICD-10 matches" className="sh-frosted absolute z-20 mt-[6px] w-full overflow-hidden rounded-[16px] py-[4px] shadow-sh-pop">
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="ICD-10 matches"
+          className={cn('sh-frosted absolute z-30 w-full overflow-y-auto overscroll-contain rounded-[16px] py-[4px] shadow-sh-pop', room.up ? 'bottom-full mb-[6px]' : 'mt-[6px]')}
+          style={{ maxHeight: room.max }}
+        >
           {matches.length === 0 && <li className="px-[14px] py-[10px] text-[13px] text-sh-text-3">No ICD-10 code matches “{query.trim()}”.</li>}
           {matches.map((e, i) => {
             const isCategory = !e.leaf && categories && !e.code.includes('.') && e.code.length === 3

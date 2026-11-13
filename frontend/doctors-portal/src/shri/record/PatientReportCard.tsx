@@ -12,7 +12,8 @@ import type { ReactNode } from 'react'
 
 import { encounterForPatient } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
-import { clinicDate } from '../../../shri-health/format'
+import { clinicDate, formatTime as clinicTime } from '../../../shri-health/format'
+import { useOpdLive } from '../../../shri-health/opd'
 import type { Patient } from '@/data/kit'
 import { activeMedicines, conditionFor, pastNotesFor, type ConditionStatus } from '@/data/record'
 
@@ -41,21 +42,25 @@ function sinceDay(at: Date | string): string {
 }
 
 export function PatientReportCard({ patient: p, className }: { patient: Patient; className?: string }) {
-  // SHRI_HEALTH: with the API, the medicines (listMedications), the last note and the next booking are
-  // the patient's; the condition summary, the open visit and a patient problem list have no service yet.
+  // SHRI_HEALTH: with the API, the medicines (listMedications), the last note, the next booking and the
+  // problem list (the visit diagnoses) are the patient's; the visit is today's, from the clinic's board
+  // (V2). The condition summary has no service yet.
   const c = REAL_API ? undefined : conditionFor(p.id)
   const enc = REAL_API ? undefined : encounterForPatient(p.id)
   const problems = useProblemsFor(p.id)
-  const open = REAL_API ? [] : problems.filter((x) => x.status === 'Open')
+  const open = problems.filter((x) => x.status === 'Open')
   const meds = REAL_API ? medicationsFor(p.id).current : activeMedicines(p.id)
   const note = (REAL_API ? notesOnServer(p.id) : pastNotesFor(p.id))[0]
   // The live book: a moved or cancelled appointment is no longer the next one.
   const next = nextOf(useAppointments(), p.id)
+  // V2: today's visit for this patient on the clinic's board (the same list as My patients).
+  // REAL_API is a build constant, so the hook order never changes.
+  const today = REAL_API ? useOpdLive().find((r) => r.patientId === p.id) : undefined
 
   const visit = enc
     ? [VISIT_WORD[enc.type], enc.department, p.bed ?? enc.encounterNo, p.losDays !== undefined && `day ${p.losDays}`].filter(Boolean).join(' · ')
-    : REAL_API
-      ? 'Not available yet'
+    : today
+      ? ['Clinic today', clinicTime(today.due), today.live].join(' · ')
       : 'No open visit'
 
   return (
@@ -80,7 +85,7 @@ export function PatientReportCard({ patient: p, className }: { patient: Patient;
           {visit}
         </Fact>
         <Fact label="Problems" sub={problems.length > open.length ? `${problems.length - open.length} resolved` : undefined}>
-          {REAL_API ? 'Not available yet' : open.length === 0 ? 'None coded yet' : open.slice(0, 3).map((x) => x.label).join(' · ')}
+          {open.length === 0 ? (REAL_API ? 'None open' : 'None coded yet') : open.slice(0, 3).map((x) => x.label).join(' · ')}
           {open.length > 3 && <span className="text-sh-text-3"> · +{open.length - 3} more</span>}
         </Fact>
         <Fact label="Allergies">
