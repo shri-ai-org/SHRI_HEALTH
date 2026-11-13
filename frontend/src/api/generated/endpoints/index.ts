@@ -6,6 +6,7 @@ export * from './files/files';
 export * from './history/history';
 export * from './inbox/inbox';
 export * from './medications/medications';
+export * from './orders/orders';
 export * from './patients/patients';
 export * from './platform/platform';
 export * from './portal/portal';

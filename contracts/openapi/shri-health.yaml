@@ -286,6 +286,10 @@ paths:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1problems~1{problemId}'
   /patients/{patientId}/problems/{problemId}/entered-in-error:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1problems~1{problemId}~1entered-in-error'
+  /patients/{patientId}/lab-results:
+    $ref: 'modules/orders.yaml#/paths/~1patients~1{patientId}~1lab-results'
+  /patients/{patientId}/imaging-reports:
+    $ref: 'modules/orders.yaml#/paths/~1patients~1{patientId}~1imaging-reports'
   /patients/{patientId}/allergies:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1allergies'
   /patients/{patientId}/allergies/{allergyId}:
