@@ -266,7 +266,7 @@ PUT /api/v1/encounters/{encounterId}/follow-up   If-Match: <encounter ETag>
 
 ```http
 GET /api/v1/slots?providerId=…&facilityId=…&appointmentTypeId=…&date=2026-11-16
-→ 200 OK   {"items": [{"startAt": "…", "overbook": false, …}, …], "timeZone": "America/Chicago"}
+→ 200 OK   {"items": [{"startAt": "…", "overbook": false, …}, …], "timeZone": "America/Los_Angeles"}
 
 POST /api/v1/appointments   Idempotency-Key: <one per click>
 {"patientId": "7a1b2c3d-…", "providerId": "6f7a8b9c-…", "facilityId": "8b9c0d1e-…",
@@ -274,7 +274,7 @@ POST /api/v1/appointments   Idempotency-Key: <one per click>
  "reasonForVisit": "Recheck blood pressure.", "followUpOfEncounterId": "2f3a4b5c-…"}
 → 201 Created   (shortened)
 {"id": "1e2f3a4b-…", "status": "booked", "startAt": "2026-11-16T15:00:00Z",
- "timeZone": "America/Chicago", …}
+ "timeZone": "America/Los_Angeles", …}
 ```
 
 In the same transaction, the follow-up request becomes `booked`, with `bookedAppointmentId`.

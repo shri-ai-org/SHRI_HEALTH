@@ -88,7 +88,7 @@ paths:
                       providerId: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
                       facilityId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                       overbook: false
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -212,7 +212,7 @@ paths:
                       reasonForVisit: Follow-up on blood pressure
                       sameDayAddOn: false
                       overbook: false
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -316,7 +316,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -408,7 +408,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -504,7 +504,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -607,7 +607,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -709,7 +709,7 @@ paths:
                       startAt: '2026-11-03T15:00:00Z'
                       endAt: '2026-11-03T15:20:00Z'
                       durationMinutes: 20
-                      timeZone: America/Chicago
+                      timeZone: America/Los_Angeles
                       reasonForVisit: Follow-up on blood pressure
                       sameDayAddOn: false
                       overbook: false
@@ -820,7 +820,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -925,7 +925,7 @@ paths:
                     startAt: 2026-11-03T15:00:00Z
                     endAt: 2026-11-03T15:20:00Z
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -1042,7 +1042,7 @@ paths:
                       status: checked-in
                       visitStatus: checked-in
                     date: '2026-11-03'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     facilityName: Test Clinic Main Street
                 staff:
                   summary: Staff view
@@ -1073,7 +1073,7 @@ paths:
                         note: Recheck blood pressure.
                         status: open
                     date: '2026-11-03'
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     facilityName: Test Clinic Main Street
         '400':
           $ref: ../components/responses/BadRequest.yaml
@@ -1139,7 +1139,7 @@ paths:
                     - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
                       code: MAIN
                       name: Test Clinic Main Street
-                      timeZone: America/Chicago
+                      timeZone: America/Los_Angeles
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).
@@ -1435,7 +1435,7 @@ paths:
                     startAt: '2026-11-03T15:40:00Z'
                     endAt: '2026-11-03T16:00:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -1548,7 +1548,7 @@ paths:
                     startAt: '2026-11-03T15:00:00Z'
                     endAt: '2026-11-03T15:20:00Z'
                     durationMinutes: 20
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
                     reasonForVisit: Follow-up on blood pressure
                     sameDayAddOn: false
                     overbook: false
@@ -1662,7 +1662,7 @@ paths:
                       sameDayAddOn: false
                       overbook: false
                     nextCursor: bzoyMA
-                    timeZone: America/Chicago
+                    timeZone: America/Los_Angeles
         '400':
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `invalid-cursor` (the cursor is expired or tampered with).

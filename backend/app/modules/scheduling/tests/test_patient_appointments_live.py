@@ -11,7 +11,7 @@ import pytest
 from app.core.deps import CurrentUser
 from app.db.tests.conftest import TEST_DATABASE_URL
 
-from .conftest import Practice
+from .conftest import ZONE, Practice
 from .facility_scope import appointment_today, staff
 from .test_scheduling_live import _book
 
@@ -43,7 +43,7 @@ def test_a_patients_appointments_newest_first_paged_and_by_day(
     body = found.json()
     assert [a["id"] for a in body["items"]] == [late["id"], middle["id"], early["id"]]
     assert body["items"][1]["status"] == "cancelled"  # kept, with its status
-    assert body["timeZone"] == "America/Chicago" and "nextCursor" not in body
+    assert body["timeZone"] == ZONE and "nextCursor" not in body
     first = _history(client, practice, limit=2)
     assert [a["id"] for a in first.json()["items"]] == [late["id"], middle["id"]]
     rest = _history(client, practice, limit=2, cursor=first.json()["nextCursor"])

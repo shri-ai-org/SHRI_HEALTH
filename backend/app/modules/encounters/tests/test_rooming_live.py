@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from app.db.tests.conftest import TEST_DATABASE_URL
-from app.modules.scheduling.tests.conftest import Practice
+from app.modules.scheduling.tests.conftest import ZONE, Practice
 from app.modules.scheduling.tests.test_check_in_live import (
     _check_in,
     _sql,
@@ -51,7 +51,7 @@ def test_the_workspace_after_check_in(client: Any, practice: Practice) -> None:
     assert body["status"] == "arrived" and body["class"] == "AMB"
     assert body["patientId"] == str(practice.patients["kaia"])
     assert body["facilityId"] == str(practice.facility)
-    assert body["timeZone"] == "America/Chicago"
+    assert body["timeZone"] == ZONE
     assert body["reasons"] == [{"codings": [], "text": "Follow-up on headaches."}]
     assert body["participants"] == [{"role": "rendering",
                                      "practitionerId": str(practice.provider),

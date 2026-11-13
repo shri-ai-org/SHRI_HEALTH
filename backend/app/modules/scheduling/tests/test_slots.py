@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from ..reference import END_OF_DAY, AvailabilityRule, ScheduleException, since_midnight
 from ..slots import Busy, day_bounds, free_slots, local_day, wall_clock, within_hours
 
-ZONE = "America/Chicago"
+ZONE = "America/Los_Angeles"
 PROVIDER, OTHER = uuid4(), uuid4()
 SCHEDULE = uuid4()
 FU, NEW = uuid4(), uuid4()
@@ -22,8 +22,8 @@ def rule(day: str = "mon", start: int = 9, end: int = 11, step: int = 20,
 
 
 def at(hour: int, minute: int = 0, day: date = MONDAY) -> datetime:
-    """A Chicago local time, in UTC (January: UTC-6)."""
-    return datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(hours=hour + 6,
+    """A San Jose local time, in UTC (January: UTC-8)."""
+    return datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(hours=hour + 8,
                                                                          minutes=minute)
 
 
@@ -65,12 +65,12 @@ def test_past_times_are_left_out() -> None:
 
 
 def test_local_times_survive_daylight_saving() -> None:
-    summer = date(2035, 7, 9)  # a Monday, UTC-5
+    summer = date(2035, 7, 9)  # a Monday, UTC-7
     found = free_slots([rule()], [], [], summer, ZONE, None, None)
-    assert found[0].start == datetime(2035, 7, 9, 14, 0, tzinfo=UTC)  # 9:00 CDT
+    assert found[0].start == datetime(2035, 7, 9, 16, 0, tzinfo=UTC)  # 9:00 PDT
     start, end = day_bounds(summer, ZONE)
-    assert start == datetime(2035, 7, 9, 5, tzinfo=UTC) and (end - start).days == 1
-    assert local_day(datetime(2035, 7, 10, 3, tzinfo=UTC), ZONE) == summer
+    assert start == datetime(2035, 7, 9, 7, tzinfo=UTC) and (end - start).days == 1
+    assert local_day(datetime(2035, 7, 10, 6, 59, tzinfo=UTC), ZONE) == summer  # 23:59 PDT
 
 
 def test_within_hours_allows_any_start_in_a_window_but_not_a_block() -> None:
@@ -131,8 +131,8 @@ def test_a_whole_day_on_the_fall_back_day_has_25_hours_of_slots() -> None:
     found = free_slots([rule(day="sun", start=0, end=24, step=60)], [], [], FALL_BACK, ZONE,
                        None, None)
     assert len(found) == 25
-    assert found[0].start == datetime(2026, 11, 1, 5, tzinfo=UTC)  # 0:00 CDT
-    assert found[-1].end == datetime(2026, 11, 2, 6, tzinfo=UTC)  # 24:00 CST
+    assert found[0].start == datetime(2026, 11, 1, 7, tzinfo=UTC)  # 0:00 PDT
+    assert found[-1].end == datetime(2026, 11, 2, 8, tzinfo=UTC)  # 24:00 PST
     # 1:00 comes twice, an hour apart: the grid follows real time.
     assert [s.start.astimezone(ZoneInfo(ZONE)).hour for s in found[1:3]] == [1, 1]
     assert local_day(found[-1].start, ZONE) == FALL_BACK
@@ -140,11 +140,11 @@ def test_a_whole_day_on_the_fall_back_day_has_25_hours_of_slots() -> None:
 
 def test_office_hours_keep_their_wall_clock_on_both_change_days() -> None:
     fall = free_slots([rule(day="sun", start=9, end=17)], [], [], FALL_BACK, ZONE, None, None)
-    assert fall[0].start == datetime(2026, 11, 1, 15, tzinfo=UTC)  # 9:00 CST
-    assert fall[-1].end == datetime(2026, 11, 1, 23, tzinfo=UTC)  # 17:00 CST
+    assert fall[0].start == datetime(2026, 11, 1, 17, tzinfo=UTC)  # 9:00 PST
+    assert fall[-1].end == datetime(2026, 11, 2, 1, tzinfo=UTC)  # 17:00 PST
     spring = free_slots([rule(day="sun", start=9, end=17)], [], [], SPRING_FORWARD, ZONE, None,
                         None)
-    assert spring[0].start == datetime(2026, 3, 8, 14, tzinfo=UTC)  # 9:00 CDT
+    assert spring[0].start == datetime(2026, 3, 8, 16, tzinfo=UTC)  # 9:00 PDT
     assert len(fall) == len(spring) == 24
 
 
@@ -152,5 +152,5 @@ def test_a_whole_day_on_the_spring_forward_day_has_23_hours_of_slots() -> None:
     found = free_slots([rule(day="sun", start=0, end=24, step=60)], [], [], SPRING_FORWARD,
                        ZONE, None, None)
     assert len(found) == 23
-    assert found[0].start == datetime(2026, 3, 8, 6, tzinfo=UTC)  # 0:00 CST
-    assert found[-1].end == datetime(2026, 3, 9, 5, tzinfo=UTC)  # 24:00 CDT
+    assert found[0].start == datetime(2026, 3, 8, 8, tzinfo=UTC)  # 0:00 PST
+    assert found[-1].end == datetime(2026, 3, 9, 7, tzinfo=UTC)  # 24:00 PDT

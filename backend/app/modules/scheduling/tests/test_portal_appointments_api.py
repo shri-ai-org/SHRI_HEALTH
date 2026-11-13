@@ -43,14 +43,15 @@ BEN = UUID("0c000000-0000-4000-8000-0000000000b1")  # patient B, same clinic
 URL = "/api/v1/portal/me/appointments"
 #: The frozen "now" every test runs at (the ``frozen_clock`` fixture sets it and the API's own
 #: clock), so nothing depends on the wall clock or on how long the suite takes. Each test runs at
-#: each of these: a clinic morning, the clinic day's last hour and midnight in Chicago (UTC-6 in
+#: each of these: a clinic morning, the clinic day's last hour and midnight in San Jose (UTC-8 in
 #: November), and just after midnight.
 FROZEN_TIMES = (
-    datetime(2026, 11, 20, 16, 0, tzinfo=UTC),    # 10:00 Chicago
-    datetime(2026, 11, 21, 5, 30, tzinfo=UTC),    # 23:30 Chicago, the clinic day's last hour
-    datetime(2026, 11, 21, 6, 0, tzinfo=UTC),     # 00:00 Chicago, midnight
-    datetime(2026, 11, 21, 6, 10, tzinfo=UTC),    # 00:10 Chicago
+    datetime(2026, 11, 20, 18, 0, tzinfo=UTC),    # 10:00 San Jose
+    datetime(2026, 11, 21, 7, 30, tzinfo=UTC),    # 23:30 San Jose, the clinic day's last hour
+    datetime(2026, 11, 21, 8, 0, tzinfo=UTC),     # 00:00 San Jose, midnight
+    datetime(2026, 11, 21, 8, 10, tzinfo=UTC),    # 00:10 San Jose
 )
+ZONE = "America/Los_Angeles"
 NOW = FROZEN_TIMES[0]
 
 
@@ -101,7 +102,7 @@ def appointment(patient: UUID, *, hours: float, status: str = "booked",
     start = NOW + timedelta(hours=hours)
     return PortalAppointmentRow(
         id=uuid4(), patient_id=patient, status=status, start=start,
-        end=start + timedelta(minutes=20), time_zone="America/Chicago", facility_id=uuid4(),
+        end=start + timedelta(minutes=20), time_zone=ZONE, facility_id=uuid4(),
         facility_name="Main office (synthetic)",
         facility_address=PortalAddressRow(("100 Test Lane",), "Springfield", "IL", "62701",
                                           "US"),
@@ -179,7 +180,7 @@ def test_a_patient_lists_their_upcoming_visits_soonest_first(
     following = r.json()["items"][1]
     assert following == {
         "id": str(chart["a-next"].id), "startAt": following["startAt"],
-        "endAt": following["endAt"], "timeZone": "America/Chicago", "status": "booked",
+        "endAt": following["endAt"], "timeZone": ZONE, "status": "booked",
         "facility": {"id": str(chart["a-next"].facility_id), "name": "Main office (synthetic)",
                      "address": {"lines": ["100 Test Lane"], "city": "Springfield",
                                  "state": "IL", "postalCode": "62701", "country": "US"}},

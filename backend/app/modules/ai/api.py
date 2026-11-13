@@ -19,9 +19,10 @@ and the note template (practice setup's repository, Anand's).
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -186,8 +187,12 @@ Readable = Annotated[rules.Encounters, Depends(encounters)]
 Chart = Annotated[chart_lines.ChartReader, Depends(chart_reader)]
 
 
-def _day(moment: Any) -> str:
-    return moment.date().isoformat() if moment is not None else "date unknown"
+def _day(moment: datetime | None, time_zone: str | None) -> str:
+    """The visit's day in its facility's time zone (D40), not UTC's: an evening visit in San Jose
+    is still that day there."""
+    if moment is None:
+        return "date unknown"
+    return (moment.astimezone(ZoneInfo(time_zone)) if time_zone else moment).date().isoformat()
 
 
 def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
@@ -217,14 +222,15 @@ def summary_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)]
                              if chart_lines.label(c)), "visit")
                 with_whom = (f", with {v.rendering_provider.display_name}"
                              if v.rendering_provider else "")
-                lines.append(summary_lines.ChartLine(
-                    f"Visit: {_day(v.started_at)}, {kind}, {v.status}{with_whom}",
-                    SourceRef("Encounter", v.id), f"Visit of {_day(v.started_at)}"))
                 found = await encounters_service.get(db, SqlEncounterRepository(), check, user,
                                                      v.id)
+                day = _day(v.started_at, found.value.time_zone)
+                lines.append(summary_lines.ChartLine(
+                    f"Visit: {day}, {kind}, {v.status}{with_whom}",
+                    SourceRef("Encounter", v.id), f"Visit of {day}"))
                 names, sources = chart_lines.diagnosis_lines(found.value.diagnoses)
                 lines += [summary_lines.ChartLine(
-                    f"Diagnosis: {name}, at the visit of {_day(v.started_at)}", source,
+                    f"Diagnosis: {name}, at the visit of {day}", source,
                     "Visit diagnosis") for name, source in zip(names, sources, strict=True)]
         else:
             unavailable.append("visits and diagnoses (no permission)")

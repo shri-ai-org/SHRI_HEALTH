@@ -97,7 +97,7 @@ Allowed error statuses are listed in §9.3. `204 No Content` is used only for `P
 | Calendar date (no time zone) | `date`, `YYYY-MM-DD` | `"birthDate": "1984-07-19"` | Your Stage 2 brief |
 | Partial date (history, onset) | `PartialDate`: `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | `"performedDate": "2011-05"` | **PROPOSED**: patients often remember only a year for surgery or onset; FHIR allows partial dates |
 | Appointment day queries | `date` interpreted in the facility's time zone | `GET /appointments?date=2026-11-03&facilityId=…` | **Agreed** (Anand A22, D28; D40): each facility stores an IANA time zone (e.g. `America/New_York`) |
-| Facility time zone | Returned as `timeZone` on facility and on day-view responses so screens can display local time | `"timeZone": "America/Chicago"` | **PROPOSED** |
+| Facility time zone | Returned as `timeZone` on facility and on day-view responses so screens can display local time | `"timeZone": "America/Los_Angeles"` | **PROPOSED** |
 | Durations | Integer with the unit in the name | `durationMinutes: 20` | **PROPOSED**: avoids ISO 8601 duration parsing in clients |
 | Age | Never stored or sent; derived from `birthDate` on screen | — | **PROPOSED**: avoids stale data |
 

@@ -5,9 +5,11 @@ data only."""
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.modules.ai import summary
+from app.modules.ai.api import _day
 from app.modules.ai.schemas import SourceRef
 from app.modules.ai.stub_model import StubModel
 
@@ -83,3 +85,11 @@ async def test_the_stub_summarizes_each_line_with_its_own_source() -> None:
     assert draft is not None and draft.dropped == []
     assert {s["topic"] for s in draft.sections} == {"encounters", "diagnoses", "allergies"}
     assert draft.missing[0]["topic"] == "results"
+
+
+def test_a_visit_line_has_the_visits_day_in_its_facilitys_zone() -> None:
+    # 07:30 UTC on 4 November is 23:30 on 3 November in San Jose: the clinic day's last hour.
+    late = datetime(2026, 11, 4, 7, 30, tzinfo=UTC)
+    assert _day(late, "America/Los_Angeles") == "2026-11-03"
+    assert _day(datetime(2026, 11, 4, 8, 0, tzinfo=UTC), "America/Los_Angeles") == "2026-11-04"
+    assert _day(late, None) == "2026-11-04" and _day(None, "America/Los_Angeles") == "date unknown"

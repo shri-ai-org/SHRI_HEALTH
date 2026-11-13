@@ -37,7 +37,7 @@ from app.modules.files import crypto as files_crypto
 from app.modules.files import storage
 from app.modules.files.tests.fakes import FakeFileCrypto, download_tokens
 from app.modules.scheduling.tests import pending_permissions
-from app.modules.scheduling.tests.conftest import Practice, make_client, setup_session
+from app.modules.scheduling.tests.conftest import ZONE, Practice, make_client, setup_session
 from app.modules.scheduling.tests.test_check_in_live import _key, _sql
 from app.modules.scheduling.tests.test_check_in_live import checked_in_visit as _visit
 
@@ -245,7 +245,7 @@ def test_the_summary_is_made_from_the_visit_and_downloaded(
     assert details.facility_name == "Main office (synthetic)"
     assert details.patient_name == "Kaia401 Lindgren118"
     assert details.clinician_name == "Dr. Avery401 Lindqvist58"
-    assert details.time_zone == "America/Chicago"
+    assert details.time_zone == ZONE
     assert details.reason_for_visit == "Follow-up on headaches."
     assert details.instructions == "Rest & drink water.\nCall if it gets worse."
     assert details.follow_up is not None and details.follow_up.startswith(
