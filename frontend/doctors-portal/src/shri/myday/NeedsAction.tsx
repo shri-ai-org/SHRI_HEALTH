@@ -6,7 +6,7 @@
  * deterministic order is always one click away.
  */
 
-import { ChevronDown, ChevronRight, ListChecks, Mic, OctagonAlert, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Mic, OctagonAlert, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -19,7 +19,6 @@ import { cn } from '../lib/cn'
 import type { Tone } from '../mocks/types'
 import { useShri } from '../state/store'
 import { iconFor } from '../ui/icons'
-import { EmptyState } from '../ui/EmptyState'
 import { Card, Diamond, Icon, Pill, PillTag, RoundButton, SectionLabel } from '../ui/primitives'
 
 import { useMyDay, type MyDay } from './useMyDay'
@@ -50,12 +49,13 @@ export function NeedsAction({ className }: { className?: string }) {
         <div className="grid grid-cols-[minmax(0,1.25fr)_1px_minmax(0,1fr)] gap-[18px] max-md:grid-cols-1">
           <section aria-label="Attention" className="min-w-0">
             <SectionLabel className="mb-[8px]">Attention</SectionLabel>
-            <EmptyState compact icon={OctagonAlert} why="Not available yet: results and referrals aren't connected yet." />
+            {/* The sample's quiet empty line, in place of a large empty card. */}
+            <p className="text-[14px] text-sh-text-2">Nothing here yet. Results and referrals aren't connected yet.</p>
           </section>
           <div className="w-px self-stretch bg-sh-line max-md:hidden" aria-hidden="true" />
           <section aria-label="Tasks" className="min-w-0">
             <SectionLabel className="mb-[8px]">Tasks</SectionLabel>
-            <EmptyState compact icon={ListChecks} why="Not available yet: notes to sign and co-sign requests come from the inbox, which isn't built yet." />
+            <p className="text-[14px] text-sh-text-2">Nothing here yet. Notes to sign and co-sign requests will come from the inbox.</p>
           </section>
         </div>
       </Card>

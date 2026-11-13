@@ -37,7 +37,7 @@ import { iconFor } from '../ui/icons'
 import { Card, Chip, Diamond, Icon, Pill, RoundButton } from '../ui/primitives'
 
 import { DayTimeline } from './DayTimeline'
-import { KIND_LABEL, dayModel, duration, hourLine, isActivity, type ActivityKind, type TimelineItem } from './dayModel'
+import { KIND_LABEL, dayModel, duration, hourLine, isActivity, type ActivityKind, type DayModel, type Span, type TimelineItem } from './dayModel'
 import { FREE, HATCH_BLOCKED, HATCH_OFF, actStyle } from './timelineStyle'
 import { useMyDay } from './useMyDay'
 
@@ -250,18 +250,38 @@ function visitWords(i: StatusBoardItem): string {
  */
 function ApiToday({ className }: { className?: string }) {
   const navigate = useNavigate()
-  const day = useProviderDay()
+  const todayIso = isoOf(clinicNow())
+  const [iso, setIso] = useState(todayIso)
+  const day = useProviderDay(iso)
+  const date = dateOf(iso)
+  const isToday = iso === todayIso
+  const model = useMemo(() => (day.status === 'done' ? apiDayModel(day.value, isToday) : null), [day, isToday])
   return (
     <Card className={cn('gap-0', className)} aria-labelledby="sh-today-title">
       <header className="flex flex-wrap items-start gap-x-[16px] gap-y-[12px]">
         <div className="min-w-0">
           <h2 id="sh-today-title" className="text-[26px]/[1.15] font-semibold tracking-[-0.02em] text-sh-text">
-            Today
+            {isToday ? 'Today' : format(date, 'EEEE')}
           </h2>
-          <p className="mt-[4px] text-[14px] text-sh-text-2">{usDay(clinicNow())}</p>
+          <p className="mt-[4px] text-[14px] text-sh-text-2">{isToday ? usDay(date) : `${usDay(date)} · ${iso < todayIso ? 'Earlier' : 'Coming up'}`}</p>
         </div>
         {/* No Morning brief with the API: the brief is the AI chart summary, which has no service yet
             (getChartSummary, Vimal's #267), so it would show sample patients. */}
+        <div className="ml-auto flex flex-wrap items-center gap-[10px]">
+          <div className="flex items-center gap-[4px] rounded-full bg-sh-control p-[3px]">
+            <RoundButton icon={ChevronLeft} size={44} variant="card" label="Previous day" onClick={() => setIso(isoOf(plusDays(date, -1)))} />
+            <Pill variant={isToday ? 'card' : 'ghost'} size="xl" aria-pressed={isToday} onClick={() => setIso(todayIso)} className={cn(isToday && 'shadow-[0_1px_3px_rgb(0_0_0/0.12)]')}>
+              Today
+            </Pill>
+            <RoundButton icon={ChevronRight} size={44} variant="card" label="Next day" onClick={() => setIso(isoOf(plusDays(date, 1)))} />
+          </div>
+          {model?.now != null && (
+            <span className="inline-flex h-[44px] items-center gap-[8px] rounded-full bg-sh-crit-bg px-[16px] text-[14px] font-medium tabular-nums text-sh-crit-fg max-sm:hidden">
+              <span className="size-[10px] rounded-full bg-(--now-line)" aria-hidden="true" />
+              Now · {time12(model.now)}
+            </span>
+          )}
+        </div>
       </header>
       {day.status === 'loading' ? (
         <p role="status" className="mt-[12px] text-[13px] text-sh-text-3">
@@ -272,39 +292,191 @@ function ApiToday({ className }: { className?: string }) {
       ) : day.status === 'failed' ? (
         <EmptyState compact icon={CalendarClock} why="Your schedule could not be loaded. Reload the page to try again." className="mt-[12px]" />
       ) : (
-        <ProviderSchedule day={day.value} onOpen={(to) => navigate(to)} />
+        model && (
+          <>
+            <div className="mt-[8px]">
+              {/* The front desk books, so free and off time are drawn, not offered; a booking opens its record. */}
+              <DayTimeline model={model} onSchedule={() => undefined} onOffHours={() => undefined} onBlocked={() => undefined} readOnly />
+            </div>
+            <ApiKey model={model} />
+            <ul className="sr-only" aria-label={`Hour by hour, ${format(date, 'EEEE MMMM d')}`}>
+              {model.cells.map((c) => (
+                <li key={c.start}>{hourLine(c)}</li>
+              ))}
+            </ul>
+            <ProviderSchedule day={day.value} isToday={isToday} onOpen={(to) => navigate(to)} />
+          </>
+        )
       )}
     </Card>
   )
 }
 
-function ProviderSchedule({ day, onOpen }: { day: ProviderDay; onOpen: (to: string) => void }) {
-  const nextFree = day.slots[0]
-  const seen = day.items.filter((i) => visitWords(i) === 'Seen').length
+/** The timeline's key — bookings, open times, off hours — and the day in numbers, as the sample's. */
+function ApiKey({ model }: { model: DayModel }) {
+  const has = (k: TimelineItem['kind'], past?: boolean) => model.items.some((i) => i.kind === k && (past === undefined || !i.past === !past))
   return (
-    <section aria-labelledby="sh-upcoming-title" className="mt-[16px]">
+    <div className="mt-[10px] flex flex-wrap items-center gap-x-[16px] gap-y-[8px]">
+      <div role="img" aria-label={model.summary} className="inline-flex flex-wrap items-center gap-x-[18px] gap-y-[8px] rounded-[14px] border border-sh-line px-[14px] py-[10px] text-[13px] text-sh-text-2">
+        {has('patient') && (
+          <span className="inline-flex items-center gap-[7px]">
+            <span className="size-[13px] rounded-[4px]" style={actStyle('patient')} />
+            {KIND_LABEL.patient}
+          </span>
+        )}
+        {has('free', false) && (
+          <span className="inline-flex items-center gap-[7px]">
+            <span className={cn('inline-flex h-[16px] w-[22px] items-center justify-center rounded-[4px]', FREE)}>
+              <Icon icon={Plus} size={11} strokeWidth={2.5} />
+            </span>
+            Open time
+          </span>
+        )}
+        {has('off') && (
+          <span className="inline-flex items-center gap-[7px]">
+            <span className={cn('h-[13px] w-[18px] rounded-[4px]', HATCH_OFF)} />
+            Off hours
+          </span>
+        )}
+      </div>
+      <p className="ml-auto text-[13px] tabular-nums text-sh-text-2">
+        Busy <b className="font-semibold text-sh-text">{duration(model.busyMin)}</b> · Open <b className="font-semibold text-sh-text">{duration(model.freeMin)}</b>
+        {model.nextFree !== null && (
+          <>
+            {' '}
+            · Next free <b className="font-semibold text-sh-text">{time12(model.nextFree)}</b>
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
+
+const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes()
+
+function merged(spans: Span[]): Span[] {
+  const out: Span[] = []
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1]
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b)
+    else out.push([a, b])
+  }
+  return out
+}
+
+function without(spans: Span[], cut: Span[]): Span[] {
+  return cut.reduce<Span[]>(
+    (acc, [cs, ce]) => acc.flatMap(([s, e]): Span[] => (ce <= s || cs >= e ? [[s, e]] : ([cs > s ? [s, cs] : null, ce < e ? [ce, e] : null].filter(Boolean) as Span[]))),
+    spans,
+  )
+}
+
+const lengthOf = (spans: Span[]) => spans.reduce((n, [a, b]) => n + b - a, 0)
+
+/**
+ * The provider's real day as the sample's timeline draws it: each booking a bar (its own start and
+ * end, from the appointment list), the open times from the slots, and everything else off hours.
+ * No sessions, ward rounds or blocked time: the API has none of them yet.
+ */
+function apiDayModel(day: ProviderDay, isToday: boolean): DayModel {
+  const at = (iso: string) => minutesOf(clinicDate(iso))
+  const now = isToday ? minutesOf(clinicNow()) : null
+  const board = new Map(day.items.map((i) => [i.appointmentId, i]))
+  const booked = day.appointments
+    .map((a) => ({ a, span: [at(a.startAt), Math.max(at(a.startAt) + 5, at(a.endAt))] as Span }))
+    .sort((x, y) => x.span[0] - y.span[0])
+  const busy = merged(booked.map((b) => b.span))
+  const open = without(merged(day.slots.filter((s) => !s.overbook).map((s) => [at(s.startAt), at(s.endAt)] as Span)), busy)
+  const first = Math.min(7 * 60, ...busy.map((b) => b[0]), ...open.map((o) => o[0]))
+  const last = Math.max(19 * 60, ...busy.map((b) => b[1]), ...open.map((o) => o[1]))
+  const range: Span = [Math.floor(first / 30) * 30, Math.ceil(last / 30) * 30]
+  const off = without([range], [...busy, ...open])
+  const gone = now ?? (day.appointments[0] && clinicDate(day.appointments[0].startAt) < clinicNow() ? range[1] : range[0])
+
+  const acts: TimelineItem[] = booked.map(({ a, span }) => {
+    const name = board.get(a.id)?.patient?.displayName ?? a.patient.displayName
+    return {
+      id: a.id,
+      kind: 'patient',
+      start: span[0],
+      end: span[1],
+      drawEnd: span[1],
+      title: name,
+      entry: {
+        id: a.id,
+        at: clinicDate(a.startAt),
+        until: clinicDate(a.endAt),
+        title: name,
+        detail: a.reasonForVisit ?? a.appointmentType.name,
+        kind: 'appointment',
+        icon: 'Stethoscope',
+        to: recordPath(a.patient, 'record'),
+        patientId: a.patient.id,
+      },
+    }
+  })
+  acts.forEach((x, i) => {
+    const next = acts.slice(i + 1).find((n) => n.start > x.start)
+    if (next && next.start < x.end) x.drawEnd = next.start
+  })
+  const items: TimelineItem[] = [...acts]
+  const split = (kind: 'free' | 'off', [a, b]: Span, title: string) => {
+    if (a < gone) items.push({ id: `${kind}-gone-${a}`, kind, start: a, end: Math.min(b, gone), drawEnd: Math.min(b, gone), title, past: true })
+    if (b > gone) items.push({ id: `${kind}-${Math.max(a, gone)}`, kind, start: Math.max(a, gone), end: b, drawEnd: b, title })
+  }
+  for (const o of open) split('free', o, 'Available')
+  for (const o of off) split('off', o, 'Off hours')
+  items.sort((x, y) => x.start - y.start)
+
+  const ahead = items.filter((i) => i.kind === 'free' && !i.past && i.end - i.start >= 15)
+  const cells = Array.from({ length: Math.ceil((range[1] - range[0]) / 60) }, (_, i) => {
+    const span: Span = [range[0] + i * 60, Math.min(range[1], range[0] + (i + 1) * 60)]
+    const inside = (spans: Span[]) => lengthOf(spans.map(([a, b]) => [Math.max(a, span[0]), Math.min(b, span[1])] as Span).filter(([a, b]) => b > a))
+    const here = acts.filter((x) => x.start >= span[0] && x.start < span[1])
+    return { start: span[0], end: span[1], busyMin: inside(busy), blockedMin: 0, offMin: inside(off), freeMin: inside(open), bookings: here.length, titles: here.map((x) => x.title) }
+  })
+  const count = day.appointments.length
+  return {
+    range,
+    items,
+    busyMin: lengthOf(busy),
+    blockedMin: 0,
+    freeMin: lengthOf(open),
+    offMin: lengthOf(off),
+    nextFree: ahead[0]?.start ?? null,
+    cells,
+    now,
+    summary: `${count} ${count === 1 ? 'patient' : 'patients'} booked; busy ${duration(lengthOf(busy))}, open ${duration(lengthOf(open))}.`,
+  }
+}
+
+function ProviderSchedule({ day, isToday, onOpen }: { day: ProviderDay; isToday: boolean; onOpen: (to: string) => void }) {
+  // The status board has the visit statuses; another day's bookings come from the appointment list.
+  const items: StatusBoardItem[] =
+    day.items.length > 0
+      ? day.items
+      : day.appointments.map((a) => ({ appointmentId: a.id, patient: a.patient, initials: '', provider: a.provider, startAt: a.startAt, status: a.status, visitStatus: a.visitStatus, appointmentType: a.appointmentType, reasonForVisit: a.reasonForVisit }))
+  const seen = items.filter((i) => visitWords(i) === 'Seen').length
+  const now = Date.now()
+  const ahead = day.slots.filter((s) => !s.overbook && new Date(s.startAt).getTime() > now).length
+  return (
+    <section aria-labelledby="sh-upcoming-title" className="mt-[20px] border-t border-sh-line pt-[18px]">
       <div className="flex flex-wrap items-center gap-[12px]">
         <h3 id="sh-upcoming-title" className="text-[20px]/[1.2] font-semibold tracking-[-0.01em] text-sh-text">
-          Today’s schedule
+          {isToday ? 'Today’s schedule' : 'The day’s schedule'}
         </h3>
         <span className="inline-flex h-[30px] items-center rounded-full border border-sh-line-strong px-[12px] text-[13px] text-sh-text-2">
-          {day.items.length} {day.items.length === 1 ? 'patient' : 'patients'}
+          {items.length} {items.length === 1 ? 'patient' : 'patients'}
         </span>
         <p className="ml-auto text-[13px] tabular-nums text-sh-text-2">
-          Seen <b className="font-semibold text-sh-text">{seen}</b> · Open times <b className="font-semibold text-sh-text">{day.slots.length}</b>
-          {nextFree && (
-            <>
-              {' '}
-              · Next free <b className="font-semibold text-sh-text">{fmtTime12(clinicDate(nextFree.startAt))}</b>
-            </>
-          )}
+          Seen <b className="font-semibold text-sh-text">{seen}</b> · Open times <b className="font-semibold text-sh-text">{ahead}</b>
         </p>
       </div>
-      {day.items.length === 0 ? (
-        <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[12px] text-[14px] text-sh-text-2">No patients are booked with you today.</p>
+      {items.length === 0 ? (
+        <p className="mt-[12px] rounded-[14px] bg-sh-inner px-[14px] py-[12px] text-[14px] text-sh-text-2">{isToday ? 'No patients are booked with you today.' : 'No patients are booked with you that day.'}</p>
       ) : (
-        <ol className="mt-[12px] grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]" aria-label="Your patients today">
-          {day.items.map((i) => (
+        <ol className="mt-[12px] grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-[12px]" aria-label={isToday ? 'Your patients today' : 'Your patients that day'}>
+          {items.map((i) => (
             <li key={i.appointmentId} className="flex">
               <BookingCard item={i} onOpen={onOpen} />
             </li>

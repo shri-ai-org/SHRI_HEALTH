@@ -113,6 +113,7 @@ export function DayTimeline({
   onSchedule,
   onOffHours,
   onBlocked,
+  readOnly = false,
 }: {
   model: DayModel
   /** The OPD queue's next patient, today — who its Call button calls. */
@@ -123,6 +124,8 @@ export function DayTimeline({
   onOffHours: (at: number, off: Span) => void
   /** Blocked time tapped: offer to unblock it. */
   onBlocked: (blockId: string) => void
+  /** SHRI_HEALTH: free time, off hours and blocked time are drawn, not offered (the front desk books); activities still open. */
+  readOnly?: boolean
 }) {
   const navigate = useNavigate()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -228,7 +231,7 @@ export function DayTimeline({
               data-scale={JSON.stringify(scale.mins.map((m, i) => [m, Number(scale.fracs[i].toFixed(5))]))}
             >
               {model.items.map((item) => (
-                <Bar key={item.id} item={item} scale={scale} px={(fracOf(scale, item.drawEnd) - fracOf(scale, item.start)) * w - 4} onOpen={(to) => navigate(canonical(to))} onTap={tap} />
+                <Bar key={item.id} item={item} scale={scale} px={(fracOf(scale, item.drawEnd) - fracOf(scale, item.start)) * w - 4} onOpen={(to) => navigate(canonical(to))} onTap={tap} readOnly={readOnly} />
               ))}
               {hover && (
                 <span aria-hidden="true" className="pointer-events-none absolute -bottom-[10px] -top-[10px] z-[3] flex w-[2px] -translate-x-1/2 flex-col items-center justify-between" style={{ left: hover.x }}>
@@ -259,6 +262,7 @@ export function DayTimeline({
           next={nextAfter(hover.min)}
           nextPatient={nextPatient && model.now !== null && under(hover.min)?.kind === 'opd' && under(hover.min)!.start <= model.now && model.now < under(hover.min)!.end ? nextPatient : undefined}
           style={{ top: hover.top, left: hover.left }}
+          readOnly={readOnly}
         />
       )}
     </div>
@@ -276,11 +280,13 @@ function Ticks({ marks, scale }: { marks: number[]; scale: Scale }) {
 }
 
 /** One bar: an activity, free time, off hours or blocked time — a button where it does something and is wide enough to tap. */
-function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Scale; px: number; onOpen: (to: string) => void; onTap: (item: TimelineItem, clientX?: number) => void }) {
+function Bar({ item, scale, px, onOpen, onTap, readOnly }: { item: TimelineItem; scale: Scale; px: number; onOpen: (to: string) => void; onTap: (item: TimelineItem, clientX?: number) => void; readOnly: boolean }) {
   const place: CSSProperties = { left: `calc(${at(scale, item.start)} + 2px)`, width: `calc(${between(scale, item.start, item.drawEnd)} - 4px)` }
   const when = range12(item.start, item.end)
   /** Anything drawn is tapped — a sliver too thin to see is not drawn as a control. */
   const tappable = px >= 2
+  /** Free time, off hours and blocked time are offered only where the screen can act on them. */
+  const offered = tappable && !readOnly
   const base = '@container absolute inset-y-0 flex min-w-0 items-center overflow-hidden rounded-[12px] px-[6px] text-left'
   /** The time, full where it fits, short where it does not. */
   const time = (
@@ -291,7 +297,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
   )
 
   if (item.kind === 'off') {
-    if (item.past || !tappable) return <span aria-hidden="true" title={`${item.title} · ${when}`} className={cn(base, HATCH_OFF)} style={place} />
+    if (item.past || !offered) return <span aria-hidden="true" title={`${item.title} · ${when}`} className={cn(base, HATCH_OFF)} style={place} />
     return (
       <button
         type="button"
@@ -306,7 +312,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
   }
 
   if (item.kind === 'blocked') {
-    const Tag = tappable && item.entry?.block ? 'button' : 'span'
+    const Tag = offered && item.entry?.block ? 'button' : 'span'
     return (
       <Tag
         {...(Tag === 'button'
@@ -331,7 +337,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
     if (item.past) return <span aria-hidden="true" title={`${item.title} · ${when} · gone`} className={cn(base, 'border-[1.5px] border-dashed border-sh-line-strong')} style={place} />
     // A picture, not words: + where a patient can be scheduled, a clock with + in extra hours.
     const words = <Icon icon={item.extra ? ClockPlus : Plus} size={18} strokeWidth={2.25} className="hidden shrink-0 @min-[18px]:block" />
-    return tappable ? (
+    return offered ? (
       <button
         type="button"
         data-timeline-bar=""
@@ -377,7 +383,7 @@ function Bar({ item, scale, px, onOpen, onTap }: { item: TimelineItem; scale: Sc
 }
 
 /** What is at the minute under the pointer, how long is left of it, and what comes next — in the OPD on now, the queue's next patient. */
-function HoverCard({ min, item, next, nextPatient, style }: { min: number; item?: TimelineItem; next?: TimelineItem; nextPatient?: { name: string; token: string }; style: CSSProperties }) {
+function HoverCard({ min, item, next, nextPatient, style, readOnly }: { min: number; item?: TimelineItem; next?: TimelineItem; nextPatient?: { name: string; token: string }; style: CSSProperties; readOnly: boolean }) {
   if (!item) return null
   const left = item.end - min
   const what =
@@ -386,7 +392,7 @@ function HoverCard({ min, item, next, nextPatient, style }: { min: number; item?
         ? { dot: 'var(--line-strong)', name: 'Free', aside: 'gone' }
         : { dot: 'var(--avail-edge)', name: item.extra ? 'Available · extra hours' : 'Available', aside: `${left} min free` }
       : item.kind === 'off'
-        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: item.past ? '' : 'Tap for options' }
+        ? { dot: 'var(--off-hatch)', name: 'Off hours', aside: item.past || readOnly ? '' : 'Tap for options' }
         : item.kind === 'blocked'
           ? { dot: 'var(--crit)', name: item.title, aside: range12(item.start, item.end) }
           : { dot: `var(--act-${item.kind})`, name: item.title, aside: range12(item.start, item.end) }
