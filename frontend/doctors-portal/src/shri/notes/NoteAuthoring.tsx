@@ -443,6 +443,12 @@ export function NoteAuthoring({
         <Card titleSize="sm" title="Assessment and plan">
           <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">{seeds.filter((s) => s.key === 'assessment' || s.key === 'plan').map(section)}</div>
         </Card>
+        {/* SHRI_HEALTH: the patient instructions (69730-0), with the API only: optional, printed on the after-visit summary. */}
+        {seeds.some((s) => s.key === 'instructions') && (
+          <Card titleSize="sm" title="Patient instructions">
+            <div className="grid grid-cols-1 gap-[20px]">{seeds.filter((s) => s.key === 'instructions').map(section)}</div>
+          </Card>
+        )}
 
         {showCoding && (
           <Card titleSize="sm" title="Diagnosis and ICD-10" headerClassName="mb-[4px]">
