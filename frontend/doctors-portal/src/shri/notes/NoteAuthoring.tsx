@@ -35,6 +35,7 @@ import { useScribeDrafts, type ScribeDraft } from '@/data/scribe'
 import { useAI, useOutstanding } from '@/store/ai'
 import { useAudit } from '@/store/audit'
 import { useClinical, type SectionProvenance } from '../../../shri-health/clinical'
+import { sameText, useDraftOffers } from '../../../shri-health/draftMerge'
 import { useCurrentStaff, useSession } from '@/store/session'
 import { useUI } from '@/store/ui'
 
@@ -150,7 +151,10 @@ export function NoteAuthoring({
     () => seeds.filter((s) => record.provenance[s.key] === 'scribe' && scribeDraft?.sections[s.key] !== undefined),
     [seeds, record.provenance, scribeDraft],
   )
-  const outstanding = useOutstanding(scribed.map((s) => `${enc.id}:${s.key}`))
+  /** A later draft's suggestions for sections already written (draftMerge.ts): each needs Replace or Keep mine. */
+  const offers = useDraftOffers((s) => s.offers)
+  const offered = seeds.filter((s) => offers[`${enc.id}:${s.key}`] !== undefined && !scribed.includes(s))
+  const outstanding = useOutstanding([...scribed, ...offered].map((s) => `${enc.id}:${s.key}`))
 
   // ARC-15: autosave every 20 s with a visible timestamp. Silent — no toast, no audit row.
   useEffect(() => {
@@ -686,7 +690,13 @@ function Section({
     />
   )
 
-  if (!isScribe) return <div className="min-w-0">{field}</div>
+  if (!isScribe)
+    return (
+      <div className="min-w-0">
+        {field}
+        {!locked && <DraftOffer touchpointId={touchpointId} label={seed.label} value={value} model={scribeModel} band={draftMeta?.band} onReplace={(t) => onChange(t, 'scribe')} />}
+      </div>
+    )
 
   return (
     <div onBlur={onBlur} className="min-w-0">
@@ -728,6 +738,68 @@ function Section({
           ],
         }}
       />
+    </div>
+  )
+}
+
+/**
+ * A later "Draft with AI" suggestion for a section the clinician already wrote (draftMerge.ts):
+ * shown beside their text, never applied by itself. Replace takes the AI text (an accepted AI
+ * section); Keep mine leaves the text as it is (the suggestion is rejected as already
+ * documented). Either is the decision Sign needs.
+ */
+function DraftOffer({
+  touchpointId,
+  label,
+  value,
+  model,
+  band,
+  onReplace,
+}: {
+  touchpointId: string
+  label: string
+  value: string
+  model: string
+  band: ScribeDraft['band'] | undefined
+  onReplace: (text: string) => void
+}) {
+  const offer = useDraftOffers((s) => s.offers[touchpointId])
+  const decidedAlready = useAI((s) => s.dispositions[touchpointId])
+  const record = useAI((s) => s.record)
+  const staff = useCurrentStaff()
+  if (!offer || (decidedAlready && decidedAlready.disposition !== 'Deferred')) return null
+  const matches = sameText(offer.text, value)
+  const decide = (replace: boolean) => {
+    if (replace) {
+      onReplace(offer.text)
+      record({ touchpointId, disposition: 'Accepted', by: staff.name, modelVersion: model, confidence: band ?? 'MED' })
+    } else {
+      record({ touchpointId, disposition: 'Rejected', by: staff.name, modelVersion: model, confidence: band ?? 'MED', reason: 'Already documented', reasonText: 'Kept the clinician’s text' })
+    }
+  }
+  return (
+    <div role="group" aria-label={`New AI draft for ${label}`} className="mt-[8px] rounded-[14px] bg-sh-inner px-[12px] py-[10px]">
+      <p className="flex items-center gap-[6px] text-[12px] font-semibold text-sh-text-2">
+        <Icon icon={Sparkles} size={13} />
+        {matches ? `The new AI draft for ${label} matches your text` : `New AI draft for ${label}. Your text is unchanged until you choose.`}
+      </p>
+      {!matches && <p className="mt-[6px] whitespace-pre-wrap text-[13px] text-sh-text">{offer.text}</p>}
+      <div className="mt-[8px] flex flex-wrap gap-[8px]">
+        {matches ? (
+          <Pill variant="control" size="md" icon={Check} onClick={() => decide(true)}>
+            Confirm
+          </Pill>
+        ) : (
+          <>
+            <Pill variant="control" size="md" icon={Sparkles} onClick={() => decide(true)}>
+              Replace with AI draft
+            </Pill>
+            <Pill variant="control" size="md" icon={Check} onClick={() => decide(false)}>
+              Keep mine
+            </Pill>
+          </>
+        )}
+      </div>
     </div>
   )
 }

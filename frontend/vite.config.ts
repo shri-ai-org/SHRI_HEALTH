@@ -1,3 +1,5 @@
+import { fileURLToPath, URL } from 'node:url'
+
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import type { ProxyOptions } from 'vite'
@@ -42,12 +44,32 @@ export default defineConfig({
     assetsInlineLimit: (filePath) => (/\.(woff2?|ttf|otf)$/.test(filePath) ? false : undefined),
   },
   test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    // The copied apps (front-office/, doctors-portal/, patient-self-registration/) have no tests here,
-    // except the doctors' portal's pharmacy-status poll, which imports nothing.
-    include: ['src/**/*.test.{ts,tsx}', 'dev/**/*.test.ts', 'doctors-portal/shri-health/rxStatusPoll.test.ts'],
-    css: false,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'app',
+          environment: 'jsdom',
+          globals: true,
+          setupFiles: ['./src/test/setup.ts'],
+          // The copied apps (front-office/, patient-self-registration/) have no tests here; the
+          // doctors' portal has its own project below.
+          include: ['src/**/*.test.{ts,tsx}', 'dev/**/*.test.ts'],
+          css: false,
+        },
+      },
+      {
+        // The doctors' portal's own unit tests, with its `@` (doctors-portal/src) and the real-API build flag.
+        root: './doctors-portal',
+        resolve: { alias: { '@': fileURLToPath(new URL('./doctors-portal/src', import.meta.url)) } },
+        define: { __SHRI_REAL_API__: 'true' },
+        test: {
+          name: 'doctors-portal',
+          environment: 'jsdom',
+          include: ['shri-health/**/*.test.ts', 'src/shri/logic/**/*.test.ts'],
+          css: false,
+        },
+      },
+    ],
   },
 })

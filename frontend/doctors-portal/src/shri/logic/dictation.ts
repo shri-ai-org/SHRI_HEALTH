@@ -162,9 +162,23 @@ export interface DictationOptions {
   onEnd?: (run: DictationRun) => void
 }
 
-/** Restarts allowed inside the window before a recogniser that keeps dying is called failed. */
-const MAX_RESTARTS = 8
-const RESTART_WINDOW_MS = 10_000
+/**
+ * Chrome ends a session on its own (silence, about a minute, a dropped connection). The run
+ * keeps listening until Stop: each end opens a fresh recogniser, at once the first time and
+ * then with a growing pause while ends come fast, so a recogniser that keeps dying never spins.
+ */
+export const RESTART_WINDOW_MS = 10_000
+export const MAX_RESTART_DELAY_MS = 3_000
+export function restartDelay(recentRestarts: number): number {
+  return recentRestarts === 0 ? 0 : Math.min(250 * 2 ** (recentRestarts - 1), MAX_RESTART_DELAY_MS)
+}
+/** 'network' errors in a row with nothing heard before the service counts as unreachable (Brave blocks it). */
+export const MAX_NETWORK_ERRORS = 5
+/** A safety cap per run: the microphone closes after 15 minutes of listening, keeping every word. */
+export const MAX_RUN_SEC = 15 * 60
+/** A hidden tab pauses dictation (Vimal's decision, 14 Nov); only a press of the mic resumes it. */
+export const HIDDEN_NOTICE = 'Dictation paused while this tab was in the background: press the mic to continue.'
+export const CAP_NOTICE = 'Stopped after 15 minutes of listening. Everything heard is kept — press the mic to continue.'
 const QUIET_BARS = () => new Array<number>(28).fill(0.06)
 
 /** Seconds recorded so far: what earlier runs banked, plus the run in progress. */
@@ -204,7 +218,9 @@ export function useDictation(opts?: DictationOptions): DictationState {
   /** Final results already taken from the current recogniser session — a restart begins a new list. */
   const consumed = useRef(0)
   const clock = useRef<{ base: number; since: number | null }>({ base: 0, since: null })
-  const run = useRef({ active: false, token: 0, stopping: false, restarts: [] as number[] })
+  const run = useRef({ active: false, token: 0, stopping: false, restarts: [] as number[], networkErrors: 0 })
+  /** The pending restart and the run's 15-minute cap, both cleared on every exit path. */
+  const timers = useRef<{ restart: number | null; cap: number | null }>({ restart: null, cap: null })
   const optsRef = useRef(opts)
   const languageRef = useRef<LanguageCode>(language)
   const stopRef = useRef<() => void>(() => {})
@@ -216,6 +232,8 @@ export function useDictation(opts?: DictationOptions): DictationState {
 
   /** Everything a run opened is closed here, on every exit path. */
   const teardown = useCallback(() => {
+    for (const t of [timers.current.restart, timers.current.cap]) if (t !== null) window.clearTimeout(t)
+    timers.current = { restart: null, cap: null }
     const rec = recognition.current
     recognition.current = null
     if (rec) {
@@ -344,7 +362,7 @@ export function useDictation(opts?: DictationOptions): DictationState {
       }
       setInterim('')
       setNotice(null)
-      run.current = { active: true, token: run.current.token + 1, stopping: false, restarts: [] }
+      run.current = { active: true, token: run.current.token + 1, stopping: false, restarts: [], networkErrors: 0 }
       const token = run.current.token
       useVoiceArbiter.getState().take(arbiterId, () => stopRef.current())
 
@@ -352,24 +370,21 @@ export function useDictation(opts?: DictationOptions): DictationState {
       const Ctor = recognitionCtor()
       if (!Ctor) return fail(NOTICE.unsupported)
       if (!navigator.mediaDevices?.getUserMedia) return fail(NOTICE.unsupported)
+      const live = () => token === run.current.token && !run.current.stopping
 
-      setPhase('requesting')
-      void (async () => {
-        let stream: MediaStream
-        try {
-          // This is the call that raises the browser's permission prompt.
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        } catch (err) {
-          if (token === run.current.token) fail(mediaErrorNotice(err))
-          return
-        }
-        // Stopped or closed while the prompt was up.
-        if (token !== run.current.token || run.current.stopping) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
-        startMeter(stream)
+      /** Stops at the cap like Stop, keeping every word, and says why. */
+      const capReached = () => {
+        if (!live()) return
+        stopRef.current()
+        setNotice(CAP_NOTICE)
+      }
 
+      /**
+       * One recogniser session. Every restart gets a fresh recogniser: Chrome may refuse to
+       * start one that just ended with an error. The run's words live in `text`, so nothing
+       * heard before is lost, and a final result is taken once per session (`consumed`).
+       */
+      const listen = (first: boolean) => {
         const rec = new Ctor()
         rec.lang = BCP47[languageRef.current]
         rec.continuous = true
@@ -397,6 +412,7 @@ export function useDictation(opts?: DictationOptions): DictationState {
               pending = joinSpeech(pending, alt.transcript)
             }
           }
+          if (fresh.length > 0 || pending !== '') run.current.networkErrors = 0
           if (fresh.length > 0) {
             t.settled = fresh.reduce((acc, s) => joinSpeech(acc, s.text), t.settled)
             t.segments = [...t.segments, ...fresh]
@@ -414,29 +430,29 @@ export function useDictation(opts?: DictationOptions): DictationState {
 
         rec.onerror = (e) => {
           if (recognition.current !== rec) return
-          // Silence, and Chrome's own session boundary, are the normal rhythm — `onend` restarts.
-          if (e.error === 'no-speech' || e.error === 'aborted') return
-          if (e.error === 'network') return fail(NOTICE.network)
+          // Only these stop the run; anything else (silence, Chrome's own boundary, a dropped
+          // connection) ends the session, and `onend` opens the next one.
           if (e.error === 'not-allowed' || e.error === 'service-not-allowed') return fail(NOTICE.blocked)
           if (e.error === 'audio-capture') return fail(NOTICE.noMic)
           if (e.error === 'language-not-supported') return fail(languageNotice(languageRef.current))
-          fail(`Speech recognition stopped (${e.error}). What was heard is kept — press the mic again, or type instead.`)
+          if (e.error === 'network') {
+            run.current.networkErrors += 1
+            // The service never answers (Brave and some privacy settings block it): say so once.
+            if (run.current.networkErrors >= MAX_NETWORK_ERRORS) fail(NOTICE.network)
+          }
         }
 
         rec.onend = () => {
-          if (recognition.current !== rec || run.current.stopping) return
-          // Chrome ended the session itself — after silence, or at about a minute. Keep listening.
+          if (recognition.current !== rec || !live()) return
+          // Chrome ended the session itself: keep the words in flight, then listen again.
+          promoteInterim()
           const now = Date.now()
           const recent = run.current.restarts.filter((at) => now - at < RESTART_WINDOW_MS)
-          if (recent.length >= MAX_RESTARTS) return fail(NOTICE.keepsStopping)
           run.current.restarts = [...recent, now]
-          promoteInterim()
-          consumed.current = 0
-          try {
-            rec.start()
-          } catch {
-            fail(NOTICE.keepsStopping)
-          }
+          timers.current.restart = window.setTimeout(() => {
+            timers.current.restart = null
+            if (live()) listen(false)
+          }, restartDelay(recent.length))
         }
 
         recognition.current = rec
@@ -444,10 +460,41 @@ export function useDictation(opts?: DictationOptions): DictationState {
         try {
           rec.start()
         } catch {
-          fail(NOTICE.wouldNotStart)
+          if (first) {
+            fail(NOTICE.wouldNotStart)
+            return false
+          }
+          // A restart that would not start is tried again after the next pause.
+          const recent = run.current.restarts.filter((at) => Date.now() - at < RESTART_WINDOW_MS)
+          run.current.restarts = [...recent, Date.now()]
+          timers.current.restart = window.setTimeout(() => {
+            timers.current.restart = null
+            if (live()) listen(false)
+          }, restartDelay(recent.length + 1))
+        }
+        return true
+      }
+
+      setPhase('requesting')
+      void (async () => {
+        let stream: MediaStream
+        try {
+          // This is the call that raises the browser's permission prompt.
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        } catch (err) {
+          if (token === run.current.token) fail(mediaErrorNotice(err))
           return
         }
+        // Stopped or closed while the prompt was up.
+        if (!live()) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        startMeter(stream)
+        if (!listen(true)) return
         clock.current.since = Date.now()
+        // The cap counts this run's listening; a resumed run starts its own 15 minutes.
+        timers.current.cap = window.setTimeout(capReached, MAX_RUN_SEC * 1000)
         setPhase('recording')
       })()
     },
@@ -474,6 +521,19 @@ export function useDictation(opts?: DictationOptions): DictationState {
     setScored(false)
     setElapsedSec(0)
   }, [arbiterId, teardown])
+
+  // A tab put in the background pauses dictation: the recogniser stops (what was heard is kept and
+  // handed on, as with Stop), and the clinician sees why when they come back. Nothing restarts it
+  // but a press of the mic.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'hidden' || !run.current.active) return
+      stopRef.current()
+      setNotice(HIDDEN_NOTICE)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   // Unmounting the surface discards the session and closes the microphone.
   useEffect(() => () => reset(), [reset])

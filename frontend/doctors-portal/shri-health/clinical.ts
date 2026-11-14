@@ -9,6 +9,7 @@ import type { AddedProblem, NoteRecord, NoteStatus, RxOverride, RxRecord, Sectio
 import { useUI } from '@/store/ui'
 import { useAI } from '@/store/ai'
 import { useScribeDrafts } from '@/data/scribe'
+import { mergeDraft, useDraftOffers } from './draftMerge'
 import type { ConfidenceBand } from '@/atlas/confidence'
 
 import { ApiError, etagOf, newIdempotencyKey } from '../../src/api/client'
@@ -94,6 +95,9 @@ function pendingAi(n: Note): Record<string, AiSection> {
   }
   return out
 }
+
+/** As the server compares a section with its AI text (decideAiSuggestion): spacing ignored. */
+const normText = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 const BAND: Record<string, ConfidenceBand> = { low: 'LOW', medium: 'MED', high: 'HIGH' }
 
@@ -543,7 +547,9 @@ export const useClinical = create<NoteState>()((set, get) => {
       if (!d) throw new Error('Accept, edit or reject each AI-drafted section before signing.')
       const text = (get().notes[encounterId]?.text[key] ?? '').trim()
       let body: AiSuggestionDecision
-      if (d.disposition === 'Rejected' || text === '') body = { decision: 'rejected', reason: (d.reasonText || d.reason || 'Rejected by the clinician').slice(0, 500) }
+      // Keeping one's own text that already contains the AI's words is an edit, not a rejection (the server's rule).
+      if ((d.disposition === 'Rejected' || text === '') && !(text !== '' && normText(text).includes(normText(section.text)))) body = { decision: 'rejected', reason: (d.reasonText || d.reason || 'Rejected by the clinician').slice(0, 500) }
+      else if (d.disposition === 'Rejected') body = { decision: 'edited' }
       else if (text === section.text.trim()) body = { decision: 'accepted' }
       else body = { decision: 'edited' }
       await decideAiSuggestion(section.suggestionId, body, { 'Idempotency-Key': newIdempotencyKey() })
@@ -846,10 +852,27 @@ export const useClinical = create<NoteState>()((set, get) => {
       // A queued or running draft is waited for (as the chart AI does); a failed one is AiFeatureDown.
       const res = await getNote(await finished(op, 'AI draft'))
       const n = res.data as Note
+      // Each draft is a new note on the server. Saves still writing to the note before it finish
+      // first, so none of them lands its version on the new one.
+      await (get().server[encounterId]?.queue ?? Promise.resolve())
       const keys = publishAi(encounterId, n)
       for (const k of keys) useAI.getState().clearDisposition(`${encounterId}:${k}`)
-      set({ notes: { ...get().notes, [encounterId]: fromNote(encounterId, n) }, server: { ...get().server, [encounterId]: serverFrom(n, etagOf(res)) } })
-      return keys
+      // The clinician's sections are kept: a new suggestion for one they wrote is offered, never
+      // applied; only empty sections take the draft (draftMerge.ts). What is kept is saved to
+      // the new note by the next save, since the server holds the draft's text there.
+      const local = get().notes[encounterId]
+      const drafted = fromNote(encounterId, n)
+      const merged = mergeDraft({
+        text: local?.text ?? {},
+        provenance: local?.provenance ?? {},
+        suggestions: Object.fromEntries(Object.entries(pendingAi(n)).filter(([, a]) => !a.decided).map(([k, a]) => [k, { suggestionId: a.suggestionId, text: a.text }])),
+        serverText: Object.fromEntries(n.sections.filter((s) => KEY_BY_CODE[s.code]).map((s) => [KEY_BY_CODE[s.code], s.text])),
+      })
+      useDraftOffers.getState().setFor(encounterId, merged.offers)
+      const record: NoteRecord = { ...drafted, text: merged.text, provenance: Object.fromEntries(Object.entries(merged.provenance).filter(([, v]) => v !== undefined)) as NoteRecord['provenance'], code: local?.code ?? drafted.code }
+      set({ notes: { ...get().notes, [encounterId]: record }, server: { ...get().server, [encounterId]: serverFrom(n, etagOf(res)) } })
+      get().saveDraft(encounterId, 'auto')
+      return [...merged.drafted, ...Object.keys(merged.offers)]
     },
 
     setNoteCode: (encounterId, code, label) => {
