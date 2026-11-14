@@ -14,7 +14,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { screen } from '@/atlas/registry'
 import { canAdmit } from '@/data/admissions'
-import { noteSeedsFor } from '@/data/clinical'
+import { INSTRUCTIONS_SEED, noteSeedsFor } from '@/data/clinical'
 import { NOW, formatTime } from '@/data/format'
 import { patient } from '../../../shri-health/kit'
 import { useAdmissions } from '@/store/admissions'
@@ -96,7 +96,9 @@ function Consultation({ encounterId }: { encounterId: string }) {
   useEffect(() => {
     if (enc.type === 'OP' || enc.type === 'TELE') start(enc.patientId)
   }, [enc.type, enc.patientId, start])
-  const seeds = noteSeedsFor(p.id)
+  // With the API the note also shows its patient instructions (69730-0): "Draft with AI" drafts them
+  // and Sign needs their decision, so they can't be a section nobody sees.
+  const seeds = REAL_API ? [...noteSeedsFor(p.id), INSTRUCTIONS_SEED] : noteSeedsFor(p.id)
   const differentials = differentialsFor(p.id)
   const rx = `/encounter/${enc.id}/rx`
   const order = `/encounter/${enc.id}/orders/new`

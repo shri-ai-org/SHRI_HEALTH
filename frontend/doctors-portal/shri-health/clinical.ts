@@ -58,7 +58,9 @@ export type RxLineEdit = ScreenRxLineEdit & { quantity?: string; quantityUnit?: 
 export type { SectionProvenance }
 
 /** The screen's four sections, by their LOINC section codes (the SOAP template). */
-const KEY_BY_CODE: Record<string, string> = { '61150-9': 'subjective', '61149-1': 'objective', '51848-0': 'assessment', '18776-5': 'plan' }
+// The patient instructions (69730-0, D73) are a section like the others: "Draft with AI" drafts them,
+// and Sign needs their decision too, so the note shows them (optional, printed on the summary).
+const KEY_BY_CODE: Record<string, string> = { '61150-9': 'subjective', '61149-1': 'objective', '51848-0': 'assessment', '18776-5': 'plan', '69730-0': 'instructions' }
 const SOAP_TEMPLATE_CODE = 'SOAP'
 
 /** What the store keeps per encounter besides the screen's NoteRecord. */
@@ -583,6 +585,24 @@ export const useClinical = create<NoteState>()((set, get) => {
     patch(encounterId, { savedAt: (res.data as Note).updatedAt })
   }
 
+  /**
+   * A refused Sign (422) names its sections, so nothing is left to guess: the server points at
+   * `/sections/{i}/aiDecision` (an AI draft with no decision) or `/sections/{i}/text` (an empty
+   * required section), in the note's section order.
+   */
+  async function noteSignRefusal(encounterId: string, error: unknown): Promise<string | null> {
+    if (!(error instanceof ApiError) || error.status !== 422) return null
+    const errors = (error.problem as { errors?: { pointer?: string }[] }).errors ?? []
+    const noteId = get().server[encounterId]?.noteId
+    if (!noteId || errors.length === 0) return null
+    const n = (await getNote(noteId)).data as Note
+    const parts = errors
+      .map((e) => /^\/sections\/(\d+)\/(aiDecision|text)$/.exec(e.pointer ?? ''))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => `${n.sections[Number(m[1])]?.title ?? 'A section'}: ${m[2] === 'aiDecision' ? 'the AI draft needs Accept, Edit or Reject' : 'needs text'}`)
+    return parts.length > 0 ? `${parts.join('; ')}.` : null
+  }
+
   /** Runs one write after the ones before it. */
   function enqueue(encounterId: string, job: () => Promise<void>): Promise<void> {
     const before = get().server[encounterId]?.queue ?? Promise.resolve()
@@ -920,8 +940,10 @@ export const useClinical = create<NoteState>()((set, get) => {
           if (signed === 'signed') requestAfterVisitSummary(encounterId)
           return signed
         },
-        (error: unknown) => {
-          toastProblem(error, 'The note was not signed')
+        async (error: unknown) => {
+          const named = await noteSignRefusal(encounterId, error).catch(() => null)
+          if (named) useUI.getState().toast({ tone: 'critical', title: 'The note was not signed', detail: named })
+          else toastProblem(error, 'The note was not signed')
           return null
         },
       )

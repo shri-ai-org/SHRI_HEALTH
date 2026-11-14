@@ -30,9 +30,9 @@ import { persist } from 'zustand/middleware'
 
 import type { ConfidenceBand } from '@/atlas/confidence'
 
-import type { SectionKey } from './clinical'
+import type { NoteKey, SectionKey } from './clinical'
 
-export type ScribeSections = Partial<Record<SectionKey, string>>
+export type ScribeSections = Partial<Record<NoteKey, string>>
 
 export const SCRIBE_SECTION_KEYS: SectionKey[] = ['subjective', 'objective', 'assessment', 'plan']
 

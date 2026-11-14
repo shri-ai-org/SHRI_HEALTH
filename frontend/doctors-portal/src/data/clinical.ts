@@ -185,8 +185,17 @@ export function encounterForPatient(patientId: string): Encounter | undefined {
 
 export type SectionKey = 'subjective' | 'objective' | 'assessment' | 'plan'
 
+/**
+ * SHRI_HEALTH: a note section's key. The four SOAP sections, and with the API the patient
+ * instructions (LOINC 69730-0, D73): optional, printed on the after-visit summary, and drafted by
+ * "Draft with AI" like the others, so it needs its own decision before Sign.
+ */
+export type NoteKey = SectionKey | 'instructions'
+
 export interface NoteSectionSeed {
-  key: SectionKey
+  key: NoteKey
+  /** Optional sections may be left empty; the SOAP four need text. */
+  optional?: boolean
   label: string
   /** Which capability drafted it. */
   ai: string
@@ -357,6 +366,14 @@ const BLANK_SEEDS: NoteSectionSeed[] = NOTE_DRAFT_SD_P_01.map((sec) => ({
   confidence: 0,
   band: 'LOW',
 }))
+
+/** SHRI_HEALTH: the note's fifth section with the API, the patient instructions (69730-0, optional). */
+export const INSTRUCTIONS_SEED: NoteSectionSeed = {
+  ...BLANK_SEEDS[BLANK_SEEDS.length - 1],
+  key: 'instructions',
+  label: 'Patient instructions',
+  optional: true,
+}
 
 /** The note seeds for THIS patient: their own draft where the kit has one, blank otherwise. */
 export function noteSeedsFor(patientId: string): NoteSectionSeed[] {

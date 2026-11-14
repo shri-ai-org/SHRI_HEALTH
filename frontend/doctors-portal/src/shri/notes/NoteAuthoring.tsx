@@ -26,7 +26,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { can, canSignNotes } from '@/atlas/personas'
 import { bannedIn } from '@/data/abbreviations'
-import { CODE_SUGGESTIONS, type Encounter, type NoteSectionSeed, type SectionKey } from '@/data/clinical'
+import { CODE_SUGGESTIONS, type Encounter, type NoteKey, type NoteSectionSeed } from '@/data/clinical'
 import { NOW, formatDateTime, formatTime as sampleTime } from '@/data/format'
 import { clinicDate, formatClinicDateTime, formatTime as clinicTime } from '../../../shri-health/format'
 import { icdLabel } from '@/data/icd10'
@@ -130,7 +130,7 @@ export function NoteAuthoring({
   /** What the ambient scribe heard and routed, for this encounter. */
   const scribeDraft = useScribeDrafts((s) => s.drafts[enc.id])
   const aimScribe = useScribeDrafts((s) => s.aim)
-  const draftFor = (key: SectionKey): string | undefined => scribeDraft?.sections[key]
+  const draftFor = (key: NoteKey): string | undefined => scribeDraft?.sections[key]
   const patientProblems = useProblemsFor(p.id)
   // M8: with the API, the visit's diagnoses are read too, so the note's ICD-10 code comes back after a reload.
   if (REAL_API) useVisitDiagnoses(enc.id)
@@ -163,7 +163,7 @@ export function NoteAuthoring({
     return () => window.clearInterval(t)
   }, [enc.id, locked, saveDraft])
 
-  const textFor = (key: SectionKey) => record.text[key] ?? ''
+  const textFor = (key: NoteKey) => record.text[key] ?? ''
 
   /** The ICD-10 index this build can search: the AI's proposals, the patient's problems, the kit's diagnoses. */
   const codeIndex = useMemo<CodeOption[]>(() => {
@@ -185,6 +185,8 @@ export function NoteAuthoring({
     const out: { field: string; message: string }[] = []
     for (const seed of seeds) {
       const value = record.text[seed.key] ?? ''
+      // An optional section (the patient instructions) may stay empty; whatever it holds is checked like the rest.
+      if (seed.optional && value.trim() === '') continue
       if (value.trim().length < 10) {
         out.push({ field: seed.label, message: 'dictate or type at least 10 characters' })
       } else if (blurred[seed.key]) {
@@ -613,7 +615,7 @@ export function NoteAuthoring({
         patient={p}
         meta={`${encounterLabel(enc)} · signed by ${record.signedBy ?? me.name}${record.signedAt ? ` · ${stampOf(record.signedAt)}` : ''}`}
         sections={[
-          ...seeds.map((s) => ({ heading: s.label, body: textFor(s.key) })),
+          ...seeds.filter((s) => !s.optional || textFor(s.key).trim() !== '').map((s) => ({ heading: s.label, body: textFor(s.key) })),
           ...(record.code ? [{ heading: 'Diagnosis and ICD-10', body: `${record.code}${chosen ? ` · ${chosen.label}` : ''}` }] : []),
           // The addendum's time in the clinic's zone, U.S. style ("Nov 11, 2026, 9:40 AM"), with the API.
           ...record.addenda.map((a) => ({ heading: `Addendum · ${a.by} · ${REAL_API ? formatClinicDateTime(a.at) : formatDateTime(new Date(a.at))}`, body: a.body })),
@@ -680,7 +682,7 @@ function Section({
     <VoiceField
       id={touchpointId}
       label={seed.label}
-      required
+      required={!seed.optional}
       value={value}
       onChange={(v, source) => onChange(v, provenanceFor(v, source))}
       onDictated={onDictated}

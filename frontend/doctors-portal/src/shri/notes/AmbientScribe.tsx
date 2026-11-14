@@ -37,7 +37,7 @@ import { ConfidenceMark, Icon, Pill, PillTag, Toggle } from '../ui/primitives'
 
 type SectionKey = NoteSectionSeed['key']
 
-const SECTION_LABELS: Record<SectionKey, string> = { subjective: 'Subjective', objective: 'Objective', assessment: 'Assessment', plan: 'Plan' }
+const SECTION_LABELS: Record<SectionKey, string> = { subjective: 'Subjective', objective: 'Objective', assessment: 'Assessment', plan: 'Plan', instructions: 'Patient instructions' }
 
 interface HeardLine {
   key: string
