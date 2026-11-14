@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CAP_NOTICE, MAX_NETWORK_ERRORS, MAX_RUN_SEC, restartDelay, useDictation } from './dictation'
+import { CAP_NOTICE, HIDDEN_NOTICE, MAX_NETWORK_ERRORS, MAX_RUN_SEC, restartDelay, useDictation } from './dictation'
 import { NOTICE } from './speech'
 
 /** A stand-in for Chrome's recogniser: each instance is one session the test drives. */
@@ -196,5 +196,38 @@ describe('the microphone keeps listening until Stop', () => {
     expect(restartDelay(1)).toBe(250)
     expect(restartDelay(3)).toBe(1000)
     expect(restartDelay(20)).toBe(3000)
+  })
+
+  it('pauses when the tab is hidden, says why, and resumes only on a press of the mic', async () => {
+    const { result } = await listening()
+    act(() => live().say('cough for three days'))
+    const count = FakeRecognition.all.length
+    const setVisibility = (v: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    act(() => setVisibility('hidden'))
+    expect(live().aborted).toBe(true)
+    expect(result.current.phase).toBe('review')
+    // Chrome's own end after the pause does not restart it, hidden or visible again.
+    act(() => live().end())
+    act(() => setVisibility('visible'))
+    await act(async () => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(FakeRecognition.all).toHaveLength(count)
+    expect(result.current.notice).toBe(HIDDEN_NOTICE)
+    expect(result.current.settled).toBe('cough for three days')
+    // The mic resumes on a press, keeping what was heard.
+    await act(async () => {
+      result.current.start({ resume: true })
+      await Promise.resolve()
+    })
+    expect(result.current.phase).toBe('recording')
+    expect(FakeRecognition.all).toHaveLength(count + 1)
+    expect(result.current.notice).toBeNull()
+    act(() => live().say('no fever'))
+    expect(result.current.settled).toBe('cough for three days no fever')
+    act(() => setVisibility('visible'))
   })
 })

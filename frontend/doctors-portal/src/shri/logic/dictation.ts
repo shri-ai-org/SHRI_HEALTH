@@ -176,6 +176,8 @@ export function restartDelay(recentRestarts: number): number {
 export const MAX_NETWORK_ERRORS = 5
 /** A safety cap per run: the microphone closes after 15 minutes of listening, keeping every word. */
 export const MAX_RUN_SEC = 15 * 60
+/** A hidden tab pauses dictation (Vimal's decision, 14 Nov); only a press of the mic resumes it. */
+export const HIDDEN_NOTICE = 'Dictation paused while this tab was in the background: press the mic to continue.'
 export const CAP_NOTICE = 'Stopped after 15 minutes of listening. Everything heard is kept — press the mic to continue.'
 const QUIET_BARS = () => new Array<number>(28).fill(0.06)
 
@@ -519,6 +521,19 @@ export function useDictation(opts?: DictationOptions): DictationState {
     setScored(false)
     setElapsedSec(0)
   }, [arbiterId, teardown])
+
+  // A tab put in the background pauses dictation: the recogniser stops (what was heard is kept and
+  // handed on, as with Stop), and the clinician sees why when they come back. Nothing restarts it
+  // but a press of the mic.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'hidden' || !run.current.active) return
+      stopRef.current()
+      setNotice(HIDDEN_NOTICE)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   // Unmounting the surface discards the session and closes the microphone.
   useEffect(() => () => reset(), [reset])
