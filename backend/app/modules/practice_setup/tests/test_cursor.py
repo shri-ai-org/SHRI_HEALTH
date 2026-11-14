@@ -2,9 +2,10 @@
 
 import base64
 import json
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -28,7 +29,7 @@ def test_round_trip(kind: Any) -> None:
 
 
 def test_an_offset_time_keeps_its_instant() -> None:
-    at = datetime(2026, 10, 26, 8, 0, tzinfo=timezone(timedelta(hours=-8)))
+    at = datetime(2026, 10, 26, 8, 0, tzinfo=ZoneInfo("America/Los_Angeles"))  # San Jose
     position = Position(kind="providers", key=at, id=uuid4())
     assert decode(encode(position), "providers").key == at
 
