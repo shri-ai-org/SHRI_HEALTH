@@ -9,9 +9,10 @@ product before a combination pack that contains it), then by code:
 Within a class, the score is pg_trgm's ``similarity`` of the query to the whole name, which
 counts every extra word against a name, so "Essential (primary) hypertension" (I10) comes before
 "Pre-existing essential hypertension complicating childbirth" (O10.02) for "essential
-hypertension" (audit V3). For RxNorm it stays ``word_similarity``, the best-matching part of the
-name, as the drug search has always ranked. The name search uses the trigram index on
-``concept.display``. Only active concepts; for
+hypertension" (audit V3). A synonym's wording (``also``) is searched beside the query, and a
+name scores by whichever of the two it fits better. For RxNorm it stays ``word_similarity``, the
+best-matching part of the name, as the drug search has always ranked. The name search uses the
+trigram index on ``concept.display``. Only active concepts; for
 ICD-10-CM, ``billable_only`` leaves out header codes. For RxNorm only the products a prescriber
 can pick (SCD, SBD, GPCK, BPCK), each with its drug details from ``concept_property``.
 
@@ -75,10 +76,12 @@ WITH found AS (
   SELECT c.id, c.code, c.display, c.is_billable,
          CASE WHEN replace(upper(c.code), '.', '') = :code_q THEN 0
               WHEN replace(upper(c.code), '.', '') LIKE :code_prefix THEN 1
-              WHEN c.display ILIKE ALL (CAST(:words AS text[])) THEN 2
+              WHEN c.display ILIKE ALL (CAST(:words AS text[]))
+                OR c.display ILIKE ALL (CAST(:also_words AS text[])) THEN 2
               ELSE 3 END AS rank,
          CAST(CASE WHEN :products_only THEN word_similarity(:q, c.display)
-                   ELSE similarity(:q, c.display) END AS float8) AS similarity,
+                   ELSE greatest(similarity(:q, c.display), similarity(:also, c.display))
+              END AS float8) AS similarity,
          length(c.display) AS length
   FROM admin.concept c
   WHERE c.code_system_id = (SELECT id FROM admin.code_system WHERE uri = :system)
@@ -89,6 +92,7 @@ WITH found AS (
           AND p.property = 'tty' AND p.value = ANY (CAST(:products AS text[]))))
     AND (replace(upper(c.code), '.', '') LIKE :code_prefix
          OR c.display ILIKE ALL (CAST(:words AS text[]))
+         OR c.display ILIKE ALL (CAST(:also_words AS text[]))
          OR :q <% c.display)
 )
 SELECT id, code, display, is_billable, rank, similarity, length FROM found
@@ -133,17 +137,24 @@ async def _drugs(db: AsyncSession, ids: list[UUID]) -> dict[UUID, Drug]:
         for cid, props in found.items()}
 
 
-async def search(db: AsyncSession, system: str, q: str, *, billable_only: bool = False,
-                 after: Position | None = None, limit: int = 20
+async def search(db: AsyncSession, system: str, q: str, *, also: str | None = None,
+                 billable_only: bool = False, after: Position | None = None, limit: int = 20
                  ) -> tuple[list[Match], Position | None]:
-    """One page of matches, best first, and where the next page starts (None on the last)."""
+    """One page of matches, best first, and where the next page starts (None on the last).
+
+    ``also``: other wording to search beside ``q`` (the codes module's synonyms): a name that
+    has all its words is in class 2 too, and scores by whichever of the two it fits better.
+    Not for RxNorm, whose score stays the query's word similarity."""
     uri = SYSTEMS[system]
     query = " ".join(q.split())
+    other = " ".join(also.split()) if also and system != "rxnorm" else query
     code_q = query.upper().replace(".", "")
     words = [f"%{_like(w)}%" for w in query.split()]
+    also_words = [f"%{_like(w)}%" for w in other.split()]
     rows = (await db.execute(_SEARCH, {
         "system": uri, "q": query, "code_q": code_q, "code_prefix": f"{_like(code_q)}%",
-        "words": words, "billable_only": billable_only and system == "icd-10-cm",
+        "words": words, "also": other, "also_words": also_words,
+        "billable_only": billable_only and system == "icd-10-cm",
         "products_only": system == "rxnorm", "products": list(PRODUCTS),
         "after_rank": after.rank if after else None,
         "after_sim": after.similarity if after else None,

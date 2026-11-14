@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import InvalidCursor
 from app.db.terminology import search as terms
 
-from . import schemas
+from . import schemas, synonyms
 
 _VERSION = 3
 _MEMBERS = frozenset({"v", "f", "r", "s", "n", "c"})
@@ -72,8 +72,8 @@ async def search_codes(db: AsyncSession, *, system: schemas.CodeSystem, q: str,
                        ) -> schemas.CodeMatchList:
     finger = fingerprint(system, q, billable_only)
     after = decode(cursor_value, finger) if cursor_value else None
-    matches, more = await terms.search(db, system, q, billable_only=billable_only,
-                                       after=after, limit=limit)
+    matches, more = await terms.search(db, system, q, also=synonyms.expand(system, q),
+                                       billable_only=billable_only, after=after, limit=limit)
     return schemas.CodeMatchList(
         items=[schemas.CodeMatch(system=m.system, code=m.code, display=m.display,
                                  billable=m.billable, drug=_drug(m.drug)) for m in matches],

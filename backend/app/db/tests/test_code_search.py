@@ -234,6 +234,52 @@ async def test_drug_search_keeps_its_word_similarity(loaded: None, app_db: Any) 
     assert best.rank == 2 and best.similarity == pytest.approx(1.0)
 
 
+#: Audit V3: names the typed words alone don't reach ("COPD", "breast cancer").
+SYNONYM_CODES = HYPERTENSION + [
+    _line(13, "J449", True, "Chronic obstructive pulmonary disease, unspecified"),
+    _line(14, "C50919", True,
+          "Malignant neoplasm of unspecified site of unspecified female breast"),
+    _line(15, "Z853", True, "Personal history of malignant neoplasm of breast"),
+]
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+async def test_a_synonym_finds_what_the_typed_words_alone_do_not(loaded: None,
+                                                                 app_db: Any) -> None:
+    """The codes module's synonym (``also``) is searched beside the query: COPD finds J44.9,
+    "hypertension" with I10's wording puts I10 first, and pages follow the same order."""
+    _load_as_migrator(ORDER_FILE + SYNONYM_CODES)
+    try:
+        bare, _ = await terms.search(app_db, "icd-10-cm", "copd", limit=50)
+        assert "J44.9" not in {m.code for m in bare}
+        copd, _ = await terms.search(app_db, "icd-10-cm", "COPD",
+                                     also="chronic obstructive pulmonary disease", limit=50)
+        assert copd[0].code == "J44.9"
+        cancer, _ = await terms.search(app_db, "icd-10-cm", "breast cancer",
+                                       also="malignant neoplasm of breast", limit=50)
+        assert [m.code for m in cancer][:2] == ["C50.919", "Z85.3"] or \
+            [m.code for m in cancer][:2] == ["Z85.3", "C50.919"]
+        every, _ = await terms.search(app_db, "icd-10-cm", "hypertension",
+                                      also="essential (primary) hypertension", limit=50)
+        codes = [m.code for m in every]
+        assert codes[0] == "I10" and {"I15.9", "O10.02"} <= set(codes)
+        seen, after = [], None
+        while True:
+            page, after = await terms.search(app_db, "icd-10-cm", "hypertension",
+                                             also="essential (primary) hypertension",
+                                             after=after, limit=2)
+            seen += [m.code for m in page]
+            if after is None:
+                break
+        assert seen == codes and len(set(seen)) == len(seen)
+        drugs, _ = await terms.search(app_db, "rxnorm", "amoxicillin 500", also="ignored")
+        plain, _ = await terms.search(app_db, "rxnorm", "amoxicillin 500")
+        assert [m.code for m in drugs] == [m.code for m in plain]   # drugs never expand
+    finally:
+        _load_as_migrator(ORDER_FILE)
+
+
 def _load_as_migrator(lines: list[str]) -> None:
     engine = create_engine(sync_url(), poolclass=NullPool)
 

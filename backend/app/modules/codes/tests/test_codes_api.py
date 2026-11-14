@@ -119,3 +119,14 @@ def test_a_cursor_from_before_the_v3_ranking_is_refused() -> None:
         separators=(",", ":")).encode()).rstrip(b"=").decode()
     with pytest.raises(InvalidCursor):
         service.decode(old, finger)
+
+
+def test_a_synonym_is_searched_beside_the_typed_words(client: TestClient,
+                                                      calls: list[dict[str, Any]]) -> None:
+    assert _get(client, "md", system="icd-10-cm", q="  COPD ").status_code == 200
+    assert calls[-1]["q"] == "  COPD "
+    assert calls[-1]["also"] == "chronic obstructive pulmonary disease"
+    assert _get(client, "md", system="icd-10-cm", q="copd exacerbation").status_code == 200
+    assert calls[-1]["also"] is None                       # only the whole query expands
+    assert _get(client, "md", system="rxnorm", q="flu").status_code == 200
+    assert calls[-1]["also"] is None                       # drugs never expand
