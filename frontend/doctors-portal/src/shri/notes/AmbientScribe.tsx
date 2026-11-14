@@ -27,6 +27,7 @@ import { useSession } from '@/store/session'
 
 import { cn } from '../lib/cn'
 import { useDictation } from '../logic/dictation'
+import { cumulativeTranscript, useVisitDictation } from '../../../shri-health/draftMerge'
 
 /** With the SHRI_HEALTH API, the transcript goes to the AI draft service (AI-01, createNoteDraft); the sample's local routing is not shown as a draft. */
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
@@ -53,6 +54,7 @@ export function AmbientScribe({
   patientId,
   patientName,
   sections,
+  encounterId,
 }: {
   open: boolean
   onClose: () => void
@@ -62,6 +64,8 @@ export function AmbientScribe({
   patientName: string
   /** The note's sections, for their labels. */
   sections: NoteSectionSeed[]
+  /** The visit: with the API, every dictation for it goes with each draft (draftMerge.ts). */
+  encounterId?: string
 }) {
   return (
     <Dialog
@@ -72,13 +76,13 @@ export function AmbientScribe({
       title="Ambient scribe"
       subtitle={`${patientName} · the raw transcript is retained verbatim`}
     >
-      <Session onClose={onClose} onFinish={onFinish} patientId={patientId} sections={sections} />
+      <Session onClose={onClose} onFinish={onFinish} patientId={patientId} sections={sections} encounterId={encounterId} />
     </Dialog>
   )
 }
 
 /** Mounted only while the overlay is open, so closing it closes the microphone. */
-function Session({ onClose, onFinish, patientId, sections }: { onClose: () => void; onFinish: (keys: SectionKey[], drafts: ScribeSections, transcript: string) => void; patientId: string; sections: NoteSectionSeed[] }) {
+function Session({ onClose, onFinish, patientId, sections, encounterId }: { onClose: () => void; onFinish: (keys: SectionKey[], drafts: ScribeSections, transcript: string) => void; patientId: string; sections: NoteSectionSeed[]; encounterId?: string }) {
   const language = useSession((s) => s.language)
   const clearDisposition = useAI((s) => s.clearDisposition)
   const d = useDictation({ arbiterId: 'ambient-scribe' })
@@ -103,7 +107,13 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
   // What has been heard so far, one recognised phrase per line — the words in flight included.
   const transcript = [...d.segments.map((s) => s.text), d.interim.trim()].filter(Boolean).join('\n')
   const drafts = useMemo(() => draftFromTranscript(transcript), [transcript])
+  // With the API: what was dictated earlier in this visit goes with every draft, in order, so a
+  // second draft covers everything said so far. Only Clear dictation starts over.
+  const earlier = useVisitDictation((s) => (encounterId ? s.takes[encounterId] : undefined))
+  const clearDictation = useVisitDictation((s) => s.clear)
+  const full = cumulativeTranscript(earlier, transcript)
   const drafted = SCRIBE_SECTION_KEYS.filter((k) => drafts[k] !== undefined)
+  const nothingToDraft = REAL_API ? full === '' : drafted.length === 0
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
@@ -118,14 +128,15 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
   function adoptDraft() {
     if (REAL_API) {
       // The AI drafts the four sections on the server; the dictated words go as they were heard.
-      if (transcript.trim() === '') return
+      if (full === '') return
       d.stop()
-      onFinish([], {}, transcript)
+      if (encounterId) useVisitDictation.getState().add(encounterId, transcript)
+      onFinish([], {}, full)
       return
     }
     if (drafted.length === 0) return
     d.stop()
-    const encounterId = useScribeDrafts.getState().publish({
+    const aimed = useScribeDrafts.getState().publish({
       patientId,
       sections: drafts,
       transcript,
@@ -135,10 +146,10 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
       scored: d.scored,
       at: new Date().toISOString(),
     })
-    if (encounterId) {
+    if (aimed) {
       // A new draft for a section that is still empty needs a new decision, not the last one.
-      const note = useClinical.getState().note(encounterId)
-      for (const k of drafted) if ((note.text[k] ?? '').trim() === '') clearDisposition(`${encounterId}:${k}`)
+      const note = useClinical.getState().note(aimed)
+      for (const k of drafted) if ((note.text[k] ?? '').trim() === '') clearDisposition(`${aimed}:${k}`)
     }
     onFinish(drafted, drafts, transcript)
   }
@@ -203,6 +214,21 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
         </p>
       )}
 
+      {REAL_API && earlier && earlier.length > 0 && encounterId && (
+        <div className="rounded-[16px] bg-sh-inner px-[14px] py-[12px]">
+          <div className="flex flex-wrap items-center gap-[8px]">
+            <h3 className="mr-auto text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-2">
+              Earlier dictation for this visit · {earlier.length} {earlier.length === 1 ? 'take' : 'takes'}
+            </h3>
+            <Pill variant="control" size="md" icon={RotateCcw} onClick={() => clearDictation(encounterId)}>
+              Clear dictation
+            </Pill>
+          </div>
+          <p className="mt-[6px] text-[12px] text-sh-text-3">Sent again with this draft, so the AI drafts from everything said so far. Sections you have written are never overwritten.</p>
+          <p className="sh-scrollbar mt-[8px] max-h-[120px] overflow-y-auto whitespace-pre-wrap text-[13px] text-sh-text-2">{earlier.join('\n')}</p>
+        </div>
+      )}
+
       {/* The transcript, grouped under the section each run of lines feeds. AI-104 cleans it; the raw capture stays available. */}
       <div>
         <div className="mb-[8px] flex items-center justify-between gap-[8px]">
@@ -236,7 +262,7 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
           )}
           <div ref={endRef} />
         </div>
-        {(REAL_API ? transcript.trim() === '' : drafted.length === 0) && (
+        {nothingToDraft && (
           <p className="mt-[8px] flex items-start gap-[8px] px-[4px] text-[12px] text-sh-text-3">
             <Icon icon={Info} size={13} className="mt-[2px] shrink-0" />
             {cannotListen || unavailable ? 'Nothing to draft without speech. Close this and dictate or type each section instead.' : REAL_API ? 'Draft with AI turns on once something has been heard.' : 'Use this draft turns on once something has been heard.'}
@@ -272,8 +298,8 @@ function Session({ onClose, onFinish, patientId, sections }: { onClose: () => vo
           variant="accent"
           size="lg"
           icon={Check}
-          disabled={REAL_API ? transcript.trim() === '' : drafted.length === 0}
-          title={(REAL_API ? transcript.trim() === '' : drafted.length === 0) ? 'Nothing has been heard yet, so there is nothing to draft' : undefined}
+          disabled={nothingToDraft}
+          title={nothingToDraft ? 'Nothing has been heard yet, so there is nothing to draft' : undefined}
           className="disabled:opacity-40"
           onClick={adoptDraft}
         >

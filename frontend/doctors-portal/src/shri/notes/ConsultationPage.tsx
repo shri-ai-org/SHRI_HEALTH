@@ -164,6 +164,7 @@ function Consultation({ encounterId }: { encounterId: string }) {
           patientId={p.id}
           patientName={p.name}
           sections={seeds}
+          encounterId={enc.id}
           onClose={() => setScribeOpen(false)}
           onFinish={(keys, drafts, transcript) => {
             setScribeOpen(false)
