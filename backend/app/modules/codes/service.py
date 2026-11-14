@@ -3,9 +3,11 @@ contract's shape. The search itself is app.db.terminology.search.
 
 The cursor is base64url (no padding) of {"v", "f", "r", "s", "n", "c"}: a fingerprint of the
 search (system, words, billableOnly), so a cursor only continues the search it came from, and the
-last match's class, similarity, name length and code. Anything else is core's ``InvalidCursor``
-(400). Codes are reference data, not patient data, so the cursor is not encrypted (as practice
-setup's, until core's T22 cursor lands).
+last match's class, score, name length and code. Version 3: the score of a code system other
+than RxNorm became the whole name's similarity (audit V3), so an older cursor no longer
+continues the same order and is refused; the client starts the search again. Anything else is
+core's ``InvalidCursor`` (400). Codes are reference data, not patient data, so the cursor is not
+encrypted (as practice setup's, until core's T22 cursor lands).
 """
 
 from __future__ import annotations
@@ -20,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import InvalidCursor
 from app.db.terminology import search as terms
 
-from . import schemas
+from . import schemas, synonyms
 
-_VERSION = 2
+_VERSION = 3
 _MEMBERS = frozenset({"v", "f", "r", "s", "n", "c"})
 
 
@@ -70,8 +72,8 @@ async def search_codes(db: AsyncSession, *, system: schemas.CodeSystem, q: str,
                        ) -> schemas.CodeMatchList:
     finger = fingerprint(system, q, billable_only)
     after = decode(cursor_value, finger) if cursor_value else None
-    matches, more = await terms.search(db, system, q, billable_only=billable_only,
-                                       after=after, limit=limit)
+    matches, more = await terms.search(db, system, q, also=synonyms.expand(system, q),
+                                       billable_only=billable_only, after=after, limit=limit)
     return schemas.CodeMatchList(
         items=[schemas.CodeMatch(system=m.system, code=m.code, display=m.display,
                                  billable=m.billable, drug=_drug(m.drug)) for m in matches],

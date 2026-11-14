@@ -3,6 +3,8 @@ contract's validation and the cursor. The search is stubbed; app/db/tests/test_c
 runs it on a real database. Synthetic data only."""
 from __future__ import annotations
 
+import base64
+import json
 from typing import Any
 
 import pytest
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.deps import CurrentUser, current_user, tenant_db
+from app.core.errors import InvalidCursor
 from app.db.terminology import search as terms
 from app.main import create_app
 
@@ -103,3 +106,27 @@ def test_invalid_parameters(client: TestClient, calls: list[dict[str, Any]],
 def test_fingerprint_ignores_spacing_and_case() -> None:
     assert service.fingerprint("rxnorm", "Amox  500", False) == service.fingerprint(
         "rxnorm", "amox 500", False)
+
+
+def test_a_cursor_from_before_the_v3_ranking_is_refused() -> None:
+    """Version 3 changed the ICD-10-CM score (audit V3); an older cursor would continue a
+    different order, so it is refused (400 invalid-cursor) and the client starts again."""
+    finger = service.fingerprint("icd-10-cm", "hypertension", False)
+    position = terms.Position(2, 0.42, 32, "I10")
+    assert service.decode(service.encode(position, finger), finger) == position
+    old = base64.urlsafe_b64encode(json.dumps(
+        {"v": 2, "f": finger, "r": 2, "s": 0.42, "n": 32, "c": "I10"},
+        separators=(",", ":")).encode()).rstrip(b"=").decode()
+    with pytest.raises(InvalidCursor):
+        service.decode(old, finger)
+
+
+def test_a_synonym_is_searched_beside_the_typed_words(client: TestClient,
+                                                      calls: list[dict[str, Any]]) -> None:
+    assert _get(client, "md", system="icd-10-cm", q="  COPD ").status_code == 200
+    assert calls[-1]["q"] == "  COPD "
+    assert calls[-1]["also"] == "chronic obstructive pulmonary disease"
+    assert _get(client, "md", system="icd-10-cm", q="copd exacerbation").status_code == 200
+    assert calls[-1]["also"] is None                       # only the whole query expands
+    assert _get(client, "md", system="rxnorm", q="flu").status_code == 200
+    assert calls[-1]["also"] is None                       # drugs never expand
