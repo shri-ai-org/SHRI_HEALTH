@@ -1,0 +1,110 @@
+# The demo's final audit (Vimal on #85, 16 Nov): the stack built the way the demo server is, with
+# the deploy kit (infra/deploy), synthetic data only, the simulated partners and no Claude API key
+# (the AI gateway's stub, D12), then the demo reset (the seed, Linda Thompson included),
+# server_check --demo, and the browser tests that sign in through Keycloak as the demo accounts
+# (frontend/playwright.audit.config.ts). Screenshots, the Playwright report and the checks' output
+# are kept for a week.
+#
+# Run by hand only (Actions > demo-audit > Run workflow), so it costs no CI on any PR. Every
+# secret is made by `deploy.sh init-env` for this run and thrown away with the runner: nothing is
+# stored in GitHub, and the demo password is masked in the log. Every Action is pinned by SHA.
+name: demo-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to audit"
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc  # Node 24 LTS
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Settings for a synthetic demo stack (no Claude key)
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/audit"
+          mkdir -p "$dir/out"
+          infra/deploy/deploy.sh init-env "$dir/deploy.env"
+          sed -i -e 's/^SHRI_HTTPS_PORT=.*/SHRI_HTTPS_PORT=9443/' \
+                 -e 's/^SHRI_DEMO=.*/SHRI_DEMO=true/' \
+                 -e 's/^SHRI_PATIENT_SIGN_IN=.*/SHRI_PATIENT_SIGN_IN=true/' \
+                 -e 's/^SHRI_DEMO_SKIP_AUTH_CODE=.*/SHRI_DEMO_SKIP_AUTH_CODE=true/' \
+                 -e 's/^SHRI_DEMO_AI_SCREENS=.*/SHRI_DEMO_AI_SCREENS=true/' "$dir/deploy.env"
+          echo "::add-mask::$(sed -n 's/^DEMO_PASSWORD=//p' "$dir/deploy.env")"
+          echo "AUDIT_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Build and start the stack (deploy.sh up)
+        run: infra/deploy/deploy.sh up "$AUDIT_DIR/deploy.env" 2>&1 | tee "$AUDIT_DIR/out/up.log"
+
+      - name: Demo reset (the seed, Linda Thompson included)
+        run: |
+          set -o pipefail
+          RESET_CONFIRM=shri.localhost infra/deploy/deploy.sh reset "$AUDIT_DIR/deploy.env" 2>&1 \
+            | tee "$AUDIT_DIR/out/reset.log"
+
+      - name: server_check --demo
+        run: |
+          set -euo pipefail
+          api="$(docker ps -q --filter label=com.docker.compose.project=shri-deploy \
+                 --filter label=com.docker.compose.service=api | head -1)"
+          image="$(docker inspect --format '{{.Config.Image}}' "$api")"
+          url="postgresql+psycopg://shri:$(sed -n 's/^POSTGRES_PASSWORD=//p' "$AUDIT_DIR/deploy.env")@postgres:5432/shri_health"
+          docker run --rm --network shri-deploy_backend -e SERVER_CHECK_DATABASE_URL="$url" \
+            --entrypoint python "$image" -m app.db.tools.server_check --patients 512 --demo \
+            2>&1 | tee "$AUDIT_DIR/out/server_check.txt"
+
+      - name: Install the screens' tools (from the lockfile)
+        if: hashFiles('frontend/playwright.audit.config.ts') != ''
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # The browser tests (frontend/playwright.audit.config.ts, Minalini's folder) run once they
+      # exist; until then the job is the stack, the reset and server_check.
+      - name: Browser tests against the stack (Playwright, the demo accounts)
+        working-directory: frontend
+        run: |
+          if [ ! -f playwright.audit.config.ts ]; then
+            echo "::notice::No frontend/playwright.audit.config.ts yet: browser tests skipped"
+            exit 0
+          fi
+          DEMO_PASSWORD="$(sed -n 's/^DEMO_PASSWORD=//p' "$AUDIT_DIR/deploy.env")" \
+          SHRI_AUDIT_URL=https://shri.localhost:9443 \
+            npm exec -- playwright test -c playwright.audit.config.ts
+
+      - name: Keep the results (a week)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: demo-audit-${{ github.run_number }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ env.AUDIT_DIR }}/out/
+            frontend/audit-report/
+            frontend/audit-results/
+
+      - name: Stop the stack
+        if: always()
+        run: infra/deploy/deploy.sh down "$AUDIT_DIR/deploy.env" || true
