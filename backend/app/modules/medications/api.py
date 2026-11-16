@@ -240,3 +240,9 @@ async def sign_and_send_prescription(
     audit(request, [row.patient_id])
     await db.commit()  # signed, Provenance, on the list and NewRx queued: together or not at all
     return _prescription(response, row)
+
+
+# The patient portal's own medication list (portal_api.py), on this module's router.
+from .portal_api import router as _portal_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_portal_router)
