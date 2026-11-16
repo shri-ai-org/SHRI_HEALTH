@@ -9,16 +9,21 @@ who already has their first report, so a second run changes nothing and every re
 - **Lab results:** a final ``DiagnosticReport`` per panel (category ``LAB``), its analytes as
   ``Observation`` rows (category ``laboratory``) with a UCUM quantity, the adult reference range
   and an ``H`` or ``L`` flag outside it.
-- **Imaging reports:** text only. A ``DiagnosticReport`` (category ``RAD``) with the impression in
+- **Imaging reports:** a ``DiagnosticReport`` (category ``RAD``) with the impression in
   ``conclusion`` and the technique and findings as narrative ``Observation`` rows (LOINC 18782-3,
-  ``value_string``). No image, no ImagingStudy, no link, no placeholder.
+  ``value_string``). A report listed in ``images/manifest.json`` also carries its illustrative
+  image (``seed/images.py``): stored encrypted through the file service, purpose ``imaging``,
+  and attached as the report's ``presentedForm``, in the report's transaction. The others stay
+  text only. No ImagingStudy, no link, no placeholder.
 - **Codes:** every LOINC code below was checked against NLM's LOINC data (the Clinical Table
   Search Service, 13 Nov 2026). The two order categories are US Core's SNOMED CT codes, which
   can't be checked here (Q8).
 
 Synthetic data only: invented values that fit each patient's problems, medicines, vitals and
 signed notes; nothing from real or de-identified records or any dataset under a data-use
-agreement. David Nguyen's chart is restricted, so his results and reports are too (D22, D37).
+agreement. The one exception is the illustrative images: real, de-identified people's images
+under CC0, with the source recorded (issue #386; the D12 amendment is Vimal's). David Nguyen's
+chart is restricted, so his results and reports are too (D22, D37).
 """
 from __future__ import annotations
 
@@ -38,7 +43,9 @@ from app.db import fhir_store as fs
 from app.db.models import MAPPERS, systems
 from app.db.seed.demo import CLINIC_ZONE, PAST_APPOINTMENT, PATIENT, PATIENTS
 from app.db.seed.history import DOCTOR, DOCTOR_USER, HISTORY, _as_user, _exists
+from app.db.seed.images import ManifestMismatch, SeedFiles, SeedImage, manifest, seed_files
 from app.db.seed.starter import sid
+from app.modules.files.storage import store_generated
 
 M = MAPPERS
 #: Kinds of fixed ID (app/db/CLAUDE.md's table): an order, its report, and the two performers.
@@ -443,10 +450,31 @@ async def _visit(db: AsyncSession, n: int, day: dt.date) -> uuid.UUID:
     return found
 
 
-async def load_results(engine: AsyncEngine) -> int:
+async def _images(db: AsyncSession, files: SeedFiles, s: Study,
+                  listed: tuple[SeedImage, ...]) -> tuple[fs.ImageIn, ...]:
+    """The study's images from the manifest, each stored encrypted through the file service in
+    the report's transaction (its bytes stay behind if that transaction rolls back, as for any
+    generated file)."""
+    stored = []
+    for image in listed:
+        if (image.patient, image.study_loinc) != (s.patient, s.code):
+            continue
+        file_id = await store_generated(db, files.store, files.crypto, purpose="imaging",
+                                        data=image.data, content_type=image.content_type)
+        stored.append(fs.ImageIn(file_id, image.content_type, image.caption))
+    return tuple(stored)
+
+
+async def load_results(engine: AsyncEngine, files: SeedFiles) -> int:
     """Writes the studies of each history patient who has none yet; returns how many patients
-    it wrote to. As shri_migrator, in the demo clinic, as the demo doctor."""
-    store, written = fs.SqlFhirStore(), set()
+    it wrote to. As shri_migrator, in the demo clinic, as the demo doctor. The manifest is
+    checked before anything is written (``ManifestMismatch``)."""
+    store, written, listed = fs.SqlFhirStore(), set(), manifest()
+    for i in listed:
+        if not any((s.patient, s.code, s.category) == (i.patient, i.study_loinc, "RAD")
+                   for s in STUDIES):
+            raise ManifestMismatch(f"{i.file}: no imaging report of patient {i.patient} "
+                                   f"with LOINC {i.study_loinc}")
     async with AsyncSession(engine, expire_on_commit=False) as db, db.begin():
         db.info[TENANT_ID_INFO_KEY] = CLINIC_A
         await db.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
@@ -480,20 +508,24 @@ async def load_results(engine: AsyncEngine) -> int:
                 encounter_id=encounter, order_id=sid(LAB_ORDER, k), category=s.category,
                 code=loinc(s.code), effective=performed(s),
                 issued=issued(s), performer_organization_id=RADIOLOGY if s.findings else LAB,
-                results=results, conclusion=s.impression))
+                results=results, conclusion=s.impression,
+                images=await _images(db, files, s, listed)))
             written.add(s.patient)
     return len(written)
 
 
 def run(engine: Engine) -> int:
-    """``load_results`` for the seed's synchronous callers, on the same database and login."""
+    """``load_results`` for the seed's synchronous callers, on the same database and login,
+    with the file store and key service the environment configures (``seed_files``)."""
     async_engine = create_async_engine(engine.url.set(drivername="postgresql+psycopg"),
                                        poolclass=NullPool)
 
     async def go() -> int:
+        files, keys = seed_files()
         try:
-            return await load_results(async_engine)
+            return await load_results(async_engine, files)
         finally:
+            await keys.aclose()
             await async_engine.dispose()
 
     return asyncio.run(go())

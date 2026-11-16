@@ -7,6 +7,7 @@ data only.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import hashlib
 import uuid
@@ -412,3 +413,66 @@ def test_an_upload_is_audited_with_no_patient_data(
                           entity=file_id) == []
     rows = [r for x in (asked, refused, completed) for r in audit_rows(admin, x)]
     assert [r.reason for r in rows] == [None] * len(rows)
+
+
+def test_an_imaging_report_image_is_read_with_its_report(
+        client: Callable[[str], TestClient], chart: Callable[[UUID], Session], admin: Engine,
+        clinics: dict[UUID, UUID], users: dict[str, CurrentUser], tmp_path: Path,
+        fake_crypto: FakeFileCrypto) -> None:
+    """An imaging file (0023, #386) is attached through its report's presentedForm and read with
+    results:read: the link and the download are audited as exports naming the patient. A
+    restricted patient's needs break-glass; on a report that isn't final it is not attached, so
+    only its maker could read it; and nobody may upload one."""
+    from app.db.models import systems
+
+    clinic, owner = clinics[CLINIC_A], users["fd"].id      # the seed's user, not md
+    db = chart(CLINIC_A)
+    open_patient = b.patient(db, "Okafor", "Ada")
+    restricted = b.patient(db, "Achebe", "Chinua", meta_security=["R"])
+    db.commit()
+    images = {name: _clean_file(admin, clinic, owner, "imaging", tmp_path)
+              for name in ("open", "restricted", "preliminary")}
+    # The one that is downloaded is stored as the seed stores it: sealed, with its wrapped key.
+    key = f"{clinic}/{images['open']}"
+    sealed = asyncio.run(fake_crypto.seal(JPEG, context=key))
+    (tmp_path / "files" / key).write_bytes(sealed.data)
+    with admin.begin() as c:
+        c.execute(text("UPDATE admin.binary_object SET wrapped_data_key = :w WHERE id = :i"),
+                  {"w": sealed.wrapped_data_key, "i": images["open"]})
+    for name, pt, status in (("open", open_patient, "final"),
+                             ("restricted", restricted, "final"),
+                             ("preliminary", open_patient, "preliminary")):
+        report = M["diagnostic_report"](status=status, code_system=systems.LOINC,
+                                        code_code="36643-5", subject_patient_id=pt.id,
+                                        effective_date_time=b.NOW,
+                                        issued=b.NOW if status == "final" else None)
+        report.presented_form = [M["diagnostic_report_presented_form"](
+            binary_object_id=images[name], content_type="image/jpeg",
+            title="Chest X-ray, PA view")]
+        db.add(report)
+    db.commit()
+
+    link = client("md").get(f"/api/v1/files/{images['open']}/download-url")
+    assert link.status_code == 200, link.text
+    url = urlsplit(link.json()["url"])
+    content = client("md").get(f"{url.path}?{url.query}")
+    assert content.status_code == 200 and content.content == JPEG
+    with admin.connect() as c:
+        audited = c.execute(text(
+            "SELECT action, category, patient_id FROM audit.audit_event WHERE tenant_id = :t "
+            "AND entity_id = :f ORDER BY chain_seq"),
+            {"t": clinic, "f": str(images["open"])}).all()
+    assert [tuple(r) for r in audited] == [("export", "export", open_patient.id)] * 2
+    # The front desk holds no results:read; a restricted chart needs break-glass.
+    assert client("fd").get(f"/api/v1/files/{images['open']}/download-url").status_code == 403
+    refused = client("md").get(f"/api/v1/files/{images['restricted']}/download-url")
+    assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
+    # A report that isn't final doesn't attach it: its maker only, anyone else 404.
+    assert client("md").get(
+        f"/api/v1/files/{images['preliminary']}/download-url").status_code == 404
+    # No upload under the imaging purpose: it is never scanned (not a FilePurpose an upload
+    # may name, and refused by the upload rules as server-made).
+    asked = client("md").post("/api/v1/files/upload-url", json={
+        "purpose": "imaging", "contentType": "image/jpeg", "sizeBytes": len(JPEG),
+        "sha256": hashlib.sha256(JPEG).hexdigest()})
+    assert asked.status_code == 422, asked.text

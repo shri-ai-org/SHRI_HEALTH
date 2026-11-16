@@ -188,8 +188,10 @@ visit, and its final report (DiagnosticReport, v2-0074 `LAB` or `RAD`) based on 
 one organization, with its results in order through `diagnostic_report_result`. A lab result is
 an Observation (category `laboratory`) with a UCUM quantity, its reference range and an `H` or
 `L` flag; a radiology report keeps the impression in `conclusion` and the technique and findings
-as narrative Observations (LOINC 18782-3, `value_string`). No images, media or presented forms.
-A report is never issued before its collection or in the future. The demo seed writes the six
+as narrative Observations (LOINC 18782-3, `value_string`). A radiology report may carry up to
+three `images` (`ImageIn`: a clean `imaging` file of the clinic, JPEG or PNG, a caption), written
+as its `presented_form` rows in the same flush; a lab report none. A report is never issued
+before its collection or in the future. The demo seed writes the six
 history patients' studies with them (`seed/results.py`, one table).
 
 `record_medication` (D28; demo step 7): a medication the patient already takes, on the list. A
@@ -314,7 +316,11 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
 - **Files (API_STANDARDS §15, migration 0012):** `admin.binary_object.purpose` is the contract's
   `FilePurpose`, and `state` its file state: `pending-upload` → `quarantined` → `clean` or
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
-  clean scan; a receipt or after-visit summary, made by the server, is clean from the start.
+  clean scan; a receipt, after-visit summary or imaging file, made by the server, is clean from
+  the start. An `imaging` file (0023) is a report's illustrative image from the demo seed, its
+  bytes checked against `seed/images/manifest.json`; it is never scanned, so no upload may name
+  that purpose, and it is attached through `diagnostic_report_presented_form` and read with
+  `results:read`.
   `wrapped_data_key` is the file's data key as core wraps it, kept only once the file is
   clean, and every clean file has one: its stored bytes are AES-256-GCM ciphertext
   (`app.modules.files.crypto`), and `size_bytes` and `sha256` are the plaintext's. An upload's row is written `pending-upload` in bucket `quarantine` with the declared

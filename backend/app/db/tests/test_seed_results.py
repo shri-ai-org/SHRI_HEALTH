@@ -5,22 +5,27 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
+import shutil
 from collections import Counter
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A
 from app.db import fhir_store as fs
 from app.db.models import systems
-from app.db.seed import demo, history, results
+from app.db.seed import demo, history, images, results
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE
 from app.db.tests.test_seed import migrator_engine
 from app.db.tests.test_seed_history import _as_migrator
+from app.modules.files.tests.fakes import FakeFileCrypto, MemoryFileStore
 
 __all__ = ["migrator_engine"]       # a fixture, used by name
 S = results.STUDIES
@@ -98,12 +103,16 @@ def test_flags_follow_the_ranges() -> None:
 # ================================================================== the written rows
 
 
-def _load() -> int:
+#: The seed's file store and key service, in memory (real AES-256-GCM, fake data keys).
+FILES = images.SeedFiles(MemoryFileStore(), FakeFileCrypto())
+
+
+def _load(files: images.SeedFiles = FILES) -> int:
     async def go() -> int:
         engine = _as_migrator()
         try:
             await history.load_history(engine)
-            return await results.load_results(engine)
+            return await results.load_results(engine, files)
         finally:
             await engine.dispose()
     return asyncio.run(go())
@@ -225,9 +234,184 @@ def test_a_rerun_over_past_visits_at_other_times_writes_nothing(
     async def again() -> tuple[int, int]:
         engine = _as_migrator()
         try:
-            return await history.load_history(engine), await results.load_results(engine)
+            return (await history.load_history(engine),
+                    await results.load_results(engine, FILES))
         finally:
             await engine.dispose()
 
     assert asyncio.run(again()) == (0, 0)
     assert counts() == before
+
+
+# ================================================================== the illustrative images
+def test_the_manifest_pins_each_image_to_an_imaging_report_with_its_source() -> None:
+    listed = images.manifest()
+    assert {(i.patient, i.study_loinc) for i in listed} == {(4, "36643-5"), (3, "30679-5")}
+    for i in listed:                                     # James's chest X-ray, Linda's MRI
+        study = next(s for s in S if (s.patient, s.code) == (i.patient, i.study_loinc))
+        assert study.category == "RAD" and i.content_type == "image/jpeg"
+        assert len(i.data) == i.size_bytes <= 150 * 1024
+    raw = json.loads((images.FOLDER / "manifest.json").read_text(encoding="utf-8"))
+    for entry in raw["images"]:
+        source = entry["source"]
+        assert entry["label"] == "Illustrative image" and source["licence"] == "CC0-1.0"
+        assert source["url"].startswith("https://commons.wikimedia.org/wiki/File:")
+        assert (images.FOLDER / source["licenceText"]).is_file() and entry["checks"]
+    assert sorted(p.name for p in images.FOLDER.iterdir()) == sorted(
+        [e["file"] for e in raw["images"]] + ["CC0-1.0.txt", "manifest.json"])
+
+
+def test_a_changed_or_missing_image_stops_the_seed(tmp_path: Path) -> None:
+    for f in images.FOLDER.iterdir():
+        shutil.copy(f, tmp_path / f.name)
+    assert len(images.manifest(tmp_path)) == 2
+    first = json.loads((tmp_path / "manifest.json").read_text())["images"][0]["file"]
+    data = bytearray((tmp_path / first).read_bytes())
+    data[-3] ^= 0xFF                                     # one byte changed, same size
+    (tmp_path / first).write_bytes(bytes(data))
+    with pytest.raises(images.ManifestMismatch, match="not the file the manifest pins"):
+        images.manifest(tmp_path)
+    (tmp_path / first).unlink()
+    with pytest.raises(images.ManifestMismatch, match="missing"):
+        images.manifest(tmp_path)
+
+
+def test_the_seed_refuses_to_run_without_a_file_store_or_a_key_service(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("SHRI_S3_ENDPOINT", "SHRI_FILE_STORE_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="need the file store"):
+        images.seed_files()
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_the_images_are_stored_encrypted_on_their_reports_once_and_hidden_on_fhir(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
+    files = FILES                    # the reports may already be there, from another test
+    memory = files.store
+    assert isinstance(memory, MemoryFileStore)
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load(files)
+    query = text(
+        "SELECT r.subject_patient_id, r.code_code, f.title, f.content_type, b.id, b.purpose, "
+        "b.state, b.scan_status, b.bucket, b.storage_key, b.size_bytes, b.sha256, "
+        "b.wrapped_data_key FROM clinical.diagnostic_report_presented_form f "
+        "JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id "
+        "JOIN admin.binary_object b ON b.id = f.binary_object_id "
+        "WHERE r.id::text LIKE '5eed0040-%' ORDER BY r.code_code")
+    with admin_engine.connect() as c:
+        rows = c.execute(query).all()
+    by_file = {i.sha256: i for i in images.manifest()}
+    assert [(r.subject_patient_id, r.code_code, r.title) for r in rows] == [
+        (sid(demo.PATIENT, 3), "30679-5", "Lumbar spine MRI, sagittal T2"),
+        (sid(demo.PATIENT, 4), "36643-5", "Chest X-ray, PA view")]
+    for r in rows:
+        image = by_file[r.sha256]                        # the plaintext's hash and size
+        assert (r.purpose, r.state, r.scan_status, r.bucket) == (
+            "imaging", "clean", "pending", "clean")      # server-made: clean, never scanned
+        assert r.size_bytes == image.size_bytes and r.content_type == image.content_type
+        assert r.storage_key == f"{CLINIC_A}/{r.id}" and r.wrapped_data_key
+        stored = asyncio.run(files.store.get(r.storage_key))
+        assert stored.startswith(b"SHF1") and image.data not in stored      # ciphertext only
+        assert asyncio.run(files.crypto.open(stored, r.wrapped_data_key,
+                                             context=r.storage_key)) == image.data
+    assert _load(files) == 0                             # a second run writes nothing
+    with admin_engine.connect() as c:
+        assert c.execute(query).all() == rows
+        assert c.execute(text("SELECT count(*) FROM admin.binary_object "
+                              "WHERE purpose = 'imaging'")).scalar_one() == 2
+    assert len(memory.objects) == 2
+    with admin_engine.begin() as c:                      # Linda's chart restricted (D22)
+        c.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
+        c.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :p"),
+                  {"p": sid(demo.PATIENT, 3)})
+    with admin_engine.connect() as c:
+        c.execute(text("SET ROLE shri_fhir_reader"))
+        c.execute(text("SELECT set_config('app.current_tenant_id', :t, false)"),
+                  {"t": str(CLINIC_A)})
+        seen = c.execute(text(
+            "SELECT r.subject_patient_id FROM clinical.diagnostic_report_presented_form f "
+            "JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id")).scalars().all()
+        c.execute(text("RESET ROLE"))
+    assert seen == [sid(demo.PATIENT, 4)]                # James's only; Linda's hidden
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_a_changed_image_writes_no_result_at_all(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
+    for f in images.FOLDER.iterdir():
+        shutil.copy(f, tmp_path / f.name)
+    first = json.loads((tmp_path / "manifest.json").read_text())["images"][0]["file"]
+    (tmp_path / first).write_bytes((tmp_path / first).read_bytes() + b"\0")
+    monkeypatch.setattr(images, "FOLDER", tmp_path)
+    monkeypatch.setattr(results, "manifest", lambda: images.manifest(tmp_path))
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    def counts() -> tuple[int, int]:
+        with admin_engine.connect() as c:
+            return (c.execute(text("SELECT count(*) FROM clinical.diagnostic_report "
+                                   "WHERE id::text LIKE '5eed0040-%'")).scalar_one(),
+                    c.execute(text("SELECT count(*) FROM admin.binary_object "
+                                   "WHERE purpose = 'imaging'")).scalar_one())
+
+    before = counts()
+    with pytest.raises(images.ManifestMismatch):        # before any report or file
+        _load()
+    assert counts() == before
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_record_report_takes_clean_imaging_files_on_an_imaging_report_only(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load()
+    with admin_engine.connect() as c:
+        image, report = c.execute(text(
+            "SELECT f.binary_object_id, r.id FROM clinical.diagnostic_report_presented_form f "
+            "JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id LIMIT 1")).one()
+        base = c.execute(text(
+            "SELECT r.subject_patient_id, r.encounter_id, b.service_request_id, r.issued "
+            "FROM clinical.diagnostic_report r JOIN clinical.diagnostic_report_based_on b "
+            "ON b.diagnostic_report_id = r.id WHERE r.id = :r"), {"r": report}).one()
+
+    def report_in(category: str, *pictures: fs.ImageIn) -> fs.ReportIn:
+        return fs.ReportIn(
+            patient_id=base[0], encounter_id=base[1], order_id=base[2], category=category,
+            code=results.loinc("36643-5"), effective=base[3], issued=base[3],
+            performer_organization_id=results.RADIOLOGY,
+            results=(fs.ResultIn(results.loinc("18782-3"), text="Findings: clear."),),
+            images=pictures)
+
+    async def refused(data: fs.ReportIn) -> str:
+        engine = _as_migrator()
+        try:
+            async with AsyncSession(engine) as db, db.begin():
+                await db.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
+                await db.execute(text("SELECT set_config('app.current_tenant_id', :t, true)"),
+                                 {"t": str(CLINIC_A)})
+                with pytest.raises(fs.InvalidInput) as caught:
+                    await fs.SqlFhirStore().record_report(db, data)
+                await db.rollback()
+                return str(caught.value)
+        finally:
+            await engine.dispose()
+
+    jpeg = fs.ImageIn(image, "image/jpeg", "Chest X-ray, PA view")
+    assert "only an imaging report" in asyncio.run(refused(report_in("LAB", jpeg)))
+    assert "JPEG or PNG" in asyncio.run(refused(report_in(
+        "RAD", fs.ImageIn(image, "application/pdf", "x"))))
+    assert "at most three" in asyncio.run(refused(report_in("RAD", *[jpeg] * 4)))
+    assert "clean imaging file" in asyncio.run(refused(report_in(
+        "RAD", fs.ImageIn(sid(demo.PATIENT, 3), "image/jpeg", "not a file"))))

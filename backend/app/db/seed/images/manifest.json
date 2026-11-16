@@ -1,0 +1,57 @@
+{
+  "about": "Illustrative images on the demo seed's imaging reports (issue #386). Each is a real, de-identified person's image under CC0, shown only in the demo, labelled Illustrative image, never diagnostic. The seed refuses an image whose SHA-256 differs from the one here.",
+  "images": [
+    {
+      "file": "james_chest_pa.jpg",
+      "sha256": "d0f4b39956ccb05fff6d7fd5c08ab6e41da4fa2bbf618d923e88dc3ce052c653",
+      "sizeBytes": 96762,
+      "contentType": "image/jpeg",
+      "patient": 4,
+      "studyLoinc": "36643-5",
+      "caption": "Chest X-ray, PA view",
+      "label": "Illustrative image",
+      "source": {
+        "title": "Normal posteroanterior (PA) chest radiograph (X-ray).jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Normal_posteroanterior_(PA)_chest_radiograph_(X-ray).jpg",
+        "author": "Mikael Häggström",
+        "date": "2017-06-28",
+        "licence": "CC0-1.0",
+        "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "licenceText": "CC0-1.0.txt",
+        "retrieved": "2026-11-16"
+      },
+      "checks": [
+        "licence page read through the Wikimedia Commons API: CC0 1.0, no share-alike, no non-commercial term, no data-use agreement",
+        "metadata stripped (EXIF, XMP, IPTC, comments: none left), greyscale, resized to 895x1024, JPEG quality 85",
+        "checked by eye: no name, date, ID or institution burned in; only the side markers 'Dx' and 'Sin'",
+        "matches the report: a normal PA chest radiograph for 'Normal chest radiograph'"
+      ]
+    },
+    {
+      "file": "linda_lumbar_mri_sag_t2.jpg",
+      "sha256": "693f891c0e5ab41e3d29d511046499f72cd806345602b5610af3ef86a174db9d",
+      "sizeBytes": 64097,
+      "contentType": "image/jpeg",
+      "patient": 3,
+      "studyLoinc": "30679-5",
+      "caption": "Lumbar spine MRI, sagittal T2",
+      "label": "Illustrative image",
+      "source": {
+        "title": "Lumbar MRI t2-tse-rst-sagittal 06.jpg",
+        "url": "https://commons.wikimedia.org/wiki/File:Lumbar_MRI_t2-tse-rst-sagittal_06.jpg",
+        "author": "Stillwaterising",
+        "date": "2014-07-24",
+        "licence": "CC0-1.0",
+        "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "licenceText": "CC0-1.0.txt",
+        "retrieved": "2026-11-16"
+      },
+      "checks": [
+        "licence page read through the Wikimedia Commons API: CC0 1.0, no share-alike, no non-commercial term, no data-use agreement",
+        "metadata stripped (EXIF, XMP, IPTC, comments: none left), greyscale",
+        "cropped to 755x825 at +20+50 to remove the scanner overlay ('MR LUMBAR SPINE W WO', matrix, slice '6/12', sequence name, orientation letters); checked by eye: no text left",
+        "matches the report: a midline sagittal T2 slice with darker lower lumbar discs, no stenosis, for 'degenerative disc disease at L4-L5 and L5-S1'"
+      ]
+    }
+  ]
+}
