@@ -41,9 +41,12 @@ export const NAV_GROUPS: NavGroup[] = [
       // One place for patients — everyone, outpatients and inpatients are its
       // tabs, and a patient's profile lives under it too.
       { label: 'Patients', path: '/patients', icon: Users, hue: 'teal', description: 'Everyone, outpatients and inpatients' },
-      // SHRI_HEALTH: the billing counter is India-only, and Activity & Analytics reads sample data only.
+      // SHRI_HEALTH: the billing counter is India-only, so with the API Payments shows the shared
+      // "Work in progress" screen (#85, 16 Nov); Activity & Analytics reads sample data only.
+      REAL_API
+        ? { label: 'Payments', path: '/billing', icon: CurrencyIcon, hue: 'amber', description: 'Charges, payments and balances for each visit' }
+        : { label: 'Payments', path: '/billing', icon: CurrencyIcon, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
       ...(REAL_API ? [] : ([
-        { label: 'Payments', path: '/billing', icon: CurrencyIcon, hue: 'amber', description: 'Whether each patient’s bill is pending or paid at the billing counter' },
         { label: 'Activity & Analytics', path: '/activity-analytics', icon: ChartNoAxesCombined, hue: 'violet', description: 'Desk activity, trends and performance' },
       ] as const)),
     ],
