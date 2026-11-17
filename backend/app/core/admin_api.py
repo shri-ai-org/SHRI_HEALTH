@@ -56,6 +56,11 @@ ROLE_NAMES: dict[str, tuple[str, str]] = {
 MAX_DAYS = 31
 
 
+def _utc(at: dt.datetime) -> str:
+    """The contract's Timestamp: UTC with `Z`, at most millisecond precision (API_STANDARDS §6.1)."""
+    return at.astimezone(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _encode(offset: int) -> str:
     return base64.urlsafe_b64encode(f"o:{offset}".encode()).decode().rstrip("=")
 
@@ -152,7 +157,7 @@ async def list_users(user: Annotated[CurrentUser, Depends(require("users:read"))
         if r.practitioner_id is not None:
             item["practitionerId"] = str(r.practitioner_id)
         if r.last_login_at is not None:
-            item["lastSignInAt"] = r.last_login_at.isoformat()
+            item["lastSignInAt"] = _utc(r.last_login_at)
         found.append(item)
     return _page(found, offset, limit)
 
@@ -214,7 +219,7 @@ def _event(r: Any) -> dict[str, Any]:
     if r.actor_user_id is not None:
         actor["userId"] = str(r.actor_user_id)
     item: dict[str, Any] = {
-        "id": str(r.id), "recordedAt": r.recorded_at.isoformat(), "actor": actor,
+        "id": str(r.id), "recordedAt": _utc(r.recorded_at), "actor": actor,
         "action": str(r.action), "category": str(r.category), "outcome": str(r.outcome),
         "requestId": r.correlation_id or ""}
     for key, value in (("patientId", r.patient_id), ("entityType", r.entity_type),

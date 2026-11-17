@@ -42,6 +42,11 @@ Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
+def _utc(at: dt.datetime) -> str:
+    """The contract's Timestamp: UTC with `Z`, at most millisecond precision (API_STANDARDS §6.1)."""
+    return at.astimezone(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _encode(offset: int) -> str:
     return base64.urlsafe_b64encode(f"o:{offset}".encode()).decode().rstrip("=")
 
@@ -116,9 +121,9 @@ def _message(r: Any) -> dict[str, Any]:
     item: dict[str, Any] = {
         "id": str(r.id), "partner": str(r.kind), "endpointName": r.name,
         "direction": str(r.direction), "messageType": r.message_type, "status": str(r.status),
-        "attempts": r.attempts, "createdAt": r.created_at.isoformat()}
+        "attempts": r.attempts, "createdAt": _utc(r.created_at)}
     if r.updated_at is not None and r.updated_at != r.created_at:
-        item["lastAttemptAt"] = r.updated_at.isoformat()
+        item["lastAttemptAt"] = _utc(r.updated_at)
     if r.ack_code:
         item["errorCode"] = r.ack_code
     payload = r.payload if isinstance(r.payload, dict) else {}
@@ -172,7 +177,7 @@ async def get_patient_fhir_record(
         if truncated:
             break
     return {"resourceType": "Bundle", "type": "collection",
-            "timestamp": dt.datetime.now(dt.UTC).isoformat(), "truncated": truncated,
+            "timestamp": _utc(dt.datetime.now(dt.UTC)), "truncated": truncated,
             "entry": entries}
 
 

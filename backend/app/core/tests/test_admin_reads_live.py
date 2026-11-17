@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -219,7 +220,8 @@ def test_a_patients_record_as_fhir(client: Any, practice: Practice) -> None:
     bundle = found.json()
     assert (bundle["resourceType"], bundle["type"], bundle["truncated"]) == (
         "Bundle", "collection", False)
-    assert bundle["timestamp"] and "total" not in bundle
+    assert "total" not in bundle
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", bundle["timestamp"])
     (entry,) = [e for e in bundle["entry"] if e["resource"]["resourceType"] == "Patient"]
     assert entry["resource"]["id"] == str(patient) and entry["fullUrl"] == f"urn:uuid:{patient}"
     only = client("md").get(f"{API_PREFIX}/patients/{patient}/fhir-record",
