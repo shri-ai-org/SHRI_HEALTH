@@ -232,6 +232,9 @@ class History:
     #: Each visit asks for a revisit, booked as the next visit. After the last one it is the
     #: demo-day appointment, or, for a patient with none, declined: (months, the reason).
     last_follow_up: tuple[int, str] | None = None
+    #: The medications are signed prescriptions (``linda.py``), not reported list entries, so
+    #: the history records none of them and nothing is on the list twice (Minalini, #85).
+    prescribed: bool = False
 
 
 # ---------------------------------------------------------------- the vitals trends, one table
@@ -448,9 +451,11 @@ HISTORY: dict[int, History] = {
                       "exam normal.",
                       "Flare of chronic low back pain; no red flags.",
                       "Naproxen twice daily for one week, cyclobenzaprine at night as needed, "
-                      "restart the therapy exercises. Revisit in November.",
-                      "Short course of naproxen with food. Restart your exercises when the "
-                      "spasm settles.",
+                      "restart the therapy exercises. Omeprazole 20 mg once daily to protect "
+                      "the stomach while she uses naproxen; 60 days, two refills, sent to her "
+                      "pharmacy. Revisit in November.",
+                      "Short course of naproxen with food. Take omeprazole every morning "
+                      "before breakfast. Restart your exercises when the spasm settles.",
                       (M54_50, G89_29)),
         ),
         problems=(
@@ -491,6 +496,7 @@ HISTORY: dict[int, History] = {
                     "Low transverse cesarean delivery; no complications."),
         ),
         height_in=Decimal("65"),
+        prescribed=True,
     ),
     4: History(  # James Wilson, 45: asthma
         visits=(
@@ -1040,8 +1046,8 @@ async def _patient_history(store: fs.SqlFhirStore, db: AsyncSession, p: DemoPati
             reactions=(fs.ReactionIn(manifestations=(a.manifestation,), severity=a.severity,
                                      description=a.description, onset=_noon(a.onset)),)))
     started_at = {v.day: (e, v.start) for v, e in zip(h.visits, visits, strict=True)}
-    for m in h.medications:         # at the visit it started at, or where the list was taken
-        encounter, at = started_at.get(m.started, (first, h.visits[0].start))
+    for m in () if h.prescribed else h.medications:    # at the visit it started at, or
+        encounter, at = started_at.get(m.started, (first, h.visits[0].start))   # the first
         await _record_as_imported(db, fs.MedicationIn(
             patient_id=patient_id, medication=m.product, dosage_text=m.sig, status=m.status,
             note=m.note, encounter_id=encounter), at, m.stop_reason)

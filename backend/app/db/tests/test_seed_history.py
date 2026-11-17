@@ -29,7 +29,8 @@ __all__ = ["migrator_engine"]       # a fixture, used by name
 COUNTS = """
 SELECT (SELECT count(*) FROM clinical.condition WHERE subject_patient_id = :p),
        (SELECT count(*) FROM clinical.allergy_intolerance WHERE patient_id = :p),
-       (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = :p),
+       (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = :p
+          AND intent = 'plan'),   -- the history's list; linda.py adds a signed one
        (SELECT count(*) FROM clinical.encounter WHERE subject_patient_id = :p
           AND status = 'finished'),
        (SELECT count(*) FROM clinical.observation o WHERE subject_patient_id = :p
@@ -97,7 +98,8 @@ def _expected(n: int, h: history.History) -> tuple[int, ...]:
     """problems and visit diagnoses, allergies, meds, finished visits (the doctor's, and a
     nurse visit for every other reading), observations, family, surgery, signed notes."""
     return (len(h.problems) + sum(len(v.diagnoses) for v in h.visits), len(h.allergies),
-            len(h.medications), len(history.VITALS[n]), _observations(n, h), len(h.family),
+            0 if h.prescribed else len(h.medications), len(history.VITALS[n]),
+            _observations(n, h), len(h.family),
             len(h.surgeries), len(h.visits))
 
 
@@ -272,7 +274,8 @@ def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
             "JOIN clinical.encounter e ON e.id = m.encounter_id "
             "JOIN clinical.provenance pv ON pv.target_id = m.id "
             "AND pv.activity_code = 'CREATE' "
-            "WHERE m.subject_patient_id = ANY(:ps)"),
+            "WHERE m.subject_patient_id = ANY(:ps) AND m.intent = 'plan'"),
             {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
-    assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values())
+    assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values()
+                            if not h.prescribed)
     assert {tuple(r) for r in rows} == {(True, True, True, history.IMPORT_REASON)}

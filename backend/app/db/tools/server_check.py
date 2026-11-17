@@ -168,6 +168,20 @@ def demo_checks() -> list[Check]:
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 2)}' AND medication_codeable_concept_code = '861007' "
               "AND status = 'active')", "3", fix=RESET),
+        Check("Linda Thompson's after-visit summaries (one per signed past visit)",
+              "SELECT count(*) FROM clinical.document_reference WHERE subject_patient_id = "
+              f"'{sid(demo.PATIENT, 3)}' AND type_code = '34133-9' AND status = 'current' "
+              "AND ext_origin = 'generated'", "4", fix=RESET),
+        Check("Linda's refill-ready omeprazole and her alert scenarios (codeine; naproxen)",
+              "SELECT (SELECT count(*) FROM clinical.medication_request WHERE "
+              f"subject_patient_id = '{sid(demo.PATIENT, 3)}' AND intent = 'order' "
+              "AND medication_codeable_concept_code = '198051' AND status = 'active' "
+              "AND ext_signed_at IS NOT NULL) "
+              "+ (SELECT count(*) FROM clinical.allergy_intolerance WHERE patient_id = "
+              f"'{sid(demo.PATIENT, 3)}' AND code_code = '2670' AND clinical_status = 'active') "
+              "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
+              f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
+              "AND status = 'active')", "3", fix=RESET),
     ]
 
 

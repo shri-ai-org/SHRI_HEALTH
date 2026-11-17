@@ -93,6 +93,7 @@ LOINC = {
     "713-8": "Eosinophils/Leukocytes in Blood by Automated count",
     "4537-7": "Erythrocyte [Sedimentation Rate] in Blood by Westergren method",
     "1988-5": "C reactive protein [Mass/volume] in Serum or Plasma",
+    "62292-8": "25-Hydroxyvitamin D3+25-Hydroxyvitamin D2 [Mass/volume] in Serum or Plasma",
     "3016-3": "Thyrotropin [Units/volume] in Serum or Plasma",
     "6875-9": "Cancer Ag 15-3 [Units/volume] in Serum or Plasma",
     "2039-6": "Carcinoembryonic Ag [Mass/volume] in Serum or Plasma",
@@ -151,6 +152,7 @@ SHORT = {
     "713-8": "Eosinophils (%)",
     "4537-7": "ESR (Westergren)",
     "1988-5": "C-reactive protein",
+    "62292-8": "Vitamin D, 25-hydroxy",
     "3016-3": "TSH",
     "6875-9": "CA 15-3",
     "2039-6": "CEA",
@@ -198,6 +200,7 @@ RANGES: dict[tuple[str, str], tuple[str, str | None, str | None]] = {
     ("787-2", ""): ("fL", "80", "100"), ("777-3", ""): ("10*3/uL", "150", "400"),
     ("711-2", ""): ("10*3/uL", "0.0", "0.5"), ("713-8", ""): ("%", "0", "6"),
     ("4537-7", "F"): ("mm/h", "0", "30"), ("1988-5", ""): ("mg/L", "0.0", "5.0"),
+    ("62292-8", ""): ("ng/mL", "30", "100"),
     ("3016-3", ""): ("m[IU]/L", "0.40", "4.00"), ("6875-9", ""): ("U/mL", None, "31"),
     ("2039-6", ""): ("ng/mL", None, "3.0"),
     ("20150-9", ""): ("L", None, None), ("19870-5", ""): ("L", None, None),
@@ -409,6 +412,37 @@ STUDIES: tuple[Study, ...] = (
           impression="Moderate bilateral knee osteoarthritis, medial compartment predominant."),
     Study(7, D(2026, 9, 8), "81459-0", (D(2026, 9, 8), T(10, 30)), "COPD",
           _spiro("1.15", "2.08", "55", "56", "1.21", "57")),
+    # ------------- 3 Linda Thompson: series for the graphs (16 Nov), appended to keep the IDs
+    # Kidney function on intermittent naproxen, a slow drift still in range (eGFR by CKD-EPI
+    # 2021 at her age); CRP lowest in June and up with the September flare, still in range;
+    # vitamin D in range, so nothing implies treatment her notes don't mention. Draws between
+    # visits are at her nurse checks (6 Jan, 7 Apr), on the order of the visit before.
+    Study(3, D(2025, 11, 18), "2160-0", (D(2026, 1, 6), MORNING), "Naproxen: kidney function",
+          (("2160-0", "0.79"), ("98979-8", "88"))),
+    Study(3, D(2026, 2, 24), "2160-0", (D(2026, 2, 24), MORNING), "Naproxen: kidney function",
+          (("2160-0", "0.80"), ("98979-8", "86"))),
+    Study(3, D(2026, 2, 24), "2160-0", (D(2026, 4, 7), MORNING), "Naproxen: kidney function",
+          (("2160-0", "0.81"), ("98979-8", "85"))),
+    Study(3, D(2026, 6, 2), "2160-0", (D(2026, 6, 2), MORNING), "Naproxen: kidney function",
+          (("2160-0", "0.82"), ("98979-8", "83"))),
+    Study(3, D(2026, 9, 29), "2160-0", (D(2026, 9, 29), MORNING), "Naproxen: kidney function",
+          (("2160-0", "0.86"), ("98979-8", "79"))),
+    Study(3, D(2025, 11, 18), "1988-5", (D(2026, 1, 6), MORNING), "Chronic low back pain",
+          (("1988-5", "1.9"),)),
+    Study(3, D(2026, 6, 2), "1988-5", (D(2026, 6, 2), MORNING), "Chronic low back pain",
+          (("1988-5", "1.2"),)),
+    Study(3, D(2026, 9, 29), "1988-5", (D(2026, 9, 29), MORNING), "Back pain flare",
+          (("1988-5", "3.4"),)),
+    Study(3, D(2025, 11, 18), "62292-8", (D(2025, 11, 18), MORNING), "Bone health screen",
+          (("62292-8", "31"),)),
+    Study(3, D(2026, 2, 24), "62292-8", (D(2026, 2, 24), MORNING), "Bone health screen",
+          (("62292-8", "30"),)),
+    Study(3, D(2026, 2, 24), "62292-8", (D(2026, 4, 7), MORNING), "Bone health screen",
+          (("62292-8", "34"),)),
+    Study(3, D(2026, 6, 2), "62292-8", (D(2026, 6, 2), MORNING), "Bone health screen",
+          (("62292-8", "36"),)),
+    Study(3, D(2026, 9, 29), "62292-8", (D(2026, 9, 29), MORNING), "Bone health screen",
+          (("62292-8", "33"),)),
 )
 
 

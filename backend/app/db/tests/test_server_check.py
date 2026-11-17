@@ -57,17 +57,20 @@ def test_it_needs_the_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
         admin_engine: Engine, migrator_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    """After the demo seed, its history and its results, every demo check passes but the code
-    lists (the test database has none loaded); an AI feature switched off fails its own line."""
+    """After the demo seed, its history, its results and Linda's extras, every demo check passes
+    but the code lists (the test database has none loaded); an AI feature switched off fails its
+    own line."""
     from sqlalchemy.orm import Session
 
     from app.db.seed import demo
+    from app.db.tests.test_seed_linda import load_linda
     from app.db.tests.test_seed_results import _load
 
     monkeypatch.setenv("ENVIRONMENT", "test")
     with Session(migrator_engine) as db, db.begin():
         demo.load_demo(db)
     _load()
+    load_linda()
     with admin_engine.connect() as conn:
         failed = {c.name for c, v in sc.run(conn, sc.demo_checks()) if not c.passes(v)}
         assert failed <= {"ICD-10-CM codes loaded", "RxNorm codes loaded"}, failed

@@ -47,12 +47,33 @@ def test_each_study_is_ordered_at_a_visit_done_after_it_and_reported_before_the_
 
 
 def test_two_to_four_lab_dates_per_patient_and_every_history_patient_has_results() -> None:
+    """Linda Thompson, the demo's patient, has her graph series (Vimal's assignment, 16 Nov):
+    six lab dates, on her visits and nurse checks."""
     dates: dict[int, set[dt.date]] = {}
     for s in S:
         if s.category == "LAB":
             dates.setdefault(s.patient, set()).add(s.done[0])
     assert set(dates) == set(history.HISTORY)
-    assert all(2 <= len(d) <= 4 for d in dates.values()), dates
+    assert all(2 <= len(d) <= 4 for n, d in dates.items() if n != 3), dates
+    assert len(dates[3]) == 6
+
+
+def test_linda_has_five_to_eight_values_for_each_graph_and_they_fit_her_chart() -> None:
+    def series(code: str) -> list[tuple[dt.date, Decimal]]:
+        return sorted((s.done[0], Decimal(v)) for s in S if s.patient == 3
+                      for c, v in s.values if c == code)
+    creatinine, egfr = series("2160-0"), series("98979-8")
+    crp, vitamin_d = series("1988-5"), series("62292-8")
+    assert all(5 <= len(x) <= 8 for x in (creatinine, egfr, crp, vitamin_d))
+    assert [d for d, _ in creatinine] == [d for d, _ in egfr]          # drawn together
+    assert [v for _, v in creatinine] == sorted(v for _, v in creatinine)   # a slow drift
+    assert all(results._result(3, "2160-0", str(v)).flag is None for _, v in creatinine)
+    assert all(results._result(3, "98979-8", str(v)).flag is None for _, v in egfr)
+    assert max(crp, key=lambda x: x[1])[0] == dt.date(2026, 9, 29)    # the September flare
+    assert all(results._result(3, "62292-8", str(v)).flag is None for _, v in vitamin_d)
+    visits = {v.day for v in history.HISTORY[3].visits}
+    nurse = {dt.date(2026, 1, 6), dt.date(2026, 4, 7), dt.date(2026, 7, 21)}
+    assert {d for d, _ in creatinine + crp + vitamin_d} <= visits | nurse
 
 
 def test_every_code_is_listed_with_one_unit_and_each_value_reads() -> None:
@@ -327,7 +348,7 @@ def test_the_images_are_stored_encrypted_on_their_reports_once_and_hidden_on_fhi
             "clinical.diagnostic_report_presented_form f ON f.binary_object_id = b.id "
             "WHERE b.purpose = 'imaging' AND f.diagnostic_report_id::text LIKE '5eed0040-%'"
         )).scalar_one() == 2
-    assert len(memory.objects) == 2
+    assert sum(key[1] in {r.storage_key for r in rows} for key in memory.objects) == 2
     with admin_engine.begin() as c:                      # Linda's chart restricted (D22)
         c.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
         c.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] WHERE id = :p"),
