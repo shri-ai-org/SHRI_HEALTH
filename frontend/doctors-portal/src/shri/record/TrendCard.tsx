@@ -152,7 +152,7 @@ const PAD_L = 34
 const PAD_R = 18
 
 /** A smooth line through every point that never overshoots between them (monotone cubic, Fritsch–Carlson). */
-function smoothPath(xs: number[], ys: number[]): string {
+export function smoothPath(xs: number[], ys: number[]): string {
   const n = xs.length
   if (n < 2) return n ? `M${xs[0]} ${ys[0]}` : ''
   const dx = xs.slice(1).map((v, i) => v - xs[i])
@@ -181,7 +181,7 @@ function smoothPath(xs: number[], ys: number[]): string {
 }
 
 /** Three round tick values across a domain. */
-function ticks(lo: number, hi: number): number[] {
+export function ticks(lo: number, hi: number): number[] {
   const raw = (hi - lo) / 3
   const mag = 10 ** Math.floor(Math.log10(raw || 1))
   const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((k) => k >= raw) ?? 10 * mag
@@ -195,7 +195,7 @@ function ticks(lo: number, hi: number): number[] {
  * with room around them, widened to take in a reference limit only when that
  * keeps the readings at least half the height. The axis says what the scale is.
  */
-function domainOf(values: number[], refLow?: number, refHigh?: number): [number, number] {
+export function domainOf(values: number[], refLow?: number, refHigh?: number): [number, number] {
   let lo = Math.min(...values)
   let hi = Math.max(...values)
   const pad = Math.max((hi - lo) * 0.35, Math.abs(hi) * 0.06, 0.1)

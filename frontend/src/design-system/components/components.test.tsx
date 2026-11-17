@@ -5,7 +5,7 @@ import { axeViolations } from '../../test/axe'
 import { Button } from './Button'
 import { DataTable } from './DataTable'
 import { Field } from './Field'
-import { Alert, Badge, ErrorState } from './feedback'
+import { Alert, Badge, ErrorState, WorkInProgress } from './feedback'
 import { DateInput, MoneyInput, PhoneInput, StateSelect, Textarea, TextInput } from './inputs'
 import { ConfirmDialog } from './Modal'
 import { Tabs } from './Tabs'
@@ -163,6 +163,18 @@ describe('feedback', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(onRetry).toHaveBeenCalled()
     expect(screen.getByText('Reference: req-123')).toBeInTheDocument()
+  })
+
+  it('says a feature is work in progress, with what it will do, and reads nothing', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    render(<WorkInProgress description="Billing will show the charges and payment for this visit." />)
+    const region = screen.getByRole('region', { name: 'Work in progress' })
+    expect(region).toHaveTextContent('This feature is work in progress')
+    expect(region).toHaveTextContent('Billing will show the charges and payment for this visit.')
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(await axeViolations()).toEqual([])
+    fetchSpy.mockRestore()
   })
 })
 

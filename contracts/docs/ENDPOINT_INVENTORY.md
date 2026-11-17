@@ -46,17 +46,17 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 4 | POST | `/auth/logout` | T | Ad | `authenticated` | sec | – | | | §6 | B1 | Returns 204 (API_STANDARDS §4). **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
 | 5 | GET | `/auth/session` | T | Ad | `authenticated` | – | – | | | §6 | B1 | Returns `{ user, organization, csrfToken, idleExpiresAt, expiresAt }`: the CSRF token, the idle expiry the screen times its 13-minute warning from, and the absolute (12-hour, not extendable) expiry (SECURITY_MODEL §2.1, §2.2; Thulasi T8, issue #3). **Contract written in the batch 1 follow-up** (2026-10-24, D52) |
 | 6 | GET | `/me` | T | Ad | `authenticated` | – | – | | | §3.10 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): user, organization, effective permissions |
-| 7 | GET | `/users` | T | Ad | `users:read` | adm | – | | | §3.10 | B1 | |
+| 7 | GET | `/users` | T | Ad | `users:read` | adm | – | | | §3.10 | Demo | **Written** 2026-11-17 (`listUsers`; Thulasi on #85): read-only; `q` (start of a staff name or username, the one `q` the PHI-in-URL lint allows outside the catalogs), `role`; no contact details or Keycloak IDs |
 | 8 | POST | `/users` | T | Ad | `users:create` | adm | S | | | §3.10 | B1 | |
 | 9 | GET | `/users/{userId}` | T | Ad | `users:read` | adm | – | | | §3.10 | B1 | |
 | 10 | PATCH | `/users/{userId}` | T | Ad | `users:update` | adm | – | ✓ | | §3.10 | B1 | |
-| 11 | GET | `/roles` | T | Ad | `roles:read` | – | – | | | §3.10 | B1 | |
+| 11 | GET | `/roles` | T | Ad | `roles:read` | – | – | | | §3.10 | Demo | **Written** 2026-11-17 (`listRoles`; Thulasi on #85): every role with its permissions from core's catalog and `userCount`; read-only |
 | 12 | GET | `/users/{userId}/roles` | T | Ad | `roles:read` | adm | – | | | §3.10 | B1 | |
 | 13 | PUT | `/users/{userId}/roles` | T | Ad | `user-roles:update` | sec | – | ✓ | | §3.10 | B1 | |
 | 14 | GET | `/events/stream` | T | – | `authenticated` | – | – | | | FR-ORD-02, FR-SCH-02 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D52): `text/event-stream`, `Last-Event-ID` resume (EVENTS.md §3) |
 | 15 | GET | `/operations/{operationId}` | T | Ad | `authenticated` | – | – | | | — | B1 | **New** (API_STANDARDS §13); owner Thulasi (T26). Visible only to the creating user in the MVP; polling does not reset the idle timer. **Written** 2026-10-27 (#80, Minalini's ask on #70): `Retry-After` while unfinished |
 | 16 | POST | `/operations/{operationId}/cancel` | T | Ad | `authenticated` | – | – | | | — | B1 | **New**. **Written** 2026-10-27 (#80): the creator only, where the kind allows it (AI kinds); `409` once finished |
-| 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | B6 | |
+| 17 | GET | `/audit-events` | T | Au | `audit-events:read` | sec | – | | | §3.10, §6 Audit | Demo | **Written** 2026-11-17 (`listAuditEvents`; Thulasi on #85, 09:00 and 09:10 corrections): `dateFrom`/`dateTo` required (≤ 31 days), filters incl. `breakGlass`; no patient names |
 | 18 | GET | `/reports/chart-access` | T | Au | `chart-access-reports:read` | sec | – | | | §6 Sensitive records | B6 | |
 | 19 | POST | `/patients/{patientId}/break-glass` | T | Au | `patients:break-glass` | sec | S | | | FR-PAT-01 | B1 | **Contract written in the batch 1 follow-up** (2026-10-24, D53): four reason codes, `reasonText` required for `other`, grant with `expiresAt` (4 hours) |
 | 20 | POST | `/hooks/clearinghouse` (root) | T | Ad+F | `partner-signed` | pw (partner as actor, T37) | – | | | FR-RCM-01/02 | B6 | Outside `/api/v1`, public through Nginx (T24) |
@@ -84,7 +84,8 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 310 | GET | `/ai/morning-briefs/{morningBriefId}` | V | Ad | `chart-summaries:read` | pr | – | | | §3.4 | Demo | **New** 2026-11-11 (`getMorningBrief`, D116): the brief by appointment; requester only; each chart checked again on read |
 | 311 | POST | `/ai/differentials` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | §3.4 AI-03 | Demo | **New** 2026-11-11 (`createDifferential`, D116): possible diagnoses for a visit, each citing records; `low` or `medium` only; suggests, never adds to the chart; needs `diagnoses:create` too (MD, APP); `chart-summary` switch |
 | 312 | GET | `/ai/differentials/{differentialId}` | V | Ad | `chart-summaries:read` | pr | – | | | §3.4 AI-03 | Demo | **New** 2026-11-11 (`getDifferential`, D116): the candidates and `insufficientEvidence`; requester only |
-| 24 | GET | `/admin/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | B6 | |
+| 313 | GET | `/patients/{patientId}/fhir-record` | T | Cl | `patients:read` | ex | – | | | §3.10 (FHIR view) | Demo | **New** 2026-11-17 (`getPatientFhirRecord`; Thulasi on #85): the record as a FHIR R4 `collection` Bundle (≤ 500 entries, `truncated`), serialized as `/fhir/r4` does under `/api/v1` rules (D37 break-glass); audited as an export |
+| 24 | GET | `/integration-messages` | T | Ad | `integration-messages:read` | adm | – | | | TA §7.1 | Demo | **Written** 2026-11-17 (`listIntegrationMessages`; Thulasi on #85): path without `/admin` (agreed on #12; OWASP API5 rule stays on); the flow only, never payload, patient or free-text error |
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
 | 27 | GET | ~~`/ready`~~ | T | – | — | – | – | | | §6 | — | **Not in the contract:** internal only (load balancer and Compose), T24 |

@@ -1,0 +1,26 @@
+{
+  "messageType": "LabResult",
+  "schemaVersion": "1.0",
+  "correlationId": "8d9e0f1a-2b3c-4d4e-8f5a-6b7c8d9e0f1a",
+  "responseId": "SIM-RAD-000118",
+  "respondedAt": "2026-11-20T15:36:40Z",
+  "fillerOrderNumber": "SIM-R-000088",
+  "category": "imaging",
+  "report": {
+    "loinc": "36643-5",
+    "name": "XR Chest 2 Views",
+    "status": "final",
+    "collectedAt": "2026-11-20T15:35:00Z",
+    "issuedAt": "2026-11-20T15:36:38Z",
+    "performerName": "Example Radiology Group (synthetic)",
+    "results": [
+      {
+        "loinc": "18782-3",
+        "name": "Radiology Study observation (narrative)",
+        "text": "Technique: PA and lateral views. Findings: The lungs are clear. No effusion or pneumothorax.",
+        "status": "final"
+      }
+    ],
+    "conclusion": "No acute cardiopulmonary abnormality."
+  }
+}

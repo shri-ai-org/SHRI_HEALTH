@@ -68,6 +68,9 @@ import { SeriesStrip } from './viewer/SeriesStrip'
 import { StudyPanel } from './viewer/StudyPanel'
 import { Workstation } from './viewer/Workstation'
 
+// SHRI_HEALTH: a real-API build carries no imported scan or its dataset's credit (vite.config.ts, D12, D75).
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 export function StudyViewerPage() {
   const { id } = useParams()
   // "?frame=n" — the overview's Report viewer opens the study at the image it was showing.
@@ -541,7 +544,7 @@ function Viewer({ record, study, frame }: { record: ImagingStudy; study: NcctStu
                 ['Slice thickness', `${study.sliceThickness} mm`],
                 ['kVp', String(study.kvp)],
                 ['Window at export', `W ${NCCT_WINDOW.width} / L ${NCCT_WINDOW.level} (brain)`],
-                ['Source', `CQ500 (qure.ai) · ${study.sourcePatientId} · CC BY-NC-SA 4.0 · de-identified`],
+                ['Source', REAL_API ? 'Imported sample image' : `CQ500 (qure.ai) · ${study.sourcePatientId} · CC BY-NC-SA 4.0 · de-identified`],
               ]}
               onGo={setSlice}
             />

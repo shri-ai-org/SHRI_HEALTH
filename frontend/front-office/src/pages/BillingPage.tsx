@@ -12,6 +12,8 @@ import { getBillingOverview, getBillsByFilter } from '../domain/selectors'
 import type { BillFilter } from '../domain/selectors'
 import { CurrencyIcon, formatMoney, isBillDue } from '../utils/billing'
 import { printBill } from '../utils/printBill'
+import { REAL_API } from '../../shri-health/client'
+import { WorkInProgress } from '../../../src/design-system'
 
 const FILTERS: BillFilter[] = ['due', 'failed', 'collected-today', 'all']
 
@@ -27,11 +29,34 @@ const EMPTY_TITLE: Record<BillFilter, string> = {
   all: 'No payments yet',
 }
 
+/** With the SHRI_HEALTH API there is no billing service yet: the page says what it will do, and
+ *  reads nothing (#85, 16 Nov). The sample mode keeps the billing counter's page. */
+export function BillingPage() {
+  return REAL_API ? <BillingWorkInProgress /> : <BillingCounterPage />
+}
+
+function BillingWorkInProgress() {
+  return (
+    <div>
+      <PageHeader
+        title="Payments"
+        illustration={<PaymentIllustration className="h-8 w-8" />}
+        illustrationTone="stable"
+      />
+      <div className="mt-4 sm:mt-5">
+        <Card accentTone="stable">
+          <WorkInProgress description="Billing will show charges, payments and balances for each visit." />
+        </Card>
+      </div>
+    </div>
+  )
+}
+
 /** Payment Status, to view only: Care Entry raises and prints bills, the
  *  patient pays at the bill counter, and this page tracks the result. What is pending, what failed, what the
  *  counter received today, and every bill — each figure is also the filter
  *  for the list under it; a bill opens to its items and history. */
-export function BillingPage() {
+function BillingCounterPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const filter = readFilter(location.search)

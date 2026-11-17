@@ -970,6 +970,459 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /roles:
+    get:
+      operationId: listRoles
+      summary: List the roles and their permissions
+      description: 'Every staff role with its permissions, read-only (inventory #11; Thulasi on #85, 2026-11-16). The permissions come from core''s catalog (`backend/app/core/permissions.py`), the only source; `userCount` counts the clinic''s active users holding the role. Reference data about the system, not patients: not audited. Nothing here changes a role.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: roles:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Every role, by code.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleList'
+              examples:
+                frontDesk:
+                  summary: One role
+                  value:
+                    items:
+                      - code: FD
+                        name: Front desk
+                        description: Registers patients, books and checks in visits, takes copays.
+                        permissions:
+                          - appointments:check-in
+                          - appointments:create
+                          - patients:read
+                        userCount: 3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `roles:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /users:
+    get:
+      operationId: listUsers
+      summary: List the clinic's staff users
+      description: 'The clinic''s staff accounts, read-only (inventory #7; Thulasi on #85, 2026-11-16): name, username, roles, facilities and whether the account is active. No contact details and no Keycloak IDs. Ordered by display name. Audited as `admin`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: users:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: q
+          in: query
+          required: false
+          description: Users whose display name or username starts with this text, ignoring case. Staff names, not patient data.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: role
+          in: query
+          required: false
+          description: Only users holding this role.
+          schema:
+            $ref: '#/components/schemas/RoleCode'
+      responses:
+        '200':
+          description: One page of users.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+              examples:
+                one:
+                  summary: One user
+                  value:
+                    items:
+                      - id: 490ef6d1-2e36-40ed-88eb-132538695ad9
+                        displayName: Avery401 Lindqvist58
+                        username: demo.doctor
+                        roles:
+                          - MD
+                        facilityIds:
+                          - 3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a
+                        active: true
+                        practitionerId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                        lastSignInAt: '2026-11-16T16:02:11Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `users:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /audit-events:
+    get:
+      operationId: listAuditEvents
+      summary: Read the audit trail
+      description: 'The clinic''s audit events, newest first, read-only (inventory #17; Thulasi on #85, 2026-11-16, with her 09:00 and 09:10 corrections). `dateFrom` and `dateTo` are required, in the clinic''s time zone, at most 31 days apart. Reading the audit trail is itself audited as `security`. No patient names: the screen shows patients through `POST /patients/summaries` (D54), so restricted charts keep their rule. `breakGlass=true` selects each grant''s own row (action `break-glass`) plus every chart access recorded under a grant (purpose of use `ETREAT`). The audit table is append-only; nothing here changes it.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: audit-events:read
+      x-audit:
+        action: R
+        category: security
+      x-storage: audit
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: dateFrom
+          in: query
+          required: true
+          description: First day, inclusive, in the clinic's time zone.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateTo
+          in: query
+          required: true
+          description: Last day, inclusive; at most 31 days after `dateFrom`.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: patientId
+          in: query
+          required: false
+          description: Only events about this patient (an opaque ID, D13).
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: actorUserId
+          in: query
+          required: false
+          description: Only events by this staff user.
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: category
+          in: query
+          required: false
+          description: Only events in this category.
+          schema:
+            $ref: '#/components/schemas/AuditCategory'
+        - name: outcome
+          in: query
+          required: false
+          description: Only events with this outcome.
+          schema:
+            $ref: '#/components/schemas/AuditOutcome'
+        - name: breakGlass
+          in: query
+          required: false
+          description: '`true`: only break-glass grants and the chart accesses made under one.'
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: One page of audit events, newest first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventList'
+              examples:
+                breakGlass:
+                  summary: A break-glass grant
+                  value:
+                    items:
+                      - id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        recordedAt: '2026-11-16T17:20:04Z'
+                        actor:
+                          type: user
+                          userId: 490ef6d1-2e36-40ed-88eb-132538695ad9
+                          displayName: Avery401 Lindqvist58
+                        action: break-glass
+                        category: security
+                        outcome: success
+                        patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        entityType: BreakGlassGrant
+                        entityId: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                        reason: Covering for the patient's usual clinician.
+                        requestId: 0f1e2d3c-4b5a-4968-8776-655443322110
+                        breakGlassGrantId: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `audit-events:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`dateTo` is before `dateFrom`, or more than 31 days after it).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /integration-messages:
+    get:
+      operationId: listIntegrationMessages
+      summary: Monitor the partner messages
+      description: 'The clinic''s partner messages (outbox and inbound), newest first, read-only (inventory #24, without `/admin` in the path as agreed on #12; Thulasi on #85, 2026-11-16, with her 09:00 corrections). The flow only: never the payload, the patient or the partner''s free-text error, which hold patient data; `errorCode` is the partner''s acknowledgement code. Each related record opens through its own read. No replays here. Audited as `admin`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: integration-messages:read
+      x-audit:
+        action: R
+        category: admin
+      x-storage: admin
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: partner
+          in: query
+          required: false
+          description: Only this partner kind.
+          schema:
+            $ref: '#/components/schemas/IntegrationPartner'
+        - name: direction
+          in: query
+          required: false
+          description: Only outbound or inbound messages.
+          schema:
+            $ref: '#/components/schemas/IntegrationDirection'
+        - name: status
+          in: query
+          required: false
+          description: Only messages in this status.
+          schema:
+            $ref: '#/components/schemas/IntegrationMessageStatus'
+        - name: dateFrom
+          in: query
+          required: false
+          description: Created on or after this day, in the clinic's time zone.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: dateTo
+          in: query
+          required: false
+          description: Created on or before this day, in the clinic's time zone.
+          schema:
+            $ref: '#/components/schemas/Date'
+      responses:
+        '200':
+          description: One page of partner messages, newest first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationMessageList'
+              examples:
+                newRx:
+                  summary: A prescription the simulated pharmacy accepted
+                  value:
+                    items:
+                      - id: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                        partner: erx
+                        endpointName: Simulated pharmacy
+                        direction: outbound
+                        messageType: NewRx
+                        status: acknowledged
+                        attempts: 1
+                        createdAt: '2026-11-16T17:31:00Z'
+                        lastAttemptAt: '2026-11-16T17:31:02Z'
+                        completedAt: '2026-11-16T17:31:09Z'
+                        relatedType: prescription
+                        relatedId: 9c0d1e2f-3a4b-4c5d-9e6f-7a8b9c0d1e2f
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `integration-messages:read`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /patients/{patientId}/fhir-record:
+    parameters:
+      - name: patientId
+        in: path
+        required: true
+        description: Patient ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPatientFhirRecord
+      summary: Show a patient's record as FHIR R4
+      description: 'The patient''s record as a FHIR R4 `Bundle` of type `collection`, for the screens'' read-only FHIR view (Thulasi on #85, 2026-11-16). Each resource is serialized exactly as `/fhir/r4` serves it (US Core), from this request''s own session and `/api/v1` rules, not `/fhir`''s (D1, D22): restricted charts need a break-glass grant or care-team membership (D37). At most 500 entries, with `truncated: true` when there were more. Drafts are left out; entered-in-error records are included with their status, as FHIR has them. Audited as an export of the patient''s record. Outside systems keep using `/fhir`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: patients:read
+      x-audit:
+        action: E
+        category: export
+        patient: patientId
+      x-storage: clinical
+      x-release: P0
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: types
+          in: query
+          required: false
+          description: Only these resource types; all of them when absent.
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 6
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/FhirRecordResourceType'
+      responses:
+        '200':
+          description: The patient's record as a FHIR R4 Bundle.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientFhirRecord'
+              examples:
+                one:
+                  summary: The Patient resource only
+                  value:
+                    resourceType: Bundle
+                    type: collection
+                    timestamp: '2026-11-16T17:40:00Z'
+                    truncated: false
+                    entry:
+                      - fullUrl: urn:uuid:7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        resource:
+                          resourceType: Patient
+                          id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                          name:
+                            - family: Lindgren118
+                              given:
+                                - Kaia401
+                          birthDate: '1990-03-14'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `patients:read`); `break-glass-required` (the patient's chart is restricted and the user has no current grant and is not on the care team).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /files/upload-url:
     post:
       operationId: createUploadUrl
@@ -1043,7 +1496,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media type or size is not allowed for this purpose, or the purpose is server-generated (`receipt`, `after-visit-summary`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (the media type or size is not allowed for this purpose, or the purpose is server-generated (`receipt`, `after-visit-summary`, `imaging`)); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -11264,7 +11717,7 @@ paths:
     get:
       operationId: listImagingReports
       summary: List a patient's imaging reports
-      description: 'A patient''s imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the radiologist''s impression and the full report as text. Text only: no images or image links. Only final, amended, corrected and appended reports are shown; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).'
+      description: 'A patient''s imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the radiologist''s impression and the full report as text, and up to three illustrative images (`images`). The images are illustrative, not diagnostic, and labelled so on screen; each is read through `createDownloadUrl` (file purpose `imaging`, D105). Only final, amended, corrected and appended reports are shown, with their images; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).'
       tags:
         - orders
       x-owner: thulasi
@@ -23932,8 +24385,479 @@ components:
           maxProperties: 10
           description: 'RxStatus only: why it was rejected (the pharmacy partner schema).'
           x-phi: none
+    RoleCode:
+      description: 'A staff role code (SECURITY_MODEL §4.3): `FD` front desk, `MA` medical assistant, `RN` nurse, `MD` physician, `APP` advanced practice provider, `BIL` billing, `ADM` practice administrator, `CO` compliance officer, `SUP` support, `DSP` status board display (D47).'
+      type: string
+      enum:
+        - FD
+        - MA
+        - RN
+        - MD
+        - APP
+        - BIL
+        - ADM
+        - CO
+        - SUP
+        - DSP
+    Role:
+      description: A staff role and its permissions, from core's catalog.
+      type: object
+      required:
+        - code
+        - name
+        - description
+        - permissions
+        - userCount
+      properties:
+        code:
+          $ref: '#/components/schemas/RoleCode'
+          x-phi: none
+        name:
+          type: string
+          maxLength: 100
+          description: The role's name, as the screens show it ("Front desk").
+          x-phi: none
+        description:
+          type: string
+          maxLength: 500
+          description: What the role does.
+          x-phi: none
+        permissions:
+          type: array
+          maxItems: 500
+          description: The role's permissions, sorted (`resource:action`).
+          x-phi: none
+          items:
+            type: string
+            maxLength: 100
+        userCount:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100000
+          description: The clinic's active users holding the role.
+          x-phi: none
+    RoleList:
+      description: Every staff role, by code.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Role'
+          description: The roles on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page (ten roles fit on one page).
+          x-phi: none
+    User:
+      description: A staff account, without contact details or Keycloak IDs.
+      type: object
+      required:
+        - id
+        - displayName
+        - username
+        - roles
+        - facilityIds
+        - active
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: The name shown on screens.
+          x-phi: none
+        username:
+          type: string
+          maxLength: 100
+          description: The sign-in username.
+          x-phi: none
+        roles:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          description: The user's roles.
+          x-phi: none
+          items:
+            $ref: '#/components/schemas/RoleCode'
+        facilityIds:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          description: The facilities the user works at.
+          x-phi: none
+          items:
+            $ref: '#/components/schemas/Id'
+        active:
+          type: boolean
+          description: Whether the account may sign in.
+          x-phi: none
+        practitionerId:
+          $ref: '#/components/schemas/Id'
+          description: The practitioner this account is linked to, for clinicians.
+          x-phi: internal-id
+        lastSignInAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: The last successful sign-in.
+          x-phi: none
+    UserList:
+      description: One page of staff users, by display name.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/User'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    AuditCategory:
+      description: An audit event's category, as stored.
+      type: string
+      enum:
+        - phi-read
+        - phi-write
+        - security
+        - admin
+        - ai
+        - export
+        - sign
+        - none
+    AuditOutcome:
+      description: An audit event's outcome, as stored.
+      type: string
+      enum:
+        - success
+        - failure
+        - denied
+    AuditActor:
+      description: Who or what acted.
+      type: object
+      required:
+        - type
+        - displayName
+      properties:
+        type:
+          type: string
+          enum:
+            - user
+            - patient
+            - system
+            - ai
+            - integration
+            - partner
+            - anonymous
+          description: The kind of actor.
+          x-phi: none
+        userId:
+          $ref: '#/components/schemas/Id'
+          description: The staff user, when `type` is `user`.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: The staff user's name, or a fixed label for other actors ("Patient", "System", "Simulated pharmacy"). Never a patient's name.
+          x-phi: none
+    AuditAction:
+      description: An audit event's action, as stored.
+      type: string
+      enum:
+        - read
+        - create
+        - update
+        - delete
+        - sign
+        - export
+        - print
+        - login
+        - logout
+        - access-denied
+        - ai-request
+        - ai-review
+        - merge
+        - break-glass
+        - config-change
+    AuditEvent:
+      description: One audit event, without patient names.
+      type: object
+      required:
+        - id
+        - recordedAt
+        - actor
+        - action
+        - category
+        - outcome
+        - requestId
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Audit event ID.
+          x-phi: internal-id
+        recordedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was recorded.
+          x-phi: none
+        actor:
+          $ref: '#/components/schemas/AuditActor'
+          x-phi: none
+        action:
+          $ref: '#/components/schemas/AuditAction'
+          x-phi: none
+        category:
+          $ref: '#/components/schemas/AuditCategory'
+          x-phi: none
+        outcome:
+          $ref: '#/components/schemas/AuditOutcome'
+          x-phi: none
+        patientId:
+          $ref: '#/components/schemas/Id'
+          description: The patient the event concerns; the screen shows the patient through `POST /patients/summaries` (D54).
+          x-phi: internal-id
+        entityType:
+          type: string
+          maxLength: 100
+          description: The kind of record acted on (`Encounter`, `MedicationRequest`, `BreakGlassGrant`).
+          x-phi: none
+        entityId:
+          $ref: '#/components/schemas/Id'
+          description: The record acted on.
+          x-phi: internal-id
+        reason:
+          type: string
+          maxLength: 500
+          description: A break-glass reason or a denial's reason.
+          x-phi: clinical
+        requestId:
+          $ref: '#/components/schemas/Id'
+          description: The request's `X-Request-ID`.
+          x-phi: none
+        breakGlassGrantId:
+          $ref: '#/components/schemas/Id'
+          description: The break-glass grant the access was made under.
+          x-phi: internal-id
+    AuditEventList:
+      description: One page of audit events, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    IntegrationPartner:
+      description: The partner kind.
+      type: string
+      enum:
+        - erx
+        - lab
+        - clearinghouse
+        - fax
+        - notification
+    IntegrationDirection:
+      description: '`outbound` (our outbox) or `inbound` (a partner callback).'
+      type: string
+      enum:
+        - outbound
+        - inbound
+    IntegrationMessageStatus:
+      description: A partner message's status, as stored.
+      type: string
+      enum:
+        - queued
+        - sending
+        - sent
+        - acknowledged
+        - received
+        - processed
+        - failed
+        - dead-letter
+    IntegrationMessage:
+      description: One partner message's flow, never its payload, patient or free-text error.
+      type: object
+      required:
+        - id
+        - partner
+        - endpointName
+        - direction
+        - messageType
+        - status
+        - attempts
+        - createdAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Message ID.
+          x-phi: internal-id
+        partner:
+          $ref: '#/components/schemas/IntegrationPartner'
+          x-phi: none
+        endpointName:
+          type: string
+          maxLength: 200
+          description: The partner endpoint's name ("Simulated pharmacy").
+          x-phi: none
+        direction:
+          $ref: '#/components/schemas/IntegrationDirection'
+          x-phi: none
+        messageType:
+          type: string
+          maxLength: 40
+          description: The message type (`NewRx`, `RxStatus`, `ORM^O01`, `ORU^R01`, `270`, `271`).
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/IntegrationMessageStatus'
+          x-phi: none
+        attempts:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 1000
+          description: Delivery attempts so far.
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the message was created.
+          x-phi: none
+        lastAttemptAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: The last delivery attempt.
+          x-phi: none
+        completedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was acknowledged or processed.
+          x-phi: none
+        errorCode:
+          type: string
+          maxLength: 20
+          description: The partner's acknowledgement code (HL7 `AE` or `AR`, or the X12 or NCPDP equivalent). Never the free-text error.
+          x-phi: none
+        relatedType:
+          type: string
+          enum:
+            - prescription
+            - order
+            - eligibility-check
+          description: The kind of record the message is about.
+          x-phi: none
+        relatedId:
+          $ref: '#/components/schemas/Id'
+          description: That record's ID; it opens through its own read.
+          x-phi: internal-id
+    IntegrationMessageList:
+      description: One page of partner messages, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/IntegrationMessage'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    FhirRecordResourceType:
+      description: A FHIR resource type the record view can include.
+      type: string
+      enum:
+        - Patient
+        - Condition
+        - Observation
+        - MedicationRequest
+        - AllergyIntolerance
+        - DiagnosticReport
+    PatientFhirRecordEntry:
+      description: One entry of the bundle.
+      type: object
+      required:
+        - fullUrl
+        - resource
+      properties:
+        fullUrl:
+          type: string
+          maxLength: 100
+          description: The resource's `urn:uuid:` URL.
+          x-phi: none
+        resource:
+          type: object
+          description: A FHIR R4 resource (US Core), with `resourceType` and `id`, as `/fhir/r4` serves it.
+          x-phi: clinical
+          required:
+            - resourceType
+            - id
+          properties:
+            resourceType:
+              $ref: '#/components/schemas/FhirRecordResourceType'
+              x-phi: none
+            id:
+              $ref: '#/components/schemas/Id'
+              description: The resource's ID.
+              x-phi: internal-id
+          additionalProperties: true
+    PatientFhirRecord:
+      description: A FHIR R4 `Bundle` of type `collection` (US Core). Each `resource` is a FHIR resource exactly as `/fhir/r4` serves it, so its fields follow FHIR, not this contract's camelCase schemas.
+      type: object
+      required:
+        - resourceType
+        - type
+        - timestamp
+        - truncated
+        - entry
+      properties:
+        resourceType:
+          type: string
+          enum:
+            - Bundle
+          description: Always `Bundle`.
+          x-phi: none
+        type:
+          type: string
+          enum:
+            - collection
+          description: Always `collection`.
+          x-phi: none
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the bundle was assembled.
+          x-phi: none
+        truncated:
+          type: boolean
+          description: '`true` when the record had more than 500 entries and only the first 500 are here.'
+          x-phi: none
+        entry:
+          type: array
+          maxItems: 500
+          description: The resources.
+          x-phi: clinical
+          items:
+            $ref: '#/components/schemas/PatientFhirRecordEntry'
     FilePurpose:
-      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read` or `after-visit-summaries:read` (D98); `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`. A purpose with no mapping is denied. `receipt` and `after-visit-summary` are generated by the server, never uploaded.'
+      description: 'What the file is for (API_STANDARDS §15). Each purpose has its own allowed types and sizes (`insurance-card` and `identity` are JPEG or PNG up to 10 MB, M13) and its own read permission for `GET /files/{fileId}/download-url`: `insurance-card` → `coverages:read`; `identity` → `patients:read`; `receipt` → `payments:create` or `superbills:read`; `encounter-audio` → `transcriptions:read`; `after-visit-summary` → `encounters:read` or `after-visit-summaries:read` (D98); `document` → `documents:read`; `fax` → `fax-inbox:read`; `ccda` → `ccda:export`; `export` → `exports:read`; `onboarding-import` → `onboarding:import`; `imaging` → `results:read` (an illustrative image attached to an imaging report the caller may read, #386). A purpose with no mapping is denied. `receipt`, `after-visit-summary` and `imaging` are generated by the server, never uploaded.'
       type: string
       enum:
         - insurance-card
@@ -23946,6 +24870,7 @@ components:
         - ccda
         - export
         - onboarding-import
+        - imaging
     UploadUrlRequest:
       description: Body to ask for an upload link.
       type: object
@@ -29761,8 +30686,48 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    ImagingReportImage:
+      description: An illustrative image on an imaging report, read through `createDownloadUrl` with its file ID (purpose `imaging`).
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - caption
+        - label
+        - contentType
+        - sizeBytes
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The file's ID, for `createDownloadUrl`.
+          x-phi: internal-id
+        caption:
+          type: string
+          maxLength: 200
+          description: What the image shows, for example "Lumbar spine MRI, sagittal T2".
+          x-phi: clinical
+        label:
+          type: string
+          enum:
+            - Illustrative image
+          description: The label the screen shows on the image, always `Illustrative image`.
+          x-phi: none
+        contentType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+          description: The image's media type.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 524288
+          description: The image's size in bytes, at most 512 KiB.
+          x-phi: none
     ImagingReport:
-      description: An imaging report (FHIR `DiagnosticReport`, category `RAD`), text only.
+      description: An imaging report (FHIR `DiagnosticReport`, category `RAD`), with its text and any illustrative images.
       type: object
       additionalProperties: false
       required:
@@ -29814,6 +30779,13 @@ components:
           maxLength: 20000
           description: The full report as plain text (technique, findings, impression).
           x-phi: clinical
+        images:
+          type: array
+          maxItems: 3
+          description: Illustrative images attached to the report (#386), never diagnostic. Absent when the report has none.
+          x-phi: clinical
+          items:
+            $ref: '#/components/schemas/ImagingReportImage'
     ImagingReportList:
       description: A patient's imaging reports, newest first.
       type: object
