@@ -1511,6 +1511,512 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /ai/visit-summaries:
+    post:
+      operationId: createVisitSummary
+      summary: Summarize a visit for its clinician
+      description: 'A short AI summary of one visit, shown at the top of the consultation note (D119): a few statements, each
+        citing the records it rests on. Returns `202` and an operation of kind `ai.visit-summary`; its result is the summary
+        (`GET /ai/visit-summaries/{visitSummaryId}`). The model sees the visit (reason for visit, its diagnoses so far, the
+        vital signs taken at it and its notes'' sections) and the chart (recent visits, allergies, medications, problems,
+        lab results), read within the caller''s own request through each module''s service with the caller''s permissions
+        and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet
+        is never a source**: the summary rests on what the clinician wrote or accepted. Every statement cites at least one
+        record; one that cites none is dropped. It is **never part of the note or the chart**: nothing is written to the visit.
+        Labelled as AI output (`aiGenerated`). Readable by its requester only; nothing of it is logged. Governed by the `chart-summary`
+        switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable`
+        or `ai-output-rejected`.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-summaries:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitSummaryCreate'
+            examples:
+              visit:
+                summary: Today's visit
+                value:
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                queued:
+                  summary: Visit summary queued
+                  value:
+                    id: 7a8b9c0d-1e2f-4a3b-8c4d-6e7f8a9b0c1d
+                    kind: ai.visit-summary
+                    status: queued
+                    createdAt: '2026-11-20T15:20:00Z'
+                    updatedAt: '2026-11-20T15:20:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create`); `csrf-check-failed` (missing or
+            wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user holds no
+            break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled`
+            (AI or `chart-summary` is off for the clinic; the problem carries `feature`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/visit-summaries/{visitSummaryId}:
+    parameters:
+    - name: visitSummaryId
+      in: path
+      required: true
+      description: Visit summary ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getVisitSummary
+      summary: Get a visit summary
+      description: 'The result of `POST /ai/visit-summaries` (D119): the statements in order, each with the records it rests
+        on, and `insufficientEvidence` when the visit holds too little to summarize. Labelled as AI output (`aiGenerated`).
+        Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still
+        readable when AI is switched off.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The visit summary.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitSummary'
+              examples:
+                summary:
+                  summary: Three statements
+                  value:
+                    id: 8b9c0d1e-2f3a-4b4c-9d5e-7f8a9b0c1d2e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    statements:
+                    - sequence: 1
+                      text: Seen for a cough of three days, without fever.
+                      sources:
+                      - resourceType: Encounter
+                        resourceId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                        label: Reason for visit
+                    - sequence: 2
+                      text: Temperature 98.4 °F at the visit.
+                      sources:
+                      - resourceType: Observation
+                        resourceId: 3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b
+                        label: Vital sign
+                    - sequence: 3
+                      text: Takes lisinopril 10 mg daily.
+                      sources:
+                      - resourceType: MedicationRequest
+                        resourceId: 4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c
+                        label: Medication list
+                    insufficientEvidence: false
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: visit-summary
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: '2026-11-20T15:20:06Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-summaries:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such visit summary in this clinic, or another user's visit summary).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/coding-suggestions:
+    post:
+      operationId: createCodingSuggestion
+      summary: Suggest ICD-10-CM codes for a visit
+      description: 'AI-04 coding suggestions (FRS §3.4; D119): ICD-10-CM codes for the visit, each with its reasoning and
+        the records it rests on. Returns `202` and an operation of kind `ai.coding-suggestion`; its result is the suggestion
+        (`GET /ai/coding-suggestions/{codingSuggestionId}`). The model sees the same lines as a differential: the visit (reason
+        for visit, its diagnoses so far, the vital signs taken at it and its notes'' sections) and the chart, read within
+        the caller''s own request through each module''s service with the caller''s permissions and the restricted-chart check
+        (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet is never a source.** Every code
+        cites at least one record; one that cites none is dropped. **Every code must be an active, billable code in the loaded
+        ICD-10-CM table**; any other code the model returns is dropped, a code already on the visit too, and the name shown
+        is the table''s, never the model''s. Confidence is `low` or `medium`, never `high`. **Nothing is applied automatically**:
+        each code waits for the clinician''s decision (`POST /ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision`).
+        **Only clinicians who can diagnose ask for one**: a user without `diagnoses:create` gets `403 permission-denied`.
+        Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409
+        feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-summaries:create
+      x-audit:
+        action: C
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-async: true
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodingSuggestionCreate'
+            examples:
+              visit:
+                summary: Today's visit
+                value:
+                  encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+      responses:
+        '202':
+          description: 202. Accepted; runs in the background. Poll `Location` after `Retry-After` seconds, or wait for `operation.completed`
+            on the event stream (API_STANDARDS §13).
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            Retry-After:
+              $ref: ../components/headers/RetryAfter.yaml
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/Operation.yaml
+              examples:
+                queued:
+                  summary: Coding suggestion queued
+                  value:
+                    id: 9c0d1e2f-3a4b-4c5d-8e6f-8a9b0c1d2e3f
+                    kind: ai.coding-suggestion
+                    status: queued
+                    createdAt: '2026-11-20T15:25:00Z'
+                    updatedAt: '2026-11-20T15:25:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-summaries:create` or `diagnoses:create`); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user
+            holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `feature-disabled`
+            (AI or `chart-summary` is off for the clinic; the problem carries `feature`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/coding-suggestions/{codingSuggestionId}:
+    parameters:
+    - name: codingSuggestionId
+      in: path
+      required: true
+      description: Coding suggestion ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getCodingSuggestion
+      summary: Get a coding suggestion
+      description: 'The result of `POST /ai/coding-suggestions` (D119): the suggested ICD-10-CM codes in order, each with
+        its reasoning, confidence, source links and the clinician''s decision, and `insufficientEvidence` when the visit holds
+        too little to code. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able
+        to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: chart-summaries:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: admin
+      x-release: P0
+      responses:
+        '200':
+          description: The coding suggestion.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodingSuggestion'
+              examples:
+                twoCodes:
+                  summary: Two codes, one accepted
+                  value:
+                    id: 0d1e2f3a-4b5c-4d6e-9f7a-9b0c1d2e3f4a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    codes:
+                    - id: 1e2f3a4b-5c6d-4e7f-8a8b-0c1d2e3f4a5b
+                      sequence: 1
+                      system: http://hl7.org/fhir/sid/icd-10-cm
+                      code: J20.9
+                      display: Acute bronchitis, unspecified
+                      rationale: Cough for three days with clear lungs, as the note's assessment says.
+                      confidence: medium
+                      sources:
+                      - resourceType: Composition
+                        resourceId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                        label: Progress note, Assessment
+                      decision: accepted
+                      decidedAt: '2026-11-20T15:26:30Z'
+                      decidedBy:
+                        id: 2f3a4b5c-6d7e-4f8a-9b9c-1d2e3f4a5b6c
+                        displayName: Kaia401 Lindgren118, MD
+                      diagnosisId: 3a4b5c6d-7e8f-4a9b-8c0d-2e3f4a5b6c7d
+                    - id: 4b5c6d7e-8f9a-4b0c-9d1e-3f4a5b6c7d8e
+                      sequence: 2
+                      system: http://hl7.org/fhir/sid/icd-10-cm
+                      code: R05.1
+                      display: Acute cough
+                      rationale: The reason for visit is a cough of three days.
+                      confidence: low
+                      sources:
+                      - resourceType: Encounter
+                        resourceId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                        label: Reason for visit
+                      decision: pending
+                    insufficientEvidence: false
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: coding-suggestion
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: '2026-11-20T15:25:08Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `chart-summaries:read`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coding suggestion in this clinic, or another user's coding suggestion).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision:
+    parameters:
+    - name: codingSuggestionId
+      in: path
+      required: true
+      description: Coding suggestion ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    - name: suggestedCodeId
+      in: path
+      required: true
+      description: Suggested code ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: decideSuggestedCode
+      summary: Accept or reject a suggested code
+      description: 'Records the clinician''s one decision on one suggested ICD-10-CM code (D70, D119), once (the database
+        refuses a second decision). **`accepted` is the clinician''s action that adds the code to the visit**: in one transaction,
+        the code becomes a visit diagnosis through the encounters'' own diagnosis rules (as `POST /encounters/{encounterId}/diagnoses`:
+        only until the visit''s first note is signed, after its last diagnosis, with Provenance), and the response carries
+        its `diagnosisId`. Nothing is ever added without this call. `rejected` needs a `reason` and changes nothing on the
+        visit. Only the user who asked for the suggestion decides, and only a clinician who can diagnose (`diagnoses:create`).
+        Not gated by the AI switches: a pending code can be decided after AI is turned off.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: ai-suggestions:decision
+      x-audit:
+        action: E
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestedCodeDecision'
+            examples:
+              accept:
+                summary: Accept
+                value:
+                  decision: accepted
+              reject:
+                summary: Reject
+                value:
+                  decision: rejected
+                  reason: The cough is chronic, not acute.
+      responses:
+        '200':
+          description: The code with its decision; for `accepted`, the diagnosis it became.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestedCode'
+              examples:
+                accepted:
+                  summary: Accepted and added to the visit
+                  value:
+                    id: 1e2f3a4b-5c6d-4e7f-8a8b-0c1d2e3f4a5b
+                    sequence: 1
+                    system: http://hl7.org/fhir/sid/icd-10-cm
+                    code: J20.9
+                    display: Acute bronchitis, unspecified
+                    rationale: Cough for three days with clear lungs, as the note's assessment says.
+                    confidence: medium
+                    sources:
+                    - resourceType: Composition
+                      resourceId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                      label: Progress note, Assessment
+                    decision: accepted
+                    decidedAt: '2026-11-20T15:26:30Z'
+                    decidedBy:
+                      id: 2f3a4b5c-6d7e-4f8a-9b9c-1d2e3f4a5b6c
+                      displayName: Kaia401 Lindgren118, MD
+                    diagnosisId: 3a4b5c6d-7e8f-4a9b-8c0d-2e3f4a5b6c7d
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `ai-suggestions:decision` or `diagnoses:create`); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin); `break-glass-required` (the patient's chart is restricted and the user
+            holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such coding suggestion or code in this clinic, or another user's).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the code is already decided; the problem carries `currentState`); `record-locked` (the visit''s note is signed
+            (D24): the code can no longer be added).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid; `reason` is required for `rejected`
+            and not allowed otherwise); `business-rule-violation` (the code is already on this visit, or all 12 ranks are
+            taken); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     ClinicianRef:
@@ -2569,3 +3075,230 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was made.
           x-phi: none
+    VisitSummaryCreate:
+      description: The visit to summarize.
+      type: object
+      additionalProperties: false
+      required:
+      - encounterId
+      properties:
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit.
+          x-phi: internal-id
+    VisitSummary:
+      description: An AI summary of a visit, shown at the top of the consultation note (D119). Read-only, never part of the
+        note or the chart; readable by its requester only.
+      type: object
+      required:
+      - id
+      - patientId
+      - encounterId
+      - statements
+      - insufficientEvidence
+      - aiGenerated
+      - generatedBy
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Visit summary ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit.
+          x-phi: internal-id
+        statements:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/ChartAnswerStatement"
+          description: The summary, each statement with its sources, in order. Empty when the visit holds too little.
+          x-phi: clinical
+        insufficientEvidence:
+          type: boolean
+          description: True when the visit's records are too few to summarize.
+          x-phi: none
+        aiGenerated:
+          type: boolean
+          const: true
+          description: "Always true: label the summary as AI output."
+          x-phi: none
+        generatedBy:
+          $ref: "#/components/schemas/AiGeneratedBy"
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was made.
+          x-phi: none
+    CodingSuggestionCreate:
+      description: The visit to suggest ICD-10-CM codes for.
+      type: object
+      additionalProperties: false
+      required:
+      - encounterId
+      properties:
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit.
+          x-phi: internal-id
+    SuggestedCode:
+      description: One suggested ICD-10-CM code (D70, D119), with why, the records it rests on (at least one) and the clinician's
+        one decision. Its content never changes after it is made.
+      type: object
+      required:
+      - id
+      - sequence
+      - system
+      - code
+      - display
+      - rationale
+      - confidence
+      - sources
+      - decision
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Suggested code ID, for its decision.
+          x-phi: internal-id
+        sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10
+          description: Order, from the best supported.
+          x-phi: none
+        system:
+          type: string
+          const: http://hl7.org/fhir/sid/icd-10-cm
+          description: Always ICD-10-CM.
+          x-phi: none
+        code:
+          type: string
+          maxLength: 10
+          pattern: ^[A-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4})?$
+          description: An active, billable code in the loaded ICD-10-CM table.
+          x-phi: clinical
+        display:
+          type: string
+          maxLength: 300
+          description: The code's name in the ICD-10-CM table (never the model's wording).
+          x-phi: clinical
+        rationale:
+          type: string
+          maxLength: 1000
+          description: Why, from the cited records.
+          x-phi: clinical
+        confidence:
+          $ref: "#/components/schemas/AiConfidence"
+          description: '`low` or `medium`; never `high`.'
+          x-phi: none
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/AiSourceLink"
+          description: The records behind it.
+          x-phi: clinical
+        decision:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          description: The clinician's decision; `pending` until decided.
+          x-phi: none
+        decidedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was decided. Absent while `pending`.
+          x-phi: none
+        decidedBy:
+          $ref: "#/components/schemas/ClinicianRef"
+          description: Who decided. Absent while `pending`.
+          x-phi: none
+        rejectionReason:
+          type: string
+          maxLength: 500
+          description: Why it was rejected. Only for `rejected`.
+          x-phi: clinical
+        diagnosisId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'For `accepted`: the visit diagnosis it became (`EncounterDiagnosis.id`).'
+          x-phi: internal-id
+    CodingSuggestion:
+      description: AI coding suggestions for a visit (AI-04, D119). Nothing in it is part of the chart until the clinician
+        accepts a code; readable by its requester only.
+      type: object
+      required:
+      - id
+      - patientId
+      - encounterId
+      - codes
+      - insufficientEvidence
+      - aiGenerated
+      - generatedBy
+      - createdAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Coding suggestion ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: The patient.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit.
+          x-phi: internal-id
+        codes:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/SuggestedCode"
+          description: The codes, best supported first. Empty when the visit holds too little.
+          x-phi: clinical
+        insufficientEvidence:
+          type: boolean
+          description: True when the visit's records are too few to suggest a code.
+          x-phi: none
+        aiGenerated:
+          type: boolean
+          const: true
+          description: "Always true: label the suggestions as AI output."
+          x-phi: none
+        generatedBy:
+          $ref: "#/components/schemas/AiGeneratedBy"
+          description: Model, prompt and pipeline versions.
+          x-phi: none
+        createdAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was made.
+          x-phi: none
+    SuggestedCodeDecision:
+      description: Body to decide a suggested code (D70). A different code is not chosen here; the clinician adds it through
+        code search and `POST /encounters/{encounterId}/diagnoses`.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - accepted
+          - rejected
+          description: '`accepted` adds the code to the visit; `rejected` changes nothing on the visit.'
+          x-phi: none
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why it was rejected. Required for `rejected`; not allowed otherwise.
+          x-phi: clinical

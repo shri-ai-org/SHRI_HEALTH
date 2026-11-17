@@ -352,6 +352,17 @@
    "path": "/api/v1/ai/chart-summaries",
    "permission": "chart-summaries:create"
   },
+  "createCodingSuggestion": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/coding-suggestions",
+   "permission": "chart-summaries:create"
+  },
   "createConsentRequirement": {
    "audit": {
     "action": "C",
@@ -583,6 +594,17 @@
    "path": "/api/v1/files/upload-url",
    "permission": "files:create"
   },
+  "createVisitSummary": {
+   "audit": {
+    "action": "C",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/visit-summaries",
+   "permission": "chart-summaries:create"
+  },
   "decideAiSuggestion": {
    "audit": {
     "action": "E",
@@ -592,6 +614,17 @@
    "idempotency": "supported",
    "method": "POST",
    "path": "/api/v1/ai/suggestions/{suggestionId}/decision",
+   "permission": "ai-suggestions:decision"
+  },
+  "decideSuggestedCode": {
+   "audit": {
+    "action": "E",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision",
    "permission": "ai-suggestions:decision"
   },
   "declineFollowUpRequest": {
@@ -754,6 +787,17 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/ai/chart-summaries/{chartSummaryId}",
+   "permission": "chart-summaries:read"
+  },
+  "getCodingSuggestion": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/coding-suggestions/{codingSuggestionId}",
    "permission": "chart-summaries:read"
   },
   "getConsentRequirement": {
@@ -1215,6 +1259,17 @@
    "method": "GET",
    "path": "/api/v1/ai/transcriptions/{transcriptionId}",
    "permission": "transcriptions:read"
+  },
+  "getVisitSummary": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/ai/visit-summaries/{visitSummaryId}",
+   "permission": "chart-summaries:read"
   },
   "listAllergies": {
    "audit": {
