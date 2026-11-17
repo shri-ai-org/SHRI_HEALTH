@@ -48,8 +48,11 @@ const MOVED = new Set(['S-06-01', 'S-06-11'])
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 const NO_SERVICE_PREFIXES = ['S-08-', 'S-09-', 'S-13-', 'S-15-', 'S-16-', 'S-18-', 'S-27-']
 const NO_SERVICE = new Set(['S-28-09', 'S-06-09', 'S-05-04', 'S-05-05', 'S-05-06', 'S-05-10'])
+/** Screens under a hidden prefix that the API serves: the study viewer, for a report's illustrative images (#386). */
+const WITH_SERVICE = new Set(['S-15-04'])
 /** False for a screen that would show sample data with the API. */
 function routedWithApi(id: string): boolean {
+  if (WITH_SERVICE.has(id)) return true
   return !NO_SERVICE.has(id) && !NO_SERVICE_PREFIXES.some((p) => id.startsWith(p))
 }
 const ROUTED = REAL_API ? ROUTED_SCREENS.filter((s) => routedWithApi(s.id)) : ROUTED_SCREENS
