@@ -416,6 +416,12 @@ class ConsentCreate(Closed):
 PatientCreate.model_rebuild()  # consents names ConsentCreate, defined above
 
 
+class StaffRef(Out):
+    """A staff user, for display (patients.yaml StaffRef: the user's ID, never a practitioner's)."""
+    id: UUID
+    display_name: str
+
+
 class Consent(Out):
     id: UUID
     patient_id: UUID
@@ -428,6 +434,8 @@ class Consent(Out):
     signed_form_file_id: UUID | None = None
     status: Literal["active", "inactive", "entered-in-error"]
     created_at: datetime
+    #: The staff user who recorded it (D120), from the consent's creating user.
+    recorded_by: StaffRef | None = None
 
 
 class ConsentList(Out):

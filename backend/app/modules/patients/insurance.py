@@ -216,7 +216,7 @@ async def coverage_entered_in_error(db: AsyncSession, repo: InsuranceRepository,
 
 # -------------------------------------------------------------------------------------- consents
 async def _write_consent(db: AsyncSession, repo: InsuranceRepository, store: FhirStore,
-                         patient_id: UUID, body: schemas.ConsentCreate, where: str = "body"
+                         patient_id: UUID, body: schemas.ConsentCreate, where: str = ""
                          ) -> UUID:
     """One consent, without the commit: the helpers make the patient's earlier active consent of
     the same kind inactive, in the same transaction."""

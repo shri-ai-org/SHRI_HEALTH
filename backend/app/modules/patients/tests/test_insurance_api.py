@@ -274,6 +274,7 @@ def test_consent_refusals(as_user: Client, world: World) -> None:
     stranger = as_user("fd").post(base, json=consent_body(grantorRelatedPersonId=str(uuid4())))
     assert stranger.status_code == 422 and code(stranger) == "business-rule-violation"
     assert stranger.json()["errors"][0]["code"] == "invalid-reference"
+    assert pointer(stranger) == "/grantorRelatedPersonId"  # the field the screen highlights
     not_ready = as_user("fd").post(base, json=consent_body(signedFormFileId=str(uuid4())))
     assert not_ready.status_code == 422 and code(not_ready) == "file-not-ready"
     clean = uuid4()

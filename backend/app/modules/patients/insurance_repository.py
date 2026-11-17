@@ -92,13 +92,15 @@ _FILE = text("""
 SELECT 1 FROM admin.binary_object WHERE id = :id AND state = 'clean' AND purpose = :purpose
 """)
 _CONSENTS = text("""
-SELECT id, patient_id, status, ext_kind, provision_type, ext_signature_method, date_time,
-       ext_policy_version, ext_grantor_related_person_id, source_attachment_binary_object_id,
-       meta_version_id, created_at
-FROM clinical.consent
-WHERE patient_id = :patient_id AND (CAST(:id AS uuid) IS NULL OR id = :id)
-  AND (CAST(:kind AS text) IS NULL OR ext_kind = :kind)
-ORDER BY date_time DESC NULLS LAST, created_at DESC, id LIMIT :limit OFFSET :offset
+SELECT c.id, c.patient_id, c.status, c.ext_kind, c.provision_type, c.ext_signature_method,
+       c.date_time, c.ext_policy_version, c.ext_grantor_related_person_id,
+       c.source_attachment_binary_object_id, c.meta_version_id, c.created_at,
+       c.created_by_user_id, u.display_name AS recorded_by_name
+FROM clinical.consent c
+LEFT JOIN admin.app_user u ON u.id = c.created_by_user_id
+WHERE c.patient_id = :patient_id AND (CAST(:id AS uuid) IS NULL OR c.id = :id)
+  AND (CAST(:kind AS text) IS NULL OR c.ext_kind = :kind)
+ORDER BY c.date_time DESC NULLS LAST, c.created_at DESC, c.id LIMIT :limit OFFSET :offset
 """)
 
 
@@ -131,7 +133,10 @@ def _consent(row: Mapping[str, Any]) -> schemas.Consent:
         signed_at=row["date_time"], policy_version=row["ext_policy_version"],
         grantor_related_person_id=row["ext_grantor_related_person_id"],
         signed_form_file_id=row["source_attachment_binary_object_id"], status=row["status"],
-        created_at=row["created_at"])
+        created_at=row["created_at"],
+        recorded_by=schemas.StaffRef(id=row["created_by_user_id"],
+                                     display_name=row["recorded_by_name"])
+        if row.get("created_by_user_id") and row.get("recorded_by_name") else None)
 
 
 class SqlInsuranceRepository:
