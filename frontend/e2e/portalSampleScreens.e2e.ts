@@ -12,7 +12,8 @@ const HIDDEN = [
   ['/test-results', 'Test Results'],
   ['/messages/inbox', 'Messages'],
   ['/messages/compose', 'Compose'],
-  ['/prescriptions', 'Prescriptions'],
+  // The medication list reads the API (#389); the refill confirmation has no contract yet.
+  ['/prescriptions/requests/00000000-0000-4000-8000-000000000000', 'Prescription Refill Summary'],
   ['/patient-documents', 'Patient Documents'],
   ['/reports', 'Reports'],
   ['/document-templates', 'Document Template'],

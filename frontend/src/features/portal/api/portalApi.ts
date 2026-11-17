@@ -10,6 +10,7 @@ import type {
   PortalChangeRequest,
   PortalChangeRequestCreate,
   PortalDownloadUrl,
+  PortalMedication,
   PortalProblem,
   PortalProfile,
   PortalRescheduleRequest,
@@ -91,6 +92,9 @@ export interface PortalContractApi {
   listAllergies(): Promise<PortalAllergy[]>
   getAllergy(allergyId: string): Promise<PortalAllergy>
   listVitals(): Promise<PortalVital[]>
+
+  /** The patient's own medications, active first; never drafts or entered-in-error (#389). */
+  listMedications(): Promise<PortalMedication[]>
 }
 
 /**
