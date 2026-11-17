@@ -6,3 +6,6 @@ coverage/
 # Playwright (npm run e2e)
 playwright-report/
 test-results/
+# The demo audit (playwright.audit.config.ts)
+audit-report/
+audit-results/
