@@ -3778,6 +3778,15 @@ components:
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none
             is chosen.
           x-phi: clinical
+        consents:
+          type: array
+          maxItems: 20
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/PatientConsent'
+          description: 'The current consent of each kind, one entry per kind recorded (kinds never recorded are left out).
+            Read-only: consents are recorded with `POST /patients/{patientId}/consents`.'
+          x-phi: clinical
         generalPractitionerId: &idgp
           $ref: ../components/schemas/Id.yaml
           description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers`
@@ -3856,6 +3865,16 @@ components:
           description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded
             in the audit trail.'
           x-phi: identifier
+        consents:
+          type: array
+          maxItems: 10
+          description: 'Consents signed at registration (the front desk''s "treatment and privacy notice" checkbox), each
+            recorded exactly as `recordConsent` would, in the same transaction as the patient: if one is refused, nothing
+            is registered. At most one per `kind`. `grantorRelatedPersonId` can''t be used here (the patient''s related persons
+            don''t exist yet); record a consent signed by a representative afterwards with `recordConsent`.'
+          x-phi: identifier
+          items:
+            $ref: '#/components/schemas/ConsentCreate'
     PatientPatch:
       description: JSON Merge Patch for demographics. Fields left out stay unchanged; `null` clears a field; arrays are replaced
         whole. The MRN, identifiers, restriction and status are not patched.
@@ -4659,6 +4678,12 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was recorded.
           x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/StaffRef'
+          readOnly: true
+          description: The staff user who recorded it (their user ID, usually the front desk), from the session (never the
+            body). Read-only.
+          x-phi: none
     ConsentCreate:
       description: Body to record a consent.
       type: object
@@ -4692,6 +4717,39 @@ components:
         nextCursor:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    StaffRef:
+      description: A staff member, for display.
+      type: object
+      required:
+      - id
+      - displayName
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    PatientConsent:
+      description: 'The current consent of one kind: the latest `active` consent of that kind (`GET /patients/{patientId}/consents`
+        has the full history).'
+      type: object
+      required:
+      - kind
+      - decision
+      - signedAt
+      properties:
+        kind: *id058
+        decision: *id059
+        signedAt: *id061
+        policyVersion: *id062
+        recordedBy:
+          $ref: '#/components/schemas/StaffRef'
+          description: The staff user who recorded it (their user ID).
           x-phi: none
     PreferredPharmacySet:
       description: Body to set the preferred pharmacy.

@@ -45,7 +45,9 @@ export const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_
 export const SAMPLE_ONLY_PATHS = [
   '/test-results',
   '/messages',
-  '/prescriptions',
+  // The medication list reads the API (listPortalMedications, #389); refill requests have no
+  // contract yet, so their confirmation page stays hidden.
+  '/prescriptions/requests',
   '/patient-documents',
   '/reports',
   '/document-templates',

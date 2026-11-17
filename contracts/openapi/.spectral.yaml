@@ -63,11 +63,12 @@ rules:
   # OWASP's rule uses the JSONPath "$..parameters[?(@.in.match(...))]", which also visits schema
   # properties named "in" (our Problem FieldError.in, API_STANDARDS §9.1) and crashes Spectral.
   # Same check and message on real parameter lists, in rules/noCredentialsInUrl.js, with one exception:
-  # the one-time download token of GET /files/{fileId}/content (D105), allowed only while that operation
-  # needs the session cookie and sends Referrer-Policy: no-referrer. Tested in tests/no-credentials-in-url.test.mjs.
+  # the one-time download token of GET /files/{fileId}/content and GET /portal/me/files/{fileId}/content (D105),
+  # allowed only while that operation needs its own session cookie (staff or portal) and sends
+  # Referrer-Policy: no-referrer. Tested in tests/no-credentials-in-url.test.mjs.
   owasp:api2:2023-no-credentials-in-url:
     message: "{{error}}"
-    description: URL parameters must not contain credentials such as API keys, passwords or secrets (OWASP API2:2023; same check as the OWASP ruleset, real parameter lists only, one documented exception for D105).
+    description: URL parameters must not contain credentials such as API keys, passwords or secrets (OWASP API2:2023; same check as the OWASP ruleset, real parameter lists only, one documented exception for D105, on the staff and portal file downloads).
     severity: error
     formats: [oas3]
     given: "$"

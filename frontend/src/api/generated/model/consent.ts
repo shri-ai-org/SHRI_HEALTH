@@ -19,6 +19,7 @@ import type { ConsentKind } from './consentKind';
 import type { ConsentSignatureMethod } from './consentSignatureMethod';
 import type { ConsentStatus } from './consentStatus';
 import type { Id } from './id';
+import type { StaffRef } from './staffRef';
 import type { Timestamp } from './timestamp';
 
 /**
@@ -50,4 +51,6 @@ export interface Consent {
   status: ConsentStatus;
   /** When it was recorded. */
   createdAt: Timestamp;
+  /** The staff user who recorded it (their user ID, usually the front desk), from the session (never the body). Read-only. */
+  readonly recordedBy?: StaffRef;
 }

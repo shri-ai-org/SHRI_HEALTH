@@ -494,6 +494,18 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
   /portal/me/vitals:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
+  /portal/me/lab-results:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1lab-results'
+  /portal/me/messages:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1messages'
+  /portal/me/messages/{threadId}:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1messages~1{threadId}'
+  /portal/me/messages/{threadId}/replies:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1messages~1{threadId}~1replies'
+  /portal/me/record-download-url:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1record-download-url'
+  /portal/me/files/{fileId}/content:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1files~1{fileId}~1content'
   /portal/practices/{practiceLinkId}/pre-registrations:
     $ref: 'modules/portal.yaml#/paths/~1portal~1practices~1{practiceLinkId}~1pre-registrations'
   /portal/bot-challenge:

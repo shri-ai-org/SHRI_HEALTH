@@ -27,6 +27,7 @@ from app.modules.ai.repository import (
 from app.modules.ai.schemas import (
     NOTE_DRAFT_PROMPT,
     AIDraftIn,
+    AiGeneratedBy,
     AiSuggestion,
     DraftWritten,
     NoteDraftRequest,
@@ -72,6 +73,8 @@ class FakeAIRepository:
     suggestions: dict[UUID, SuggestionRecord] = field(default_factory=dict)
     targets: dict[UUID, UUID] = field(default_factory=dict)
     decisions: dict[UUID, AIDecision] = field(default_factory=dict)
+    #: Who asked for each suggestion (its request's user); None when not set.
+    requested_by: dict[UUID, UUID] = field(default_factory=dict)
     reads: int = 0
     usage: list[Usage] = field(default_factory=list)
 
@@ -129,10 +132,22 @@ class FakeAIRepository:
         decision = self.decisions.get(suggestion_id, AIDecision.PENDING)
         return SuggestionHead(suggestion_id, rec.feature.value, rec.target_resource_type,
                               self.targets.get(suggestion_id), rec.patient_id,
-                              rec.encounter_id, rec.content, decision.value, None)
+                              rec.encounter_id, rec.content, decision.value,
+                              self.requested_by.get(suggestion_id))
 
     async def suggestion_views(self, db: AsyncSession, ids: Any) -> dict[UUID, AiSuggestion]:
         return {}
+
+    async def siblings(self, db: AsyncSession, suggestion_id: UUID, target_resource_type: str
+                       ) -> list[SuggestionHead]:
+        rec = self.suggestions.get(suggestion_id)
+        if rec is None:
+            return []
+        found = [await self.suggestion(db, i) for i, other in self.suggestions.items()
+                 if other.request_id == rec.request_id
+                 and other.target_resource_type == target_resource_type]
+        return sorted((h for h in found if h is not None),
+                      key=lambda h: int(h.content.get("sequence", 0)))
 
     async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState:
         return SettingsState(self.clinic_on, NOW, {
@@ -148,7 +163,9 @@ class FakeAIRepository:
         return None
 
     async def generation(self, db: AsyncSession, suggestion_id: UUID) -> Any:
-        return None
+        if suggestion_id not in self.suggestions:
+            return None
+        return AiGeneratedBy(model_name="stub", pipeline_version="gateway/2"), NOW
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]:
         return list(self.usage)

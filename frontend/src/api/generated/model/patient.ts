@@ -23,6 +23,7 @@ import type { Email } from './email';
 import type { Employer } from './employer';
 import type { HumanName } from './humanName';
 import type { Id } from './id';
+import type { PatientConsent } from './patientConsent';
 import type { PatientIdentifier } from './patientIdentifier';
 import type { PatientMaritalStatus } from './patientMaritalStatus';
 import type { PharmacyRef } from './pharmacyRef';
@@ -102,6 +103,11 @@ export interface Patient {
   identifiers?: PatientIdentifier[];
   /** Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen. */
   preferredPharmacy?: PharmacyRef;
+  /**
+     * The current consent of each kind, one entry per kind recorded (kinds never recorded are left out). Read-only: consents are recorded with `POST /patients/{patientId}/consents`.
+     * @maxItems 20
+     */
+  readonly consents?: readonly PatientConsent[];
   /** The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers` (D49). Absent when none is chosen. */
   generalPractitionerId?: Id;
   /** True when the chart is restricted (sensitive or VIP); opening it needs break-glass unless the user is on the care team (D37). */

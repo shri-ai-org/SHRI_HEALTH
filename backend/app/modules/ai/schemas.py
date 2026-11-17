@@ -409,3 +409,54 @@ class Differential(Out):
     ai_generated: Literal[True] = True
     generated_by: AiGeneratedBy
     created_at: datetime
+
+
+class VisitSummaryCreate(Closed):
+    encounter_id: UUID
+
+
+class VisitSummary(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID
+    statements: list[ChartAnswerStatement]
+    insufficient_evidence: bool
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime
+
+
+class CodingSuggestionCreate(Closed):
+    encounter_id: UUID
+
+
+class SuggestedCode(Out):
+    id: UUID
+    sequence: int
+    system: Literal["http://hl7.org/fhir/sid/icd-10-cm"] = "http://hl7.org/fhir/sid/icd-10-cm"
+    code: str
+    display: str
+    rationale: str
+    confidence: Literal["low", "medium"]
+    sources: list[AiSourceLink]
+    decision: Literal["pending", "accepted", "rejected"]
+    decided_at: datetime | None = None
+    decided_by: ClinicianRef | None = None
+    rejection_reason: str | None = None
+    diagnosis_id: UUID | None = None
+
+
+class CodingSuggestion(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID
+    codes: list[SuggestedCode]
+    insufficient_evidence: bool
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime
+
+
+class SuggestedCodeDecision(Closed):
+    decision: Literal["accepted", "rejected"]
+    reason: Annotated[str, StringConstraints(min_length=1, max_length=500)] | None = None

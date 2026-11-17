@@ -16,6 +16,7 @@ import {
   listPortalBookingFacilities,
   listPortalBookingProviders,
   listPortalBookingSlots,
+  listPortalMedications,
   listPortalProblems,
   listPortalVisitSummaries,
   listPortalVitals,
@@ -88,6 +89,8 @@ export function createHttpPortalApi(later: PortalLaterApi): PortalApi {
     listAllergies: () => allPages((cursor) => ok(listPortalAllergies(page(cursor)), 200)),
     getAllergy: (id) => ok(getPortalAllergy(id), 200),
     listVitals: () => allPages((cursor) => ok(listPortalVitals(page(cursor)), 200)),
+
+    listMedications: () => allPages((cursor) => ok(listPortalMedications(page(cursor)), 200)),
   }
   return { ...later, ...contract }
 }

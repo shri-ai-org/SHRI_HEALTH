@@ -19,9 +19,12 @@ import type {
   BookPortalAppointmentHeaders,
   BotChallenge,
   ConflictResponse,
+  CreatePortalMessageHeaders,
+  DownloadPortalFileContentParams,
   EnrollInPortalHeaders,
   EnrollmentRequest,
   ForbiddenResponse,
+  GetPortalRecordDownloadUrlParams,
   Id,
   InternalErrorResponse,
   ListPortalAllergiesParams,
@@ -31,7 +34,9 @@ import type {
   ListPortalBookingProvidersParams,
   ListPortalBookingSlotsParams,
   ListPortalChangeRequestsParams,
+  ListPortalLabResultsParams,
   ListPortalMedicationsParams,
+  ListPortalMessageThreadsParams,
   ListPortalProblemsParams,
   ListPortalVisitSummariesParams,
   ListPortalVitalsParams,
@@ -49,7 +54,12 @@ import type {
   PortalChangeRequestCreate,
   PortalChangeRequestList,
   PortalDownloadUrl,
+  PortalLabResultList,
   PortalMedicationList,
+  PortalMessageCreate,
+  PortalMessageReply,
+  PortalMessageThread,
+  PortalMessageThreadList,
   PortalProblem,
   PortalProblemList,
   PortalProfile,
@@ -60,6 +70,7 @@ import type {
   PortalVisitSummaryList,
   PortalVitalList,
   PreRegistrationCreate,
+  ReplyToPortalMessageThreadHeaders,
   RequestPortalChangeHeaders,
   ReschedulePortalAppointmentHeaders,
   ServiceUnavailableResponse,
@@ -1575,7 +1586,7 @@ export const getGetPortalVisitSummaryDownloadUrlUrl = (visitSummaryId: Id,) => {
 }
 
 /**
- * A short-lived link to the PDF (the file service). A held summary has no link (D86).
+ * A one-time link to the PDF (D105): it points at `GET /portal/me/files/{fileId}/content`, for this patient's portal session only, valid for about one minute and accepted once. A held summary has no link (D86).
  * @summary Get a visit summary's download link
  */
 export const getPortalVisitSummaryDownloadUrl = async (visitSummaryId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPortalVisitSummaryDownloadUrlResponse> => {
@@ -2017,6 +2028,568 @@ export const getListPortalVitalsUrl = (params?: ListPortalVitalsParams,) => {
 export const listPortalVitals = async (params?: ListPortalVitalsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPortalVitalsResponse> => {
 
   return apiFetch<listPortalVitalsResponse>(getListPortalVitalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listPortalLabResultsResponse200 = {
+  data: PortalLabResultList
+  status: 200
+}
+
+export type listPortalLabResultsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPortalLabResultsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPortalLabResultsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPortalLabResultsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPortalLabResultsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPortalLabResultsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPortalLabResultsResponseSuccess = (listPortalLabResultsResponse200) & {
+  headers: Headers;
+};
+export type listPortalLabResultsResponseError = (listPortalLabResultsResponse400 | listPortalLabResultsResponse401 | listPortalLabResultsResponse403 | listPortalLabResultsResponse422 | listPortalLabResultsResponse429 | listPortalLabResultsResponse500) & {
+  headers: Headers;
+};
+
+export type listPortalLabResultsResponse = (listPortalLabResultsResponseSuccess | listPortalLabResultsResponseError)
+
+export const getListPortalLabResultsUrl = (params?: ListPortalLabResultsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/lab-results?${stringifiedParams}` : `/portal/me/lab-results`
+}
+
+/**
+ * The patient's lab reports (FHIR `DiagnosticReport`, category `LAB`, with their analytes), newest first. Only final, amended, corrected and appended reports, as the staff read: registered, partial and preliminary ones never appear while Q32 is open, nor cancelled or entered-in-error ones (D24). Released at once (D86). A clinician may hold a report from the portal for one of two reasons only (D90): a risk of harm, or the patient's own request to wait; a held report is listed with `releaseStatus: held` and its `id` only, with no content and never the reason. No prescriber-only notes.
+ * @summary List my lab results
+ */
+export const listPortalLabResults = async (params?: ListPortalLabResultsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPortalLabResultsResponse> => {
+
+  return apiFetch<listPortalLabResultsResponse>(getListPortalLabResultsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listPortalMessageThreadsResponse200 = {
+  data: PortalMessageThreadList
+  status: 200
+}
+
+export type listPortalMessageThreadsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPortalMessageThreadsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPortalMessageThreadsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPortalMessageThreadsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPortalMessageThreadsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPortalMessageThreadsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPortalMessageThreadsResponseSuccess = (listPortalMessageThreadsResponse200) & {
+  headers: Headers;
+};
+export type listPortalMessageThreadsResponseError = (listPortalMessageThreadsResponse400 | listPortalMessageThreadsResponse401 | listPortalMessageThreadsResponse403 | listPortalMessageThreadsResponse422 | listPortalMessageThreadsResponse429 | listPortalMessageThreadsResponse500) & {
+  headers: Headers;
+};
+
+export type listPortalMessageThreadsResponse = (listPortalMessageThreadsResponseSuccess | listPortalMessageThreadsResponseError)
+
+export const getListPortalMessageThreadsUrl = (params?: ListPortalMessageThreadsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/messages?${stringifiedParams}` : `/portal/me/messages`
+}
+
+/**
+ * The patient's message threads with the practice, most recent activity first. A thread is a `patient-message` inbox item (D77); the list carries no message text, which `GET /portal/me/messages/{threadId}` returns.
+ * @summary List my messages
+ */
+export const listPortalMessageThreads = async (params?: ListPortalMessageThreadsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPortalMessageThreadsResponse> => {
+
+  return apiFetch<listPortalMessageThreadsResponse>(getListPortalMessageThreadsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createPortalMessageResponse201 = {
+  data: PortalMessageThread
+  status: 201
+}
+
+export type createPortalMessageResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createPortalMessageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createPortalMessageResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createPortalMessageResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createPortalMessageResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createPortalMessageResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createPortalMessageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createPortalMessageResponseSuccess = (createPortalMessageResponse201) & {
+  headers: Headers;
+};
+export type createPortalMessageResponseError = (createPortalMessageResponse400 | createPortalMessageResponse401 | createPortalMessageResponse403 | createPortalMessageResponse409 | createPortalMessageResponse422 | createPortalMessageResponse429 | createPortalMessageResponse500) & {
+  headers: Headers;
+};
+
+export type createPortalMessageResponse = (createPortalMessageResponseSuccess | createPortalMessageResponseError)
+
+export const getCreatePortalMessageUrl = () => {
+
+
+
+
+  return `/portal/me/messages`
+}
+
+/**
+ * Starts a thread with the practice: a `patient-message` inbox item (D77) with the subject as its title, the message as its body and the session's patient, routed by the inbox service to the practice's queue for patient messages (a role at the patient's facility); staff reassign it like any item. Staff answer with `POST /inbox/{inboxItemId}/replies` and `toPatient: true`; only those replies reach the portal. Raises `inbox.item-assigned`. Notifications outside the app, to staff or to the patient, never carry the subject or the text: only "You have a new item in Shri Health" (D81).
+ * @summary Send a message to the practice
+ */
+export const createPortalMessage = async (portalMessageCreate: PortalMessageCreate,
+    headers?: CreatePortalMessageHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createPortalMessageResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createPortalMessageResponse>(getCreatePortalMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMessageCreate)
+  }
+);}
+
+
+export type getPortalMessageThreadResponse200 = {
+  data: PortalMessageThread
+  status: 200
+}
+
+export type getPortalMessageThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPortalMessageThreadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPortalMessageThreadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPortalMessageThreadResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPortalMessageThreadResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPortalMessageThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPortalMessageThreadResponseSuccess = (getPortalMessageThreadResponse200) & {
+  headers: Headers;
+};
+export type getPortalMessageThreadResponseError = (getPortalMessageThreadResponse401 | getPortalMessageThreadResponse403 | getPortalMessageThreadResponse404 | getPortalMessageThreadResponse422 | getPortalMessageThreadResponse429 | getPortalMessageThreadResponse500) & {
+  headers: Headers;
+};
+
+export type getPortalMessageThreadResponse = (getPortalMessageThreadResponseSuccess | getPortalMessageThreadResponseError)
+
+export const getGetPortalMessageThreadUrl = (threadId: Id,) => {
+
+
+
+
+  return `/portal/me/messages/${threadId}`
+}
+
+/**
+ * One thread with its messages, oldest first: the patient's own messages and the staff replies sent with `toPatient: true`. Staff-only replies, assignments, status changes and the names of who holds the item never appear.
+ * @summary Get one message thread
+ */
+export const getPortalMessageThread = async (threadId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getPortalMessageThreadResponse> => {
+
+  return apiFetch<getPortalMessageThreadResponse>(getGetPortalMessageThreadUrl(threadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type replyToPortalMessageThreadResponse200 = {
+  data: PortalMessageThread
+  status: 200
+}
+
+export type replyToPortalMessageThreadResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type replyToPortalMessageThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type replyToPortalMessageThreadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type replyToPortalMessageThreadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type replyToPortalMessageThreadResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type replyToPortalMessageThreadResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type replyToPortalMessageThreadResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type replyToPortalMessageThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type replyToPortalMessageThreadResponseSuccess = (replyToPortalMessageThreadResponse200) & {
+  headers: Headers;
+};
+export type replyToPortalMessageThreadResponseError = (replyToPortalMessageThreadResponse400 | replyToPortalMessageThreadResponse401 | replyToPortalMessageThreadResponse403 | replyToPortalMessageThreadResponse404 | replyToPortalMessageThreadResponse409 | replyToPortalMessageThreadResponse422 | replyToPortalMessageThreadResponse429 | replyToPortalMessageThreadResponse500) & {
+  headers: Headers;
+};
+
+export type replyToPortalMessageThreadResponse = (replyToPortalMessageThreadResponseSuccess | replyToPortalMessageThreadResponseError)
+
+export const getReplyToPortalMessageThreadUrl = (threadId: Id,) => {
+
+
+
+
+  return `/portal/me/messages/${threadId}/replies`
+}
+
+/**
+ * Adds the patient's reply to an open thread: a comment on the `patient-message` inbox item, which stays with its assignee, who gets `inbox.item-assigned`. A closed thread (the practice completed or cancelled the item) takes no replies: the patient starts a new message. Notifications outside the app never carry the text (D81).
+ * @summary Reply in a message thread
+ */
+export const replyToPortalMessageThread = async (threadId: Id,
+    portalMessageReply: PortalMessageReply,
+    headers?: ReplyToPortalMessageThreadHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<replyToPortalMessageThreadResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<replyToPortalMessageThreadResponse>(getReplyToPortalMessageThreadUrl(threadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMessageReply)
+  }
+);}
+
+
+export type getPortalRecordDownloadUrlResponse200 = {
+  data: PortalDownloadUrl
+  status: 200
+}
+
+export type getPortalRecordDownloadUrlResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPortalRecordDownloadUrlResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPortalRecordDownloadUrlResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPortalRecordDownloadUrlResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPortalRecordDownloadUrlResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPortalRecordDownloadUrlResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type getPortalRecordDownloadUrlResponseSuccess = (getPortalRecordDownloadUrlResponse200) & {
+  headers: Headers;
+};
+export type getPortalRecordDownloadUrlResponseError = (getPortalRecordDownloadUrlResponse401 | getPortalRecordDownloadUrlResponse403 | getPortalRecordDownloadUrlResponse422 | getPortalRecordDownloadUrlResponse429 | getPortalRecordDownloadUrlResponse500 | getPortalRecordDownloadUrlResponse503) & {
+  headers: Headers;
+};
+
+export type getPortalRecordDownloadUrlResponse = (getPortalRecordDownloadUrlResponseSuccess | getPortalRecordDownloadUrlResponseError)
+
+export const getGetPortalRecordDownloadUrlUrl = (params: GetPortalRecordDownloadUrlParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/record-download-url?${stringifiedParams}` : `/portal/me/record-download-url`
+}
+
+/**
+ * "My records": builds the patient's own record as a PDF (`pdf`) or a FHIR R4 `Bundle` of type `collection` in JSON (`fhir-r4`, the US Core resources the portal shows), and returns a one-time link to it (D105). It holds what the portal shows and nothing more: released items only (D86); held items, drafts, entered-in-error records and psychotherapy notes are left out (D90). The link points at `GET /portal/me/files/{fileId}/content`, for this patient's portal session only, valid for about one minute and accepted once.
+ * @summary Download my health record
+ */
+export const getPortalRecordDownloadUrl = async (params: GetPortalRecordDownloadUrlParams, options?: Parameters<typeof apiFetch>[1]): Promise<getPortalRecordDownloadUrlResponse> => {
+
+  return apiFetch<getPortalRecordDownloadUrlResponse>(getGetPortalRecordDownloadUrlUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type downloadPortalFileContentResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type downloadPortalFileContentResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type downloadPortalFileContentResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type downloadPortalFileContentResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type downloadPortalFileContentResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type downloadPortalFileContentResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type downloadPortalFileContentResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type downloadPortalFileContentResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type downloadPortalFileContentResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type downloadPortalFileContentResponseSuccess = (downloadPortalFileContentResponse200) & {
+  headers: Headers;
+};
+export type downloadPortalFileContentResponseError = (downloadPortalFileContentResponse401 | downloadPortalFileContentResponse403 | downloadPortalFileContentResponse404 | downloadPortalFileContentResponse409 | downloadPortalFileContentResponse422 | downloadPortalFileContentResponse429 | downloadPortalFileContentResponse500 | downloadPortalFileContentResponse503) & {
+  headers: Headers;
+};
+
+export type downloadPortalFileContentResponse = (downloadPortalFileContentResponseSuccess | downloadPortalFileContentResponseError)
+
+export const getDownloadPortalFileContentUrl = (fileId: Id,
+    params: DownloadPortalFileContentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/files/${fileId}/content?${stringifiedParams}` : `/portal/me/files/${fileId}/content`
+}
+
+/**
+ * Where a portal download link points (D105, for a patient session): our own API, never the object store, because files are encrypted at rest. The token was issued, with the release and own-record checks, by the portal operation that gave out the link (`GET /portal/me/visit-summaries/{visitSummaryId}/download-url` or `GET /portal/me/record-download-url`). **The token is not enough on its own:** the request must also carry the portal session of the same patient it was issued to (the browser sends the portal session cookie with the link). Core signs and checks the token: for this portal session's patient and this file, not expired (about one minute) and not used: it is accepted once. A staff token never works here, and a portal token never works on `GET /files/{fileId}/content`. **Every invalid, expired, reused, other-patient or other-file token gets the same `404`**, as does a file that isn't the session patient's (D84), so neither can be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, with the patient from the session. The token is one of the two query parameters the credentials-in-URL lint rule allows, each only on its own download operation (this one and `downloadFileContent`; CONTRACT_GOVERNANCE §5).
+ * @summary Download one of my files
+ */
+export const downloadPortalFileContent = async (fileId: Id,
+    params: DownloadPortalFileContentParams, options?: Parameters<typeof apiFetch>[1]): Promise<downloadPortalFileContentResponse> => {
+
+  return apiFetch<downloadPortalFileContentResponse>(getDownloadPortalFileContentUrl(fileId,params),
   {
     ...options,
     method: 'GET'
