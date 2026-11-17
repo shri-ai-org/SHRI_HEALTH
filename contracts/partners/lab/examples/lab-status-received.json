@@ -1,0 +1,9 @@
+{
+  "messageType": "LabOrderStatus",
+  "schemaVersion": "1.0",
+  "correlationId": "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f",
+  "responseId": "SIM-LAB-000301",
+  "respondedAt": "2026-11-20T15:31:09Z",
+  "status": "received",
+  "fillerOrderNumber": "SIM-L-000417"
+}

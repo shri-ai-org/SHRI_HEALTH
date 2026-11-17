@@ -2,7 +2,7 @@
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from './components/Button'
 export { DataTable, type Column, type DataTableProps } from './components/DataTable'
 export { Field, type FieldProps } from './components/Field'
-export { Alert, Badge, EmptyState, ErrorState, Spinner, type AlertTone, type BadgeTone } from './components/feedback'
+export { Alert, Badge, EmptyState, ErrorState, Spinner, WorkInProgress, type AlertTone, type BadgeTone } from './components/feedback'
 export {
   DateInput,
   isOverLimit,

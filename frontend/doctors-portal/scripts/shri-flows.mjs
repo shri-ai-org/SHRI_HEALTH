@@ -695,7 +695,7 @@ const FLOWS = [
       await page.open('/patient/ISH-0044051/appointments')
       expect(await page.evaluate(`!!document.querySelector('[data-screen-id="S-06-17"]')`), 'S-06-17 is drawn')
       const text = await page.evaluate(`document.querySelector('[role="tabpanel"]').textContent`)
-      for (const t of ['Next appointment', 'Repeat chest X-ray', 'Earlier visits'])
+      for (const t of ['Next appointment', 'Repeat chest X-ray', 'Previous Visits'])
         expect(text.includes(t), `the appointments show "${t}"`)
       const tab = await page.evaluate(`document.querySelector('#record-tab-appointments').textContent`)
       const rows = await page.evaluate(`document.querySelectorAll('[role="tabpanel"] li').length`)

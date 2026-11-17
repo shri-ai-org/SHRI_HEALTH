@@ -274,12 +274,12 @@ export const PATIENTS: Patient[] = [
     weightKg: 70,
   },
 
-  // ── The CT patients. Each stands behind one real, de-identified CQ500 head
-  //    CT (scripts/ncct-import.mjs), and each story is chosen to fit that
+  // ── The CT patients. Sample patients, each with an imported head
+  //    CT in sample mode only (ncct.generated.ts), and each story is chosen to fit that
   //    study's own ground-truth labels — so the words never contradict the
   //    pixels.
   {
-    /** CQ500-CT-61 · SDH + mass effect + midline shift. Seen today three weeks after evacuation. */
+    /** Sample patient · SDH + mass effect + midline shift. Seen today three weeks after evacuation. */
     id: 'SD-P-11',
     name: 'Selvi Murugan',
     nameNative: 'செல்வி முருகன்',
@@ -297,7 +297,7 @@ export const PATIENTS: Patient[] = [
     weightKg: 52,
   },
   {
-    /** CQ500-CT-10 · ICH + IPH. A small deep bleed, blood-pressure pathway. */
+    /** Sample patient · ICH + IPH. A small deep bleed, blood-pressure pathway. */
     id: 'SD-P-12',
     name: 'Kumar Subramanian',
     nameNative: 'குமார் சுப்பிரமணியன்',
@@ -316,7 +316,7 @@ export const PATIENTS: Patient[] = [
     weightKg: 81,
   },
   {
-    /** CQ500-CT-366 · mass effect + midline shift, no blood. A late, large infarct. */
+    /** Sample patient · mass effect + midline shift, no blood. A late, large infarct. */
     id: 'SD-P-13',
     name: 'Priya Raman',
     nameNative: 'பிரியா ராமன்',
@@ -335,7 +335,7 @@ export const PATIENTS: Patient[] = [
     weightKg: 63,
   },
   {
-    /** CQ500-CT-48 · IPH + IVH + SAH + mass effect + shift. The anticoagulated bleed. */
+    /** Sample patient · IPH + IVH + SAH + mass effect + shift. The anticoagulated bleed. */
     id: 'SD-P-14',
     name: 'Santhosh Babu',
     nameNative: 'சந்தோஷ் பாபு',
@@ -353,7 +353,7 @@ export const PATIENTS: Patient[] = [
     weightKg: 70,
   },
   {
-    /** CQ500-CT-25 · normal. The reassuring scan. */
+    /** Sample patient · normal. The reassuring scan. */
     id: 'SD-P-15',
     name: 'Lakshmi Narayanan',
     nameNative: 'லக்ஷ்மி நாராயணன்',
@@ -371,7 +371,7 @@ export const PATIENTS: Patient[] = [
     weightKg: 60,
   },
   {
-    /** CQ500-CT-50 · normal. A partial thin series — 8 images. */
+    /** Sample patient · normal. A partial thin series — 8 images. */
     id: 'SD-P-16',
     name: 'Rahul Verma',
     nameNative: 'राहुल वर्मा',

@@ -10,6 +10,9 @@ import { imageFor, ncctFor, type ImagingStudy } from '@/data/imaging'
 import { framePath, type ImageSeries } from '@/data/imaging.generated'
 import { NCCT_WINDOW, slicePath, type NcctStudy } from '@/data/ncct.generated'
 
+// SHRI_HEALTH: a real-API build carries no imported scan or its dataset's credit (vite.config.ts, D12, D75).
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
 /** What the viewer needs to know about a series, whatever its modality. */
 export interface SeriesView {
   /** Changes when a different series is handed in — the viewer starts afresh. */
@@ -46,7 +49,7 @@ export function ncctView(study: NcctStudy): SeriesView {
     alt: (n) => `Axial non-contrast CT, slice ${n} of ${study.slices}`,
     topLeft: ['NCCT head · axial', study.seriesDescription],
     topRight: [`${study.sliceThickness} mm · ${study.kvp} kV`, `W ${NCCT_WINDOW.width} : L ${NCCT_WINDOW.level}`],
-    credit: 'Image: CQ500 (qure.ai), de-identified · CC BY-NC-SA 4.0',
+    credit: REAL_API ? 'Image: imported sample image' : 'Image: CQ500 (qure.ai), de-identified · CC BY-NC-SA 4.0',
   }
 }
 

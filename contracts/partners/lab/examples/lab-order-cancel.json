@@ -1,0 +1,9 @@
+{
+  "messageType": "LabOrder",
+  "schemaVersion": "1.0",
+  "orderControl": "CA",
+  "correlationId": "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f",
+  "createdAt": "2026-11-20T15:40:00Z",
+  "fillerOrderNumber": "SIM-L-000417",
+  "cancelReason": "Ordered on the wrong visit."
+}

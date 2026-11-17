@@ -162,13 +162,13 @@ function Appointments({ patient: p }: { patient: Patient }) {
         titleSize="sm"
         title={
           <span className="inline-flex items-center gap-[10px]">
-            Earlier visits
+            Previous Visits
             <CountBubble className="bg-sh-control">{past.length}</CountBubble>
           </span>
         }
       >
         {past.length === 0 ? (
-          <EmptyState icon={History} why="No earlier visits are on this record — this is the first." />
+          <EmptyState icon={History} why="No previous visits are on this record — this is the first." />
         ) : (
           <ul className="flex flex-col">
             {past.map((a, i) => (
