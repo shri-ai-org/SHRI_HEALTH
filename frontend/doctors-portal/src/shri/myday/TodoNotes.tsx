@@ -47,21 +47,6 @@ export function TodoNotes({ className }: { className?: string }) {
     toast({ tone: 'info', title: 'To-do note deleted', detail: `“${preview(n.body)}”` })
   }
 
-  // With the API: the card without its mic and + (nothing could be saved), no sample notes (gap 63).
-  if (REAL_API) {
-    return (
-      <Card className={className} aria-labelledby="sh-todo-title">
-        <header className="mb-[14px] flex min-h-[34px] items-center gap-[10px]">
-          <h2 id="sh-todo-title" className="text-[19px]/[1.2] font-medium tracking-[-0.012em] text-sh-text">
-            To-do
-          </h2>
-        </header>
-        {/* The sample's quiet empty line, in place of a large empty card. */}
-        <p className="text-[14px] text-sh-text-2">Nothing noted yet. Reminders can't be saved here yet.</p>
-      </Card>
-    )
-  }
-
   return (
     <Card className={cn('pb-[80px]', className)} aria-labelledby="sh-todo-title">
       <header className="mb-[14px] flex min-h-[34px] items-center gap-[10px]">
@@ -85,6 +70,8 @@ export function TodoNotes({ className }: { className?: string }) {
         </div>
       </header>
 
+      {/* With the API there is no server-side store for to-dos yet: they stay in this browser (demo, synthetic data only). */}
+      {REAL_API && <p className="-mt-[6px] mb-[10px] text-[12px] text-sh-text-3">Kept in this browser only.</p>}
       {ordered.length === 0 ? (
         <p className="text-[14px] text-sh-text-2">Nothing noted for today yet. Use the mic, or + to type.</p>
       ) : (

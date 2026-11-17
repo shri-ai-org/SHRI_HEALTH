@@ -10,7 +10,7 @@
  */
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronRight, Search } from 'lucide-react'
+import { ChevronRight, Mic, Search, Square } from 'lucide-react'
 import { useId, useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -20,10 +20,11 @@ import { usePatientMatches } from '../../../shri-health/search'
 import { P } from '../app/paths'
 import { cn } from '../lib/cn'
 import { initials } from '../lib/initials'
+import { useSpokenSearch } from '../logic/spokenSearch'
 import { useShri } from '../state/store'
 import { useModalFrame } from '../ui/frames'
 import { useFocusTrap } from '../ui/hooks'
-import { Avatar, Icon } from '../ui/primitives'
+import { Avatar, Icon, RoundButton } from '../ui/primitives'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
@@ -40,6 +41,11 @@ function Palette() {
   const listId = useId()
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
+  // The mic writes the spoken words into the box (the notes' recorder: listens until Stop, pauses when the tab is hidden).
+  const voice = useSpokenSearch((spoken) => {
+    setQ(spoken)
+    setActive(0)
+  })
 
   const typed = q.trim() !== ''
   const rows = usePatientMatches(q)
@@ -79,6 +85,7 @@ function Palette() {
           <input
             value={q}
             onChange={(e) => {
+              if (voice.listening) voice.stop()
               setQ(e.target.value)
               setActive(0)
             }}
@@ -95,9 +102,25 @@ function Palette() {
             placeholder={REAL_API ? 'Search patients' : 'R. Lakshmanan · ISH-0044051'}
             autoComplete="off"
             spellCheck={false}
-            className="h-[52px] w-full rounded-full bg-sh-control pl-[48px] pr-[18px] text-[14px] text-sh-text placeholder:text-sh-muted"
+            className={cn('h-[52px] w-full rounded-full bg-sh-control pl-[48px] text-[14px] text-sh-text placeholder:text-sh-muted', voice.available ? 'pr-[60px]' : 'pr-[18px]')}
           />
+          {voice.available && (
+            <RoundButton
+              icon={voice.listening ? Square : Mic}
+              size={40}
+              variant={voice.listening ? 'accent' : 'ghost'}
+              label={voice.listening ? 'Stop dictating the search' : 'Say the patient\'s name or MRN'}
+              aria-pressed={voice.listening}
+              onClick={voice.toggle}
+              className="absolute right-[6px] top-1/2 -translate-y-1/2"
+            />
+          )}
         </div>
+        {voice.notice && voice.available && (
+          <p role="status" className="mt-[8px] px-[12px] text-[12px] text-sh-text-2">
+            {voice.notice}
+          </p>
+        )}
 
         <p id={`${listId}-hint`} className="mt-[10px] px-[12px] text-[12px] text-sh-text-3">
           {REAL_API ? 'Name, MRN, phone or date of birth' : 'Name or UHID'} · type / from anywhere
