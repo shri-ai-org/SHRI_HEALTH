@@ -56,7 +56,9 @@ jobs:
           echo "AUDIT_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Build and start the stack (deploy.sh up)
-        run: infra/deploy/deploy.sh up "$AUDIT_DIR/deploy.env" 2>&1 | tee "$AUDIT_DIR/out/up.log"
+        run: |
+          set -o pipefail  # a failed up fails the job, not tee's exit code
+          infra/deploy/deploy.sh up "$AUDIT_DIR/deploy.env" 2>&1 | tee "$AUDIT_DIR/out/up.log"
 
       - name: Demo reset (the seed, Linda Thompson included)
         run: |
