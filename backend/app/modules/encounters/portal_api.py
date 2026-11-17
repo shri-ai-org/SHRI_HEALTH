@@ -6,10 +6,8 @@ portal session (in development and test, the ``X-Dev-Patient`` stand-in, D108), 
 ``portal_db`` reads as ``shri_portal`` with the session's patient set (D93). Core writes the
 ``phi-read`` audit rows with the patient from the session.
 
-**Not built:** ``getPortalVisitSummaryDownloadUrl`` (#280). The summary's PDF is Anand's
-(#157, not merged), and a download link for a patient needs a portal content route and
-download tokens bound to a patient session (D105 binds them to a staff user), which core and
-the file service don't have yet.
+``getPortalVisitSummaryDownloadUrl`` (#280) links to the portal's decrypting route
+(``downloadPortalFileContent``, Anand's #416) with core's portal download token (#409).
 """
 
 from typing import Annotated
@@ -19,6 +17,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import PortalPatient, portal_db, require_patient
+from app.core.download_tokens import PortalDownloadTokens, portal_download_tokens
 
 from . import portal_schemas as ps
 from . import portal_service
@@ -53,3 +52,14 @@ async def get_portal_visit_summary(
     summary_id: Annotated[UUID, Path(alias="visitSummaryId")], db: DB, reads: Reads,
 ) -> ps.PortalVisitSummary:
     return await portal_service.one(db, reads, patient, summary_id)
+
+
+@router.get("/portal/me/visit-summaries/{visitSummaryId}/download-url",
+            operation_id="getPortalVisitSummaryDownloadUrl",
+            response_model=ps.PortalDownloadUrl, response_model_exclude_none=True)
+async def get_portal_visit_summary_download_url(
+    patient: Annotated[PortalPatient, Depends(require_patient("portal-records:read"))],
+    summary_id: Annotated[UUID, Path(alias="visitSummaryId")], db: DB, reads: Reads,
+    tokens: Annotated[PortalDownloadTokens, Depends(portal_download_tokens)],
+) -> ps.PortalDownloadUrl:
+    return await portal_service.download_url(db, reads, patient, summary_id, tokens)
