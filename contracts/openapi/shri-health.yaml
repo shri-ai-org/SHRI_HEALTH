@@ -120,6 +120,16 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}'
   /operations/{operationId}/cancel:
     $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}~1cancel'
+  /roles:
+    $ref: 'modules/platform.yaml#/paths/~1roles'
+  /users:
+    $ref: 'modules/platform.yaml#/paths/~1users'
+  /audit-events:
+    $ref: 'modules/platform.yaml#/paths/~1audit-events'
+  /integration-messages:
+    $ref: 'modules/platform.yaml#/paths/~1integration-messages'
+  /patients/{patientId}/fhir-record:
+    $ref: 'modules/platform.yaml#/paths/~1patients~1{patientId}~1fhir-record'
   /files/upload-url:
     $ref: 'modules/files.yaml#/paths/~1files~1upload-url'
   /files/{fileId}/complete:
