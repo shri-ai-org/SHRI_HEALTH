@@ -124,9 +124,10 @@ class Concept:
 CodingReader = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[CodingVisit]]
 CodeLookup = Callable[[AsyncSession, str], Awaitable[Concept | None]]
 #: Adds an accepted code as a visit diagnosis through the encounters' diagnosis service, which
-#: names the patient for the audit and commits; returns the new diagnosis' ID.
-AddDiagnosis = Callable[[AsyncSession, CurrentUser, UUID, str, str, Callable[[UUID], None]],
-                        Awaitable[UUID]]
+#: names the patient for the audit, calls the last argument with the new diagnosis' ID (to link
+#: the code to it) and commits everything once; returns the new diagnosis' ID.
+AddDiagnosis = Callable[[AsyncSession, CurrentUser, UUID, str, str, Callable[[UUID], None],
+                         Callable[[UUID], Awaitable[None]]], Awaitable[UUID]]
 
 
 def normalize(code: str) -> str | None:
@@ -305,12 +306,15 @@ async def decide(db: AsyncSession, repo: AIRepository, check: ChartCheck, add: A
         raise Conflict(code="invalid-state-transition", currentState=locked.decision)
     await repo.decide(db, code_id, AIDecision(body.decision), rejection_reason=body.reason)
     if body.decision == "accepted":
-        # The diagnosis service applies addEncounterDiagnosis' rules, names the patient and
-        # commits the decision with the diagnosis; a refusal rolls both back.
-        diagnosis_id = await add(db, user, found.encounter_id, locked.content["code"],
-                                 locked.content["display"], name_patient)
-        await repo.set_suggestion_target(db, code_id, diagnosis_id)
+        # The diagnosis service applies addEncounterDiagnosis' rules, names the patient, links
+        # the code to the new diagnosis and commits the decision, the diagnosis and the link in
+        # one transaction; a refusal rolls all three back and the code stays pending.
+        async def link(diagnosis_id: UUID) -> None:
+            await repo.set_suggestion_target(db, code_id, diagnosis_id)
+
+        await add(db, user, found.encounter_id, locked.content["code"],
+                  locked.content["display"], name_patient, link)
     else:
         name_patient(found.patient_id)
-    await db.commit()
+        await db.commit()
     return (await _codes(db, repo, set_id, only=code_id))[0]

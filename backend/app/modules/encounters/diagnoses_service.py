@@ -18,7 +18,7 @@ the request's transaction.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -77,8 +77,11 @@ def _onset(value: str | None) -> datetime | None:
 
 async def add(db: AsyncSession, repo: EncounterRepository, drepo: DiagnosisRepository,
               store: FhirStore, check: ChartCheck, user: CurrentUser, encounter_id: UUID,
-              body: dschemas.DiagnosisCreate, name_patient: NamePatient
+              body: dschemas.DiagnosisCreate, name_patient: NamePatient,
+              before_commit: Callable[[UUID], Awaitable[None]] | None = None,
               ) -> Versioned[schemas.EncounterDiagnosis]:
+    """addEncounterDiagnosis. ``before_commit`` (the AI coding suggestion's accept) gets the new
+    Condition's ID and writes in the same transaction, before the one commit."""
     head = await readable(db, repo, check, user, encounter_id)
     errors = []
     if body.code.system != systems.ICD10CM:
@@ -114,6 +117,8 @@ async def add(db: AsyncSession, repo: EncounterRepository, drepo: DiagnosisRepos
             onset_date_time=onset))
     except InvalidInput as refused:
         raise business_rule([field_error("body", "/rank", "out-of-range")]) from refused
+    if before_commit is not None:
+        await before_commit(written.condition.id)
     name_patient(head.patient_id)
     await db.commit()
     found = await drepo.get(db, encounter_id, written.condition.id)
