@@ -82,7 +82,7 @@ def test_a_visit_summary_cites_the_visit_and_is_never_part_of_it(
     assert notes["items"] == []
     # Requester only; never decided as a suggestion.
     assert client("md-b").get(f"{SUMMARIES}/{summary_id}").status_code == 404
-    assert client("app").get(f"{SUMMARIES}/{summary_id}").status_code == 404
+    assert client("rn").get(f"{SUMMARIES}/{summary_id}").status_code == 403  # no chart-summaries:read
     assert client("md").get(f"{SUMMARIES}/{uuid.uuid4()}").status_code == 404
     decided = client("md").post(f"{API}/ai/suggestions/{summary_id}/decision",
                                 json={"decision": "accepted"})
