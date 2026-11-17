@@ -318,9 +318,27 @@ class FileContent:
                 "X-Content-Type-Options": "nosniff"}
 
 
-async def _chunks(data: bytes) -> AsyncIterator[bytes]:
+async def chunks(data: bytes) -> AsyncIterator[bytes]:
+    """A decrypted file, as the content routes stream it."""
     for start in range(0, len(data), CONTENT_CHUNK_BYTES):
         yield data[start:start + CONTENT_CHUNK_BYTES]
+
+
+async def decrypted(store: FileStore, crypto: FileCrypto, file_id: UUID, storage_key: str,
+                    wrapped_data_key: str | None) -> bytes:
+    """A clean file's plaintext, decrypted and verified whole before any of it is served (D105):
+    ``404`` when its stored bytes are missing, ``FileTampered`` (a ``500``) when it doesn't
+    verify. Both content routes use it, the staff one and the portal's."""
+    try:
+        stored = await store.get(storage_key, bucket=CLEAN_BUCKET)
+    except FileNotFoundError:
+        log.error("Clean file %s has no stored bytes", file_id)
+        raise NotFound("File not found") from None
+    try:
+        return await crypto.open(stored, wrapped_data_key, context=storage_key)
+    except FileTampered:
+        log.error("Clean file %s failed its integrity check; nothing was served", file_id)
+        raise
 
 
 async def serve_content(request: Request, db: AsyncSession, repo: FileRepository,
@@ -347,15 +365,6 @@ async def serve_content(request: Request, db: AsyncSession, repo: FileRepository
         raise NotFound("File not found")
     file, patient_ids = await _readable(request, db, repo, user, file_id,
                                         purpose_permission=False)
-    try:
-        stored = await store.get(file.storage_key, bucket=CLEAN_BUCKET)
-    except FileNotFoundError:
-        log.error("Clean file %s has no stored bytes", file.id)
-        raise NotFound("File not found") from None
-    try:
-        plain = await crypto.open(stored, file.wrapped_data_key, context=file.storage_key)
-    except FileTampered:
-        log.error("Clean file %s failed its integrity check; nothing was served", file.id)
-        raise
+    plain = await decrypted(store, crypto, file.id, file.storage_key, file.wrapped_data_key)
     return FileContent(file_id=file.id, purpose=file.purpose, content_type=file.content_type,
-                       size_bytes=len(plain), patient_ids=patient_ids, body=_chunks(plain))
+                       size_bytes=len(plain), patient_ids=patient_ids, body=chunks(plain))

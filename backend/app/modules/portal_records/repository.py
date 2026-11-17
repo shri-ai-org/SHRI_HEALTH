@@ -12,6 +12,7 @@ report is a lab report or an imaging report, and shri_portal can't read a held r
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -95,3 +96,30 @@ class SqlLabResultReads:
             id=r["id"], release_status="available", code=_code(r), short_name=r["code_text"],
             status=r["status"], effective_at=r["effective_date_time"], issued_at=r["issued"],
             results=results.get(r["id"], []), conclusion=r["conclusion"]) for r in reports]
+
+
+_PORTAL_FILE = text("SELECT id, storage_key, wrapped_data_key, content_type, purpose "
+                    "FROM admin.portal_file(:file)")
+
+
+@dataclass(frozen=True)
+class PortalFile:
+    """The one file ``admin.portal_file()`` (0025) hands the portal: a clean after-visit summary
+    of the session patient's, on a current, released, unheld document."""
+
+    id: UUID
+    storage_key: str
+    wrapped_data_key: str = field(repr=False)
+    content_type: str
+    purpose: str
+
+
+class PortalFileReads(Protocol):
+    async def file(self, db: AsyncSession, file_id: UUID) -> PortalFile | None: ...
+
+
+class SqlPortalFileReads:
+    async def file(self, db: AsyncSession, file_id: UUID) -> PortalFile | None:
+        row = (await db.execute(_PORTAL_FILE, {"file": file_id})).first()
+        return PortalFile(row.id, row.storage_key, row.wrapped_data_key, row.content_type,
+                          row.purpose) if row else None
