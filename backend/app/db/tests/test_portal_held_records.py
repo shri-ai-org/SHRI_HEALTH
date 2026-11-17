@@ -160,6 +160,26 @@ def test_only_items_the_portal_would_show_once_released(portal_engine: Engine,
 
 
 @pytest.mark.db
+def test_a_hold_on_a_preliminary_document_shows_no_marker_and_final_or_amended_does(
+        portal_engine: Engine, chart: dict[str, Any]) -> None:
+    """Migration 0024 (#395, Vimal's finding): a draft visit summary (status current, docStatus
+    preliminary) is never shown, so a hold on it returns no "held" marker either; a final or
+    amended one, or one with no docStatus, does."""
+    s: Session = chart["s"]
+    pt = chart["me"]["pt"]
+    draft = _document(s, pt, doc_status="preliminary")
+    final = _document(s, pt, doc_status="final")
+    amended = _document(s, pt, doc_status="amended")
+    unset = _document(s, pt)
+    for doc in (draft, final, amended, unset):
+        _hold(s, chart, document_reference_id=doc.id)
+    s.commit()
+    with portal_engine.begin() as c:
+        assert _held(c, chart) == {("DocumentReference", d.id, pt.id, True)
+                                   for d in (final, amended, unset)}
+
+
+@pytest.mark.db
 def test_the_reason_and_the_clinician_stay_unreadable_and_nothing_is_written(
         portal_engine: Engine, chart: dict[str, Any]) -> None:
     s: Session = chart["s"]
