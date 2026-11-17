@@ -48,6 +48,16 @@ class LabResultList(Out):
     next_cursor: str | None = None
 
 
+class ImagingReportImage(Out):
+    """An illustrative image on an imaging report (#386), read through ``createDownloadUrl``
+    with its file ID (purpose ``imaging``)."""
+    id: UUID
+    caption: str = Field(max_length=200)
+    label: Literal["Illustrative image"] = "Illustrative image"
+    content_type: Literal["image/jpeg", "image/png"]
+    size_bytes: int = Field(ge=1, le=524288)
+
+
 class ImagingReport(Out):
     id: UUID
     patient_id: UUID
@@ -59,6 +69,7 @@ class ImagingReport(Out):
     performer: str | None = None
     impression: str | None = None
     text: str | None = None
+    images: Annotated[list[ImagingReportImage], Field(max_length=3)] | None = None
 
 
 class ImagingReportList(Out):

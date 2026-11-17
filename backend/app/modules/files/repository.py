@@ -20,7 +20,10 @@ Where a file is attached, which says whose chart it is part of (``attachment_pat
   attachment_binary_object_id``, the document's ``subject_patient_id`` (a license image is a
   document with category ``identity`` that the identifier's ``supporting_document_id`` points at,
   D56; an after-visit summary is a generated document);
-- ``receipt``: ``admin.patient_payment.receipt_file_id``, the payment's ``patient_id``.
+- ``receipt``: ``admin.patient_payment.receipt_file_id``, the payment's ``patient_id``;
+- ``imaging``: ``clinical.diagnostic_report_presented_form.binary_object_id``, the report's
+  ``subject_patient_id``, only on a report the staff results list shows (final, amended,
+  corrected or appended); an illustrative image the demo seed makes (0023).
 """
 
 from __future__ import annotations
@@ -147,8 +150,15 @@ JOIN clinical.document_reference d ON d.id = dc.document_reference_id
 WHERE dc.attachment_binary_object_id = :id
 """)
 _RECEIPT = text("SELECT patient_id FROM admin.patient_payment WHERE receipt_file_id = :id")
+_IMAGE = text("""
+SELECT r.subject_patient_id AS patient_id
+FROM clinical.diagnostic_report_presented_form f
+JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id
+WHERE f.binary_object_id = :id
+  AND r.status::text IN ('final', 'amended', 'corrected', 'appended')
+""")
 _ATTACHMENTS = {"insurance-card": _CARD, "identity": _DOCUMENT,
-                "after-visit-summary": _DOCUMENT, "receipt": _RECEIPT}
+                "after-visit-summary": _DOCUMENT, "receipt": _RECEIPT, "imaging": _IMAGE}
 
 
 class SqlFileRepository:

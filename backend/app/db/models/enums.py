@@ -918,6 +918,7 @@ class FilePurpose(StrEnum):
     CCDA = "ccda"
     EXPORT = "export"
     ONBOARDING_IMPORT = "onboarding-import"
+    IMAGING = "imaging"
 
 
 class FileState(StrEnum):
