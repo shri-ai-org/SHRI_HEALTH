@@ -19,14 +19,17 @@ For whoever runs a deploy, a reset or a rehearsal on the demo server. The server
 
 ## The reset rule: after the clinic's day starts
 
-The demo clinic is in San Jose (`America/Los_Angeles`). Its day starts at midnight there, which is 08:00 UTC, **13:30 IST, in winter** (Pacific Standard Time, November to March), and 07:00 UTC, **about 12:30 IST, in summer** (Pacific Daylight Time). A reset before that books "today" on the previous San Jose day. So the reset runs after 13:30 IST in November, including on the demo day.
+The demo clinic is in San Jose (`America/Los_Angeles`). Its day starts at midnight there, which is 08:00 UTC, **13:30 IST, in winter** (Pacific Standard Time, November to March), and 07:00 UTC, **about 12:30 IST, in summer** (Pacific Daylight Time). A reset before that books "today" on the previous San Jose day. So the reset runs after 13:30 IST in November, including on the demo day. **Before a call or a rehearsal, reset about 15 minutes ahead:** today's visits start just after the reset (below), so Linda Thompson's visit is not stale when the call starts.
 
 ## The demo day: `SHRI_DEMO_DAY`
 
 - **Default (empty):** the demo patients are booked on the day the seed runs, in the clinic's time zone.
 - **Set (`YYYY-MM-DD`):** booked on that day instead, to rehearse a particular day. Leave it empty afterwards. `deploy.sh` passes it to the seed only when set. Anything that isn't a date stops the seed with `SHRI_DEMO_DAY must be a date as YYYY-MM-DD (for example 2026-11-20), not '…'`.
-- **What is booked on the demo day, all with demo.doctor:** Kaia401 Lindgren118 (the demo visit's new patient) at 09:00 and the six history patients at 09:40, 10:00, 10:20, 11:00, 11:20 and 11:40 San Jose time.
-- **Clinic hours:** the demo providers have free times from 08:00 to 17:00 on all seven days, in each facility's time zone, so a rehearsal on any day can book today until 16:40.
+- **What is booked on the demo day, all with demo.doctor, back to back (each as long as its visit type):** **Linda Thompson first**, then Kaia401 Lindgren118 (the demo visit's new patient, 40 minutes), Robert Miller, James Wilson (annual, 40 minutes), Patricia Davis, David Nguyen and Maria Gonzalez; three hours in all.
+  - **Default:** the first visit starts at the next 5-minute mark at least 10 minutes after the reset, in San Jose time (a reset at 06:12 puts Linda at 06:25). If the run would end after 23:55, it moves earlier on the same San Jose day, because check-in is same-day only. Nothing is at a fixed clock time, and Linda's is always the first visit on My Day.
+  - **With `SHRI_DEMO_DAY` set:** at fixed times from 09:00 on that day (Linda 09:00, the last visit 11:40).
+  - A re-run (`up`) never moves a visit already booked.
+- **Open 24 hours:** the demo providers have free times from 00:00 to 23:59 on all seven days, in each facility's time zone (the last free time is 23:20), so a reset, a rehearsal or a call at any hour can book today. The dry run passes at any time of day (one of the two facilities, three hours apart, always has time left today).
 
 ## AI on the demo server (D118)
 
@@ -58,6 +61,7 @@ Expected: every line `PASS`, ending `21 of 21 passed`. A `FAIL` line ends with w
 | the demo clinic's main office's time zone | `America/Los_Angeles` | The same | Reset |
 | no demo-clinic facility outside Pacific or Eastern time | `0` | The same | Reset |
 | visits today with demo.doctor | at least `6` | Reset before the clinic's day started, or `up` only | Reset after 13:30 IST |
+| Linda Thompson's visit is the first of today's seeded visits | Linda's patient ID | Reset before the clinic's day started, or a seed older than this guide | Reset after 13:30 IST |
 | the 11 shown patients | `11` | Seed data missing | Reset; if it stays, Anand |
 | portal accounts active on their charts | `4` | The same | Reset; if it stays, Anand |
 | David Nguyen's chart restricted | `True` | The same | Reset; if it stays, Anand |
@@ -73,7 +77,7 @@ Expected: every line `PASS`, ending `21 of 21 passed`. A `FAIL` line ends with w
 
 | Patient | What's there |
 |---|---|
-| **Kaia401 Lindgren118** | The demo visit's new patient, booked at 09:00; demo.patient's portal account |
+| **Kaia401 Lindgren118** | The demo visit's new patient, booked right after Linda; demo.patient's portal account |
 | **Robert Miller** | Diabetes, hypertension, high cholesterol; amoxicillin allergy; metformin, lisinopril, atorvastatin; 11 lab reports |
 | **Linda Thompson** | Chronic low back pain; 5 lab reports, a lumbar spine MRI; a portal account |
 | **James Wilson** | Asthma; aspirin allergy; 6 lab reports, a chest X-ray; a portal account |
