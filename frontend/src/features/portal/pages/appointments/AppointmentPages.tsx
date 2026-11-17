@@ -245,6 +245,16 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
   const [opening, setOpening] = useState(false)
   const [failure, setFailure] = useState<{ title: string; text: string; tone: 'info' | 'critical' } | null>(null)
 
+  /** True when the summary itself now reads as not found (removed since the page opened). */
+  async function summaryGone(): Promise<boolean> {
+    try {
+      await api.getVisitSummary(visitSummaryId)
+      return false
+    } catch (err) {
+      return toProblem(err).status === 404
+    }
+  }
+
   async function open() {
     setOpening(true)
     setFailure(null)
@@ -254,10 +264,11 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err) {
       const problem = toProblem(err)
-      // No download yet for this summary (the clinic's copy isn't offered here): say so plainly,
-      // not as a missing record, since the summary itself is listed and available.
+      // A 404 is either no download yet (the link isn't served) or a summary that is gone: the
+      // API says not-found for both, so read the summary again to tell them apart.
+      const removed = problem.status === 404 && (await summaryGone())
       setFailure(
-        problem.status === 404
+        problem.status === 404 && !removed
           ? { tone: 'info', title: "This summary can't be downloaded yet", text: 'Ask your clinic for a copy of your visit summary.' }
           : { tone: 'critical', title: "Couldn't open the visit summary", text: problemCopy(problem).message },
       )

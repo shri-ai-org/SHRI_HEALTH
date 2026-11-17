@@ -101,6 +101,26 @@ describe('The visit summary with the real API', () => {
     expect(screen.queryByText(/removed/)).toBeNull()
   })
 
+  it('shows the missing-record message when the summary itself was removed since the page opened', async () => {
+    const user = userEvent.setup()
+    let reads = 0
+    renderWith(
+      {
+        getVisitSummary: () => {
+          reads += 1
+          return reads === 1 ? Promise.resolve(summary()) : Promise.reject(notFound())
+        },
+        getVisitSummaryDownloadUrl: () => Promise.reject(notFound()),
+      },
+      <VisitSummaryPage visitSummaryId={SUMMARY_ID} />,
+    )
+    await user.click(await screen.findByRole('button', { name: 'Open visit summary' }))
+    expect(await screen.findByText("Couldn't open the visit summary")).toBeInTheDocument()
+    expect(screen.getByText(/couldn't find this record/i)).toBeInTheDocument()
+    expect(screen.queryByText("This summary can't be downloaded yet")).toBeNull()
+    expect(reads).toBe(2)
+  })
+
   it("shows the portal's error with Try again, and no sample data, when the summary can't be read", async () => {
     const user = userEvent.setup()
     let calls = 0
