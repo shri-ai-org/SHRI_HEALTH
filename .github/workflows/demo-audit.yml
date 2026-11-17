@@ -83,6 +83,12 @@ jobs:
         working-directory: frontend
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      # The pinned Playwright's own Chromium (Vimal's review), with its system libraries.
+      - name: Install Chromium for Playwright
+        if: hashFiles('frontend/playwright.audit.config.ts') != ''
+        working-directory: frontend
+        run: npm exec -- playwright install --with-deps chromium
+
       # The browser tests (frontend/playwright.audit.config.ts, Minalini's folder) run once they
       # exist; until then the job is the stack, the reset and server_check.
       - name: Browser tests against the stack (Playwright, the demo accounts)
