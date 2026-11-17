@@ -408,6 +408,13 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     on a current, non-draft, non-PSY document of the session patient with no active hold;
     otherwise no row, the same 404 either way. shri_portal has no privilege on
     `admin.binary_object` itself.
+  - **Where a prescription went (migration 0026):** `SELECT * FROM
+    admin.portal_prescription_transmissions()` gives `medication_request_id`, `pharmacy_name`
+    and `transmission_status` for each signed prescription of the session patient (never a
+    draft, entered-in-error, reported or PSY one): the pharmacy's name and the status of the
+    latest outbound NewRx (one of the contract's five, else NULL; both NULL before it's sent).
+    Never an address, error text or clinician. shri_portal has no privilege on `admin.pharmacy`
+    or `admin.erx_transaction` itself.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
