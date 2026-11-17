@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
+from app.core.deps import CLINIC_A
 from app.db.seed import demo, history, images, linda
 from app.db.seed.starter import sid
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE
@@ -134,3 +135,44 @@ def test_the_omeprazole_prescription_is_refill_ready_and_the_alerts_stay(
         ("NewRx", "outbound", "accepted", demo.PHARMACY_ID)]
     assert erx[0].occurred_at > signed and provenance == 1 and proposals == 0
     assert tuple(alerts) == (1, 1)                     # codeine intolerance; naproxen listed
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_her_medications_are_four_signed_prescriptions_the_portal_reads_with_their_prescriber(
+        migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Minalini on #85: naproxen, cyclobenzaprine and acetaminophen signed by demo.doctor at the
+    end of the visit each started at, each sent to her pharmacy, plus omeprazole; no reported
+    copy of any; none controlled. The portal's role reads each with its prescriber and date."""
+    _seeded(migrator_engine, monkeypatch)
+    h = history.HISTORY[3]
+    expected = {m.product.code: linda._signed(m.started if any(
+        v.day == m.started for v in h.visits) else h.visits[0].day) for m in h.medications}
+    expected[linda.OMEPRAZOLE.code] = linda._signed(linda.REFILL_VISIT)
+    with admin_engine.connect() as c:
+        rows = c.execute(text(
+            "SELECT m.medication_codeable_concept_code AS code, m.intent, m.status, "
+            "m.ext_signed_at, m.ext_signed_by_user_id, m.dispense_request_performer_pharmacy_id "
+            "AS pharmacy, m.dispense_request_quantity_value AS quantity, "
+            "(SELECT count(*) FROM admin.erx_transaction x WHERE x.medication_request_id = m.id "
+            "AND x.status = 'accepted') AS accepted, "
+            "(SELECT count(*) FROM clinical.annotation a WHERE a.medication_request_id = m.id) "
+            "AS notes FROM clinical.medication_request m WHERE m.subject_patient_id = :p"),
+            {"p": LINDA}).all()
+        c.execute(text("SET ROLE shri_portal"))
+        c.execute(text("SELECT set_config('app.current_tenant_id', :t, false), "
+                       "set_config('app.current_patient_id', :p, false)"),
+                  {"t": str(CLINIC_A), "p": str(LINDA)})
+        seen = c.execute(text(
+            "SELECT m.medication_codeable_concept_code, m.ext_signed_at, concat_ws(' ', "
+            "array_to_string(n.given, ' '), n.family) FROM clinical.medication_request m "
+            "JOIN clinical.human_name n ON n.practitioner_id = m.ext_signed_by_practitioner_id "
+            "WHERE m.intent = 'order'")).all()
+        c.execute(text("RESET ROLE"))
+    assert {r.code: r.ext_signed_at for r in rows} == expected and len(rows) == 4
+    assert {(r.intent, r.status, r.ext_signed_by_user_id, r.pharmacy, r.accepted, r.notes)
+            for r in rows} == {("order", "active", history.DOCTOR_USER, demo.PHARMACY_ID, 1, 1)}
+    assert all(r.quantity and r.quantity > 0 for r in rows)
+    assert {(code, at) for code, at, _ in seen} == set(expected.items())
+    assert len({name for _, _, name in seen}) == 1 and all(name for _, _, name in seen)
+    assert not {m.product.code for m in h.medications} & {"2670"}       # no codeine product

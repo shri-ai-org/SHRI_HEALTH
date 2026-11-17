@@ -98,7 +98,8 @@ def _expected(n: int, h: history.History) -> tuple[int, ...]:
     """problems and visit diagnoses, allergies, meds, finished visits (the doctor's, and a
     nurse visit for every other reading), observations, family, surgery, signed notes."""
     return (len(h.problems) + sum(len(v.diagnoses) for v in h.visits), len(h.allergies),
-            len(h.medications), len(history.VITALS[n]), _observations(n, h), len(h.family),
+            0 if h.prescribed else len(h.medications), len(history.VITALS[n]),
+            _observations(n, h), len(h.family),
             len(h.surgeries), len(h.visits))
 
 
@@ -275,5 +276,6 @@ def test_each_medication_is_recorded_at_its_visits_start_as_a_synthetic_import(
             "AND pv.activity_code = 'CREATE' "
             "WHERE m.subject_patient_id = ANY(:ps) AND m.intent = 'plan'"),
             {"ps": [sid(demo.PATIENT, n) for n in history.HISTORY]}).all()
-    assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values())
+    assert len(rows) == sum(len(h.medications) for h in history.HISTORY.values()
+                            if not h.prescribed)
     assert {tuple(r) for r in rows} == {(True, True, True, history.IMPORT_REASON)}
