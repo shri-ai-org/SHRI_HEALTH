@@ -964,6 +964,17 @@
    "path": "/api/v1/patients/{patientId}",
    "permission": "patients:read"
   },
+  "getPatientFhirRecord": {
+   "audit": {
+    "action": "E",
+    "category": "export",
+    "patient": "patientId"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/patients/{patientId}/fhir-record",
+   "permission": "patients:read"
+  },
   "getPatientSummaries": {
    "audit": {
     "action": "R",
@@ -1248,6 +1259,16 @@
    "path": "/api/v1/appointments",
    "permission": "appointments:read"
   },
+  "listAuditEvents": {
+   "audit": {
+    "action": "R",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/audit-events",
+   "permission": "audit-events:read"
+  },
   "listBookableAppointmentTypes": {
    "audit": {
     "action": "R",
@@ -1415,6 +1436,16 @@
    "method": "GET",
    "path": "/api/v1/inbox",
    "permission": "inbox:read"
+  },
+  "listIntegrationMessages": {
+   "audit": {
+    "action": "R",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/integration-messages",
+   "permission": "integration-messages:read"
   },
   "listLabAccounts": {
    "audit": {
@@ -1754,6 +1785,16 @@
    "path": "/api/v1/patients/{patientId}/related-persons",
    "permission": "patients:read"
   },
+  "listRoles": {
+   "audit": {
+    "action": "R",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/roles",
+   "permission": "roles:read"
+  },
   "listSlots": {
    "audit": {
     "action": "R",
@@ -1795,6 +1836,16 @@
    "method": "GET",
    "path": "/api/v1/patients/{patientId}/surgical-history",
    "permission": "surgical-history:read"
+  },
+  "listUsers": {
+   "audit": {
+    "action": "R",
+    "category": "admin"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/users",
+   "permission": "users:read"
   },
   "logout": {
    "audit": {

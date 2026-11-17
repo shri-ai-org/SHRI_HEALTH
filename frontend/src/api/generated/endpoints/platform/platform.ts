@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type {
+  AuditEventList,
   BadRequestResponse,
   BreakGlassGrant,
   BreakGlassHeaders,
@@ -23,17 +24,26 @@ import type {
   EventEnvelope,
   FinishLoginParams,
   ForbiddenResponse,
+  GetPatientFhirRecordParams,
   Id,
+  IntegrationMessageList,
   InternalErrorResponse,
+  ListAuditEventsParams,
+  ListIntegrationMessagesParams,
+  ListRolesParams,
+  ListUsersParams,
   Me,
   NotFoundResponse,
   Operation,
+  PatientFhirRecord,
+  RoleList,
   ServiceUnavailableResponse,
   Session,
   StreamEventsHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
-  UnprocessableContentResponse
+  UnprocessableContentResponse,
+  UserList
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -695,6 +705,383 @@ export const cancelOperation = async (operationId: Id, options?: Parameters<type
   {
     ...options,
     method: 'POST'
+
+
+  }
+);}
+
+
+export type listRolesResponse200 = {
+  data: RoleList
+  status: 200
+}
+
+export type listRolesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listRolesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listRolesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listRolesResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listRolesResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listRolesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listRolesResponseSuccess = (listRolesResponse200) & {
+  headers: Headers;
+};
+export type listRolesResponseError = (listRolesResponse400 | listRolesResponse401 | listRolesResponse403 | listRolesResponse422 | listRolesResponse429 | listRolesResponse500) & {
+  headers: Headers;
+};
+
+export type listRolesResponse = (listRolesResponseSuccess | listRolesResponseError)
+
+export const getListRolesUrl = (params?: ListRolesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/roles?${stringifiedParams}` : `/roles`
+}
+
+/**
+ * Every staff role with its permissions, read-only (inventory #11; Thulasi on #85, 2026-11-16). The permissions come from core's catalog (`backend/app/core/permissions.py`), the only source; `userCount` counts the clinic's active users holding the role. Reference data about the system, not patients: not audited. Nothing here changes a role.
+ * @summary List the roles and their permissions
+ */
+export const listRoles = async (params?: ListRolesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listRolesResponse> => {
+
+  return apiFetch<listRolesResponse>(getListRolesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listUsersResponse200 = {
+  data: UserList
+  status: 200
+}
+
+export type listUsersResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listUsersResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listUsersResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listUsersResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listUsersResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listUsersResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listUsersResponseSuccess = (listUsersResponse200) & {
+  headers: Headers;
+};
+export type listUsersResponseError = (listUsersResponse400 | listUsersResponse401 | listUsersResponse403 | listUsersResponse422 | listUsersResponse429 | listUsersResponse500) & {
+  headers: Headers;
+};
+
+export type listUsersResponse = (listUsersResponseSuccess | listUsersResponseError)
+
+export const getListUsersUrl = (params?: ListUsersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/users?${stringifiedParams}` : `/users`
+}
+
+/**
+ * The clinic's staff accounts, read-only (inventory #7; Thulasi on #85, 2026-11-16): name, username, roles, facilities and whether the account is active. No contact details and no Keycloak IDs. Ordered by display name. Audited as `admin`.
+ * @summary List the clinic's staff users
+ */
+export const listUsers = async (params?: ListUsersParams, options?: Parameters<typeof apiFetch>[1]): Promise<listUsersResponse> => {
+
+  return apiFetch<listUsersResponse>(getListUsersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listAuditEventsResponse200 = {
+  data: AuditEventList
+  status: 200
+}
+
+export type listAuditEventsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAuditEventsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAuditEventsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAuditEventsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listAuditEventsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listAuditEventsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAuditEventsResponseSuccess = (listAuditEventsResponse200) & {
+  headers: Headers;
+};
+export type listAuditEventsResponseError = (listAuditEventsResponse400 | listAuditEventsResponse401 | listAuditEventsResponse403 | listAuditEventsResponse422 | listAuditEventsResponse429 | listAuditEventsResponse500) & {
+  headers: Headers;
+};
+
+export type listAuditEventsResponse = (listAuditEventsResponseSuccess | listAuditEventsResponseError)
+
+export const getListAuditEventsUrl = (params: ListAuditEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/audit-events?${stringifiedParams}` : `/audit-events`
+}
+
+/**
+ * The clinic's audit events, newest first, read-only (inventory #17; Thulasi on #85, 2026-11-16, with her 09:00 and 09:10 corrections). `dateFrom` and `dateTo` are required, in the clinic's time zone, at most 31 days apart. Reading the audit trail is itself audited as `security`. No patient names: the screen shows patients through `POST /patients/summaries` (D54), so restricted charts keep their rule. `breakGlass=true` selects each grant's own row (action `break-glass`) plus every chart access recorded under a grant (purpose of use `ETREAT`). The audit table is append-only; nothing here changes it.
+ * @summary Read the audit trail
+ */
+export const listAuditEvents = async (params: ListAuditEventsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAuditEventsResponse> => {
+
+  return apiFetch<listAuditEventsResponse>(getListAuditEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listIntegrationMessagesResponse200 = {
+  data: IntegrationMessageList
+  status: 200
+}
+
+export type listIntegrationMessagesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listIntegrationMessagesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listIntegrationMessagesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listIntegrationMessagesResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listIntegrationMessagesResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listIntegrationMessagesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listIntegrationMessagesResponseSuccess = (listIntegrationMessagesResponse200) & {
+  headers: Headers;
+};
+export type listIntegrationMessagesResponseError = (listIntegrationMessagesResponse400 | listIntegrationMessagesResponse401 | listIntegrationMessagesResponse403 | listIntegrationMessagesResponse422 | listIntegrationMessagesResponse429 | listIntegrationMessagesResponse500) & {
+  headers: Headers;
+};
+
+export type listIntegrationMessagesResponse = (listIntegrationMessagesResponseSuccess | listIntegrationMessagesResponseError)
+
+export const getListIntegrationMessagesUrl = (params?: ListIntegrationMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/integration-messages?${stringifiedParams}` : `/integration-messages`
+}
+
+/**
+ * The clinic's partner messages (outbox and inbound), newest first, read-only (inventory #24, without `/admin` in the path as agreed on #12; Thulasi on #85, 2026-11-16, with her 09:00 corrections). The flow only: never the payload, the patient or the partner's free-text error, which hold patient data; `errorCode` is the partner's acknowledgement code. Each related record opens through its own read. No replays here. Audited as `admin`.
+ * @summary Monitor the partner messages
+ */
+export const listIntegrationMessages = async (params?: ListIntegrationMessagesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listIntegrationMessagesResponse> => {
+
+  return apiFetch<listIntegrationMessagesResponse>(getListIntegrationMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type getPatientFhirRecordResponse200 = {
+  data: PatientFhirRecord
+  status: 200
+}
+
+export type getPatientFhirRecordResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getPatientFhirRecordResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPatientFhirRecordResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPatientFhirRecordResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPatientFhirRecordResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPatientFhirRecordResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPatientFhirRecordResponseSuccess = (getPatientFhirRecordResponse200) & {
+  headers: Headers;
+};
+export type getPatientFhirRecordResponseError = (getPatientFhirRecordResponse401 | getPatientFhirRecordResponse403 | getPatientFhirRecordResponse404 | getPatientFhirRecordResponse422 | getPatientFhirRecordResponse429 | getPatientFhirRecordResponse500) & {
+  headers: Headers;
+};
+
+export type getPatientFhirRecordResponse = (getPatientFhirRecordResponseSuccess | getPatientFhirRecordResponseError)
+
+export const getGetPatientFhirRecordUrl = (patientId: Id,
+    params?: GetPatientFhirRecordParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/patients/${patientId}/fhir-record?${stringifiedParams}` : `/patients/${patientId}/fhir-record`
+}
+
+/**
+ * The patient's record as a FHIR R4 `Bundle` of type `collection`, for the screens' read-only FHIR view (Thulasi on #85, 2026-11-16). Each resource is serialized exactly as `/fhir/r4` serves it (US Core), from this request's own session and `/api/v1` rules, not `/fhir`'s (D1, D22): restricted charts need a break-glass grant or care-team membership (D37). At most 500 entries, with `truncated: true` when there were more. Drafts are left out; entered-in-error records are included with their status, as FHIR has them. Audited as an export of the patient's record. Outside systems keep using `/fhir`.
+ * @summary Show a patient's record as FHIR R4
+ */
+export const getPatientFhirRecord = async (patientId: Id,
+    params?: GetPatientFhirRecordParams, options?: Parameters<typeof apiFetch>[1]): Promise<getPatientFhirRecordResponse> => {
+
+  return apiFetch<getPatientFhirRecordResponse>(getGetPatientFhirRecordUrl(patientId,params),
+  {
+    ...options,
+    method: 'GET'
 
 
   }
