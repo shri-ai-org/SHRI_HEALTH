@@ -73,7 +73,7 @@ export interface InboxItem {
   encounterId?: Id;
   /** For `result-review`: the result was corrected after it was first reviewed (B5). */
   corrected?: boolean;
-  /** The sender. Absent for items the system created. */
+  /** The sender. Absent for items the system created and for a `patient-message`, which the patient sent. */
   createdBy?: StaffRef;
   /** When it was created. */
   createdAt: Timestamp;

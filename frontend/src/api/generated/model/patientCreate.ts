@@ -18,6 +18,7 @@ import type { Address } from './address';
 import type { AdministrativeGender } from './administrativeGender';
 import type { BirthSex } from './birthSex';
 import type { CodedValue } from './codedValue';
+import type { ConsentCreate } from './consentCreate';
 import type { Date } from './date';
 import type { Email } from './email';
 import type { Employer } from './employer';
@@ -102,4 +103,9 @@ export interface PatientCreate {
      * @maxLength 500
      */
   duplicateOverrideReason?: string;
+  /**
+     * Consents signed at registration (the front desk's "treatment and privacy notice" checkbox), each recorded exactly as `recordConsent` would, in the same transaction as the patient: if one is refused, nothing is registered. At most one per `kind`. `grantorRelatedPersonId` can't be used here (the patient's related persons don't exist yet); record a consent signed by a representative afterwards with `recordConsent`.
+     * @maxItems 10
+     */
+  consents?: ConsentCreate[];
 }

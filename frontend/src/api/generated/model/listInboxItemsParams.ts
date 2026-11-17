@@ -41,7 +41,7 @@ cursor?: CursorParameter;
 view?: ListInboxItemsView;
 /**
  * Only these kinds; repeat the parameter for several.
- * @maxItems 15
+ * @maxItems 20
  * @items.maxLength 40
  */
 itemType?: string[];

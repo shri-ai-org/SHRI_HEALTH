@@ -609,7 +609,7 @@ export const getReplyToInboxItemUrl = (inboxItemId: Id,) => {
 }
 
 /**
- * Adds a reply to the item's thread (new inventory row #254; D38: the inbox holds message threads). Anyone who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply never moves an item for anyone else.
+ * Adds a reply to the item's thread (new inventory row #254; D38: the inbox holds message threads). Anyone who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply never moves an item for anyone else. On a `patient-message` item, `toPatient: true` sends the reply to the patient's portal thread; without it the reply stays among staff.
  * @summary Reply on an inbox item
  */
 export const replyToInboxItem = async (inboxItemId: Id,

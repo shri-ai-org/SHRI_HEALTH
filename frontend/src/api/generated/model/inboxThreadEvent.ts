@@ -47,4 +47,8 @@ export interface InboxThreadEvent {
      * @maxLength 4000
      */
   comment?: string;
+  /** True on a comment the patient wrote on the portal (a `patient-message` item); `by` is then absent. */
+  fromPatient?: boolean;
+  /** True on a staff reply sent to the patient (`toPatient: true`), which the patient reads on the portal thread. Other comments stay among staff. */
+  toPatient?: boolean;
 }
