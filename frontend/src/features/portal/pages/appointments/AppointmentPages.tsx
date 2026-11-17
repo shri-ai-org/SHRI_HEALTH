@@ -1,4 +1,4 @@
-import { CalendarPlus, CalendarX, ExternalLink, MapPin, Video } from 'lucide-react'
+import { CalendarPlus, CalendarX, ExternalLink, FileText, MapPin, Video } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { PortalAppointment } from '../../../../api/generated/model'
 import { Alert, Badge, Button, EmptyState, Field, formatAddressLines, formatTime, isOverLimit, Modal, problemCopy, Textarea, useToast } from '../../../../design-system'
@@ -86,6 +86,12 @@ function Tiles({ list }: { list: PortalAppointment[] }) {
                 <span className="mt-1 block">
                   <AppointmentStatusBadge status={a.status} />
                 </span>
+                {a.status !== 'booked' && a.visitSummaryId ? (
+                  <span className="mt-1 flex items-center gap-1 text-sm text-primary-700">
+                    <FileText aria-hidden="true" size={14} />
+                    Visit summary
+                  </span>
+                ) : null}
               </span>
             </Link>
           </li>
@@ -237,7 +243,7 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
   const api = usePortalApi()
   const summary = useResource(() => api.getVisitSummary(visitSummaryId), [visitSummaryId])
   const [opening, setOpening] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
+  const [failure, setFailure] = useState<{ title: string; text: string; tone: 'info' | 'critical' } | null>(null)
 
   async function open() {
     setOpening(true)
@@ -247,7 +253,14 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
       const { url } = await api.getVisitSummaryDownloadUrl(visitSummaryId)
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err) {
-      setFailure(problemCopy(toProblem(err)).message)
+      const problem = toProblem(err)
+      // No download yet for this summary (the clinic's copy isn't offered here): say so plainly,
+      // not as a missing record, since the summary itself is listed and available.
+      setFailure(
+        problem.status === 404
+          ? { tone: 'info', title: "This summary can't be downloaded yet", text: 'Ask your clinic for a copy of your visit summary.' }
+          : { tone: 'critical', title: "Couldn't open the visit summary", text: problemCopy(problem).message },
+      )
     } finally {
       setOpening(false)
     }
@@ -259,7 +272,11 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
       <AsyncPanel resource={summary} label="the visit summary">
         {(s) => (
           <div className="max-w-3xl space-y-4">
-            {failure ? <Alert tone="critical" title="Couldn't open the visit summary">{failure}</Alert> : null}
+            {failure ? (
+              <Alert tone={failure.tone} title={failure.title}>
+                {failure.text}
+              </Alert>
+            ) : null}
             <Card>
               <DefinitionList
                 items={[
