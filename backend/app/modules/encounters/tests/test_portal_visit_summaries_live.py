@@ -58,6 +58,19 @@ def test_drafts_and_entered_in_error_summaries_are_not_shown(
         assert a.get(f"{URL}/{ids[key]}").status_code == 404
 
 
+def test_holds_on_a_draft_or_a_psychotherapy_note_are_never_shown(
+        portal_app: TestClient, portal_chart: PortalChart) -> None:  # noqa: F811
+    """D86: a held draft summary and a held psychotherapy note don't appear, not even as a
+    "held" marker; the held released summary does (Anand's review on #395)."""
+    ids, a = portal_chart.ids, portal_client(portal_app, portal_chart, portal_chart.a)
+    items = _items(a.get(URL))
+    listed = {i["id"] for i in items}
+    assert str(ids["a-draft-avs"]) not in listed and str(ids["a-psy-note"]) not in listed
+    assert {"id": str(ids["a-held-avs"]), "releaseStatus": "held"}.items() <= next(
+        i for i in items if i["id"] == str(ids["a-held-avs"])).items()
+    assert a.get(f"{URL}/{ids['a-psy-note']}").status_code == 404
+
+
 def test_patient_a_never_sees_patient_b_summaries(
         portal_app: TestClient, portal_chart: PortalChart) -> None:  # noqa: F811
     ids = portal_chart.ids

@@ -131,6 +131,19 @@ def build_portal_chart(admin: Engine) -> PortalChart:
         db.add(M["release_hold"](tenant_id=p.clinic, patient_id=chart.a,
                                  document_reference_id=chart.ids["a-held-avs"],
                                  reason="risk-of-harm", held_by_user_id=clinician.id))
+        # Holds the portal must never reveal (D86, #395): on a draft summary and on a
+        # psychotherapy note. Neither may appear, not even as a "held" marker.
+        psy = M["document_reference"](status="current", type_system=systems.LOINC,
+                                      type_code="34133-9", subject_patient_id=chart.a,
+                                      date=now - dt.timedelta(days=50), ext_origin="upload",
+                                      meta_security=["PSY"])
+        db.add(psy)
+        db.flush()
+        chart.ids["a-psy-note"] = psy.id
+        for key in ("a-draft-avs", "a-psy-note"):
+            db.add(M["release_hold"](tenant_id=p.clinic, patient_id=chart.a,
+                                     document_reference_id=chart.ids[key],
+                                     reason="risk-of-harm", held_by_user_id=clinician.id))
         db.commit()
     finally:
         db.close()

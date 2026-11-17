@@ -78,8 +78,13 @@ WHERE d.subject_patient_id = :patient AND d.status = 'current' AND d.ext_origin 
   AND d.type_system = :loinc AND d.type_code = '{AVS_TYPE_CODE}'
 ORDER BY d.context_encounter_id, d.date DESC, d.id
 """)  # noqa: S608 (a constant, not input)
-_HELD = text("SELECT item_id, item_date FROM admin.portal_held_items() "
-             "WHERE item_type = 'DocumentReference'")
+# Only holds on documents the portal would show once released (0022's portal_held_records():
+# never a draft, an entered-in-error document or a psychotherapy note, D86), with the date the
+# marker needs from portal_held_items() (Anand's review on #395).
+_HELD = text("SELECT i.item_id, i.item_date FROM admin.portal_held_items() i "
+             "JOIN admin.portal_held_records() r "
+             "ON r.item_id = i.item_id AND r.item_type = 'DocumentReference' "
+             "WHERE i.item_type = 'DocumentReference' AND r.hold_active")
 _ZONE = text("SELECT timezone FROM admin.facility WHERE is_active ORDER BY code, id LIMIT 1")
 DEFAULT_ZONE = "UTC"
 
