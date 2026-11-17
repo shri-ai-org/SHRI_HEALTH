@@ -1,8 +1,8 @@
 """The facility-scope sweep (SECURITY_MODEL §5.1, D37) for the AI's morning brief and differential
-(D116): a visit at another facility of the clinic, or in another clinic, is 404 and nothing
-changes; a brief or differential is its requester's only; a brief lists only appointments at the
-user's own facilities. The other AI operations check their scope in their own live tests.
-Synthetic data only."""
+(D116) and the visit summary (D119): a visit at another facility of the clinic, or in another
+clinic, is 404 and nothing changes; a brief, differential or visit summary is its requester's
+only; a brief lists only appointments at the user's own facilities. The other AI operations
+check their scope in their own live tests. Synthetic data only."""
 
 from __future__ import annotations
 
@@ -34,7 +34,8 @@ pytestmark = [
     pytest.mark.skipif(not TEST_DATABASE_URL, reason="needs a test database"),
 ]
 
-COVERED = {"createDifferential", "getDifferential", "createMorningBrief", "getMorningBrief"}
+COVERED = {"createDifferential", "getDifferential", "createMorningBrief", "getMorningBrief",
+           "createVisitSummary", "getVisitSummary"}
 
 
 def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str) -> str:
@@ -55,7 +56,7 @@ def _clinic_b_ai_on(practice: Practice) -> None:
          "VALUES (gen_random_uuid(), :t, 'chart-summary', true)", t=practice.clinic_b)
 
 
-def test_the_brief_and_differential_follow_the_facility_rules(
+def test_the_brief_differential_and_visit_summary_follow_the_facility_rules(
         client: Any, practice: Practice, users: dict[str, CurrentUser],
         claude_server: StubClaudeServer) -> None:
     _summary_on(client)
@@ -67,6 +68,10 @@ def test_the_brief_and_differential_follow_the_facility_rules(
     own = client("md").post(f"{API}/ai/differentials", json={"encounterId": at_a1})
     assert own.json()["status"] == "succeeded", own.text
     differential = own.json()["result"]["id"]
+    claude_server.reply = json.dumps({"statements": [], "insufficientEvidence": True})
+    summary = client("md").post(f"{API}/ai/visit-summaries", json={"encounterId": at_a1})
+    assert summary.json()["status"] == "succeeded", summary.text
+    summary_id = summary.json()["result"]["id"]
     claude_server.reply = json.dumps({"patients": []})
     brief = client("md").post(f"{API}/ai/morning-briefs", json={"date": _today()})
     assert brief.json()["status"] == "succeeded", brief.text
@@ -79,6 +84,14 @@ def test_the_brief_and_differential_follow_the_facility_rules(
         Row("getDifferential", "md", "GET", f"{API}/ai/differentials/{differential}", 200,
             shown=(at_a1,)),
         Row("getDifferential", "md-b", "GET", f"{API}/ai/differentials/{differential}", 404,
+            hidden=(at_a1,)),
+        Row("createVisitSummary", "md", "POST", f"{API}/ai/visit-summaries", 404,
+            json={"encounterId": at_a2}, note="a visit at A2"),
+        Row("createVisitSummary", "md-b", "POST", f"{API}/ai/visit-summaries", 404,
+            json={"encounterId": at_a1}, note="another clinic"),
+        Row("getVisitSummary", "md", "GET", f"{API}/ai/visit-summaries/{summary_id}", 200,
+            shown=(at_a1,)),
+        Row("getVisitSummary", "md-b", "GET", f"{API}/ai/visit-summaries/{summary_id}", 404,
             hidden=(at_a1,)),
         Row("getMorningBrief", "md", "GET", f"{API}/ai/morning-briefs/{brief_id}", 200),
         Row("getMorningBrief", "md-b", "GET", f"{API}/ai/morning-briefs/{brief_id}", 404),

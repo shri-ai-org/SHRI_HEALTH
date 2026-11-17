@@ -58,6 +58,7 @@ from . import drafts as rules
 from . import morning_briefs as briefs
 from . import settings as ai_settings
 from . import summary as summary_lines
+from . import visit_summaries as visits_ai
 from .config import configured_model
 from .model_client import ModelClient
 from .repository import AIRepository, SqlAIRepository
@@ -80,6 +81,8 @@ from .schemas import (
     SuggestedQuestionList,
     TemplateSection,
     Transcription,
+    VisitSummary,
+    VisitSummaryCreate,
 )
 from .service import Gateway
 from .transcripts import FileTranscripts, Transcripts
@@ -301,9 +304,10 @@ def _vital(v: Any) -> str | None:
 def differential_reader(check: Annotated[rules.ChartCheck, Depends(chart_check)],
                         chart: Annotated[summaries.SummaryReader, Depends(summary_reader)]
                         ) -> ddx.VisitReader:
-    """The visit a differential may use, read as the clinician (differentials.py): its reasons,
-    diagnoses, vital signs and reviewed note sections, each only with its read permission; then
-    the chart lines a summary uses. An AI section nobody reviewed yet is left out."""
+    """The visit a differential or a visit summary may use, read as the clinician
+    (differentials.py, visit_summaries.py): its reasons, diagnoses, vital signs and reviewed note
+    sections, each only with its read permission; then the chart lines a summary uses. An AI
+    section nobody reviewed yet is left out."""
     async def read(db: AsyncSession, user: CurrentUser, encounter_id: UUID) -> ddx.VisitChart:
         found = await encounters_service.get(db, SqlEncounterRepository(), check, user,
                                              encounter_id)
@@ -526,6 +530,31 @@ async def get_differential(
     db: DB, repo: Repo, check: Check, audit: Audit,
 ) -> Differential:
     found = await ddx.get(db, repo, check, user, differential_id)
+    _audit(request, audit, [found.patient_id])
+    return found
+
+
+@router.post("/ai/visit-summaries", operation_id="createVisitSummary", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_visit_summary(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:create"))],
+    body: VisitSummaryCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    audit: Audit, visit: DifferentialReader,
+) -> JSONResponse:
+    """The visit's own lines and the chart's, as the differential reads them (D119)."""
+    operation = await visits_ai.create(db, repo, ai_model, visit, user, body,
+                                       lambda ids: _audit(request, audit, ids))
+    return accepted(operation)
+
+
+@router.get("/ai/visit-summaries/{visitSummaryId}", operation_id="getVisitSummary",
+            response_model=VisitSummary, response_model_exclude_none=True)
+async def get_visit_summary(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:read"))],
+    summary_id: Annotated[UUID, Path(alias="visitSummaryId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit,
+) -> VisitSummary:
+    found = await visits_ai.get(db, repo, check, user, summary_id)
     _audit(request, audit, [found.patient_id])
     return found
 

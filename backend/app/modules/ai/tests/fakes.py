@@ -27,6 +27,7 @@ from app.modules.ai.repository import (
 from app.modules.ai.schemas import (
     NOTE_DRAFT_PROMPT,
     AIDraftIn,
+    AiGeneratedBy,
     AiSuggestion,
     DraftWritten,
     NoteDraftRequest,
@@ -72,6 +73,8 @@ class FakeAIRepository:
     suggestions: dict[UUID, SuggestionRecord] = field(default_factory=dict)
     targets: dict[UUID, UUID] = field(default_factory=dict)
     decisions: dict[UUID, AIDecision] = field(default_factory=dict)
+    #: Who asked for each suggestion (its request's user); None when not set.
+    requested_by: dict[UUID, UUID] = field(default_factory=dict)
     reads: int = 0
     usage: list[Usage] = field(default_factory=list)
 
@@ -129,7 +132,8 @@ class FakeAIRepository:
         decision = self.decisions.get(suggestion_id, AIDecision.PENDING)
         return SuggestionHead(suggestion_id, rec.feature.value, rec.target_resource_type,
                               self.targets.get(suggestion_id), rec.patient_id,
-                              rec.encounter_id, rec.content, decision.value, None)
+                              rec.encounter_id, rec.content, decision.value,
+                              self.requested_by.get(suggestion_id))
 
     async def suggestion_views(self, db: AsyncSession, ids: Any) -> dict[UUID, AiSuggestion]:
         return {}
@@ -148,7 +152,9 @@ class FakeAIRepository:
         return None
 
     async def generation(self, db: AsyncSession, suggestion_id: UUID) -> Any:
-        return None
+        if suggestion_id not in self.suggestions:
+            return None
+        return AiGeneratedBy(model_name="stub", pipeline_version="gateway/2"), NOW
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]:
         return list(self.usage)
