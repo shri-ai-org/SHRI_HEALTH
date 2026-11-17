@@ -53,6 +53,7 @@ jobs:
                  -e 's/^SHRI_DEMO_SKIP_AUTH_CODE=.*/SHRI_DEMO_SKIP_AUTH_CODE=true/' \
                  -e 's/^SHRI_DEMO_AI_SCREENS=.*/SHRI_DEMO_AI_SCREENS=true/' "$dir/deploy.env"
           echo "::add-mask::$(sed -n 's/^DEMO_PASSWORD=//p' "$dir/deploy.env")"
+          echo "::add-mask::$(sed -n 's/^POSTGRES_PASSWORD=//p' "$dir/deploy.env")"
           echo "AUDIT_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Build and start the stack (deploy.sh up)
