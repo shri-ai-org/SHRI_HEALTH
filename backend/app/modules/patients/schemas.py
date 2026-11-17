@@ -139,6 +139,8 @@ class PatientCreate(Closed):
     identifiers: Annotated[list[PatientIdentifierCreate], Field(max_length=10)] = []
     duplicate_check: Literal["default", "override"] = "default"
     duplicate_override_reason: Annotated[str, _text(500)] | None = None
+    #: Consents signed at registration, written in the patient's transaction (D120; #398).
+    consents: Annotated[list[ConsentCreate], Field(max_length=10)] = []
 
 
 class Patient(Out):
@@ -411,6 +413,15 @@ class ConsentCreate(Closed):
     signed_form_file_id: UUID | None = None
 
 
+PatientCreate.model_rebuild()  # consents names ConsentCreate, defined above
+
+
+class StaffRef(Out):
+    """A staff user, for display (patients.yaml StaffRef: the user's ID, never a practitioner's)."""
+    id: UUID
+    display_name: str
+
+
 class Consent(Out):
     id: UUID
     patient_id: UUID
@@ -423,6 +434,8 @@ class Consent(Out):
     signed_form_file_id: UUID | None = None
     status: Literal["active", "inactive", "entered-in-error"]
     created_at: datetime
+    #: The staff user who recorded it (D120), from the consent's creating user.
+    recorded_by: StaffRef | None = None
 
 
 class ConsentList(Out):
