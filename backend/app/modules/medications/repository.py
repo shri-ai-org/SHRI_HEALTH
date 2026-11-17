@@ -367,6 +367,10 @@ SELECT m.id, m.status, m.medication_codeable_concept_code AS code,
                 m.medication_codeable_concept_code) AS name
 FROM clinical.medication_request m
 WHERE m.subject_patient_id = :patient AND m.id <> :id
+  -- A renewal (a refill request's approved draft) never warns against the prescription it
+  -- renews (#415; Anand's 0027 note on #85): that one ends as the renewal is signed.
+  AND m.id IS DISTINCT FROM (SELECT d.prior_prescription_id
+                              FROM clinical.medication_request d WHERE d.id = :id)
   AND m.medication_codeable_concept_system = :rxnorm
   AND m.medication_codeable_concept_code IS NOT NULL AND """ + _ON_THE_LIST + """
 ORDER BY coalesce(m.ext_signed_at, m.authored_on, m.created_at), m.id
