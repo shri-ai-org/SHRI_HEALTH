@@ -3865,6 +3865,16 @@ components:
           description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded
             in the audit trail.'
           x-phi: identifier
+        consents:
+          type: array
+          maxItems: 10
+          description: 'Consents signed at registration (the front desk''s "treatment and privacy notice" checkbox), each
+            recorded exactly as `recordConsent` would, in the same transaction as the patient: if one is refused, nothing
+            is registered. At most one per `kind`. `grantorRelatedPersonId` can''t be used here (the patient''s related persons
+            don''t exist yet); record a consent signed by a representative afterwards with `recordConsent`.'
+          x-phi: identifier
+          items:
+            $ref: '#/components/schemas/ConsentCreate'
     PatientPatch:
       description: JSON Merge Patch for demographics. Fields left out stay unchanged; `null` clears a field; arrays are replaced
         whole. The MRN, identifiers, restriction and status are not patched.
@@ -4669,9 +4679,10 @@ components:
           description: When it was recorded.
           x-phi: none
         recordedBy:
-          $ref: '#/components/schemas/ClinicianRef'
+          $ref: '#/components/schemas/StaffRef'
           readOnly: true
-          description: The staff member who recorded it, from the session (never the body). Read-only.
+          description: The staff user who recorded it (their user ID, usually the front desk), from the session (never the
+            body). Read-only.
           x-phi: none
     ConsentCreate:
       description: Body to record a consent.
@@ -4707,8 +4718,8 @@ components:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
-    ClinicianRef:
-      description: A clinician or staff member, for display.
+    StaffRef:
+      description: A staff member, for display.
       type: object
       required:
       - id
@@ -4716,7 +4727,7 @@ components:
       properties:
         id:
           $ref: ../components/schemas/Id.yaml
-          description: Practitioner ID.
+          description: User ID.
           x-phi: internal-id
         displayName:
           type: string
@@ -4737,8 +4748,8 @@ components:
         signedAt: *id061
         policyVersion: *id062
         recordedBy:
-          $ref: '#/components/schemas/ClinicianRef'
-          description: The staff member who recorded it.
+          $ref: '#/components/schemas/StaffRef'
+          description: The staff user who recorded it (their user ID).
           x-phi: none
     PreferredPharmacySet:
       description: Body to set the preferred pharmacy.

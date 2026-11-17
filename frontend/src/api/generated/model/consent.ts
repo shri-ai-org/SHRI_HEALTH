@@ -14,12 +14,12 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
-import type { ClinicianRef } from './clinicianRef';
 import type { ConsentDecision } from './consentDecision';
 import type { ConsentKind } from './consentKind';
 import type { ConsentSignatureMethod } from './consentSignatureMethod';
 import type { ConsentStatus } from './consentStatus';
 import type { Id } from './id';
+import type { StaffRef } from './staffRef';
 import type { Timestamp } from './timestamp';
 
 /**
@@ -51,6 +51,6 @@ export interface Consent {
   status: ConsentStatus;
   /** When it was recorded. */
   createdAt: Timestamp;
-  /** The staff member who recorded it, from the session (never the body). Read-only. */
-  readonly recordedBy?: ClinicianRef;
+  /** The staff user who recorded it (their user ID, usually the front desk), from the session (never the body). Read-only. */
+  readonly recordedBy?: StaffRef;
 }

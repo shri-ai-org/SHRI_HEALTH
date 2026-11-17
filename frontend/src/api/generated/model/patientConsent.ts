@@ -14,9 +14,9 @@
  *
  * OpenAPI spec version: 1.0.0-draft.1
  */
-import type { ClinicianRef } from './clinicianRef';
 import type { PatientConsentDecision } from './patientConsentDecision';
 import type { PatientConsentKind } from './patientConsentKind';
+import type { StaffRef } from './staffRef';
 import type { Timestamp } from './timestamp';
 
 /**
@@ -34,6 +34,6 @@ export interface PatientConsent {
      * @maxLength 40
      */
   policyVersion?: string;
-  /** The staff member who recorded it. */
-  recordedBy?: ClinicianRef;
+  /** The staff user who recorded it (their user ID). */
+  recordedBy?: StaffRef;
 }

@@ -26325,6 +26325,61 @@ components:
           $ref: '#/components/schemas/Id'
           description: 'For a driver''s license: the scanned image, stored first through `POST /documents` (inventory #206) with category `identity` **for this patient**; the identifier keeps only this reference (D56). A document of another patient, another category or another clinic is refused (`422`, field code `invalid-reference`). Download it through the document (`GET /files/{fileId}/download-url`, purpose `identity`, `patients:read`).'
           x-phi: internal-id
+    ConsentCreate:
+      description: Body to record a consent.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - decision
+        - signatureMethod
+        - signedAt
+      properties:
+        kind:
+          type: string
+          enum:
+            - treatment
+            - privacy-notice
+            - ambient-recording
+            - telehealth
+            - research
+            - information-sharing
+            - financial
+          description: What the consent is for. `ambient-recording` is the recording consent AI-01 needs.
+          x-phi: clinical
+        decision:
+          type: string
+          enum:
+            - permit
+            - deny
+          default: permit
+          description: The patient's decision.
+          x-phi: clinical
+        signatureMethod:
+          type: string
+          enum:
+            - verbal
+            - written
+            - electronic
+          description: How it was given.
+          x-phi: none
+        signedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was given.
+          x-phi: identifier
+        policyVersion:
+          type: string
+          maxLength: 40
+          description: Version of the form or notice the patient saw.
+          x-phi: none
+        grantorRelatedPersonId:
+          $ref: '#/components/schemas/Id'
+          description: Who gave it for the patient, e.g. a guardian of a minor. Must be a related person of this patient (the database enforces same-patient links).
+          x-phi: internal-id
+        signedFormFileId:
+          $ref: '#/components/schemas/Id'
+          description: Signed form or signature image, uploaded through the file service (purpose `document`) by the same user and not yet attached to anything; otherwise `422 file-not-ready`.
+          x-phi: internal-id
     PatientCreate:
       description: Body to register a patient. Only `name` and `birthDate` are required (D44); every D39 demographic field is optional.
       type: object
@@ -26457,6 +26512,13 @@ components:
           maxLength: 500
           description: 'Why the user registers despite possible duplicates. Required with `duplicateCheck: override`; recorded in the audit trail.'
           x-phi: identifier
+        consents:
+          type: array
+          maxItems: 10
+          description: 'Consents signed at registration (the front desk''s "treatment and privacy notice" checkbox), each recorded exactly as `recordConsent` would, in the same transaction as the patient: if one is refused, nothing is registered. At most one per `kind`. `grantorRelatedPersonId` can''t be used here (the patient''s related persons don''t exist yet); record a consent signed by a representative afterwards with `recordConsent`.'
+          x-phi: identifier
+          items:
+            $ref: '#/components/schemas/ConsentCreate'
     PatientIdentifierType:
       description: 'Identifier type, HL7 v2 table 0203: `MR` medical record number (server-generated only, D41), `DL` driver''s license, `PI` patient internal identifier from another system (kept on migration, FRS FR-PAT-01).'
       type: string
@@ -26561,8 +26623,8 @@ components:
           $ref: '#/components/schemas/PharmacyAddress'
           description: Address.
           x-phi: clinical
-    ClinicianRef:
-      description: A clinician or staff member, for display.
+    StaffRef:
+      description: A staff member, for display.
       type: object
       required:
         - id
@@ -26570,7 +26632,7 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/Id'
-          description: Practitioner ID.
+          description: User ID.
           x-phi: internal-id
         displayName:
           type: string
@@ -26615,8 +26677,8 @@ components:
           description: Version of the form or notice the patient saw.
           x-phi: none
         recordedBy:
-          $ref: '#/components/schemas/ClinicianRef'
-          description: The staff member who recorded it.
+          $ref: '#/components/schemas/StaffRef'
+          description: The staff user who recorded it (their user ID).
           x-phi: none
     Patient:
       description: 'A patient: demographics, contact details and identifiers (FHIR-shaped `Patient`, US Core Patient).'
@@ -27555,9 +27617,9 @@ components:
           description: When it was recorded.
           x-phi: none
         recordedBy:
-          $ref: '#/components/schemas/ClinicianRef'
+          $ref: '#/components/schemas/StaffRef'
           readOnly: true
-          description: The staff member who recorded it, from the session (never the body). Read-only.
+          description: The staff user who recorded it (their user ID, usually the front desk), from the session (never the body). Read-only.
           x-phi: none
     ConsentList:
       description: One page of consents, newest first.
@@ -27576,61 +27638,6 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
-    ConsentCreate:
-      description: Body to record a consent.
-      type: object
-      additionalProperties: false
-      required:
-        - kind
-        - decision
-        - signatureMethod
-        - signedAt
-      properties:
-        kind:
-          type: string
-          enum:
-            - treatment
-            - privacy-notice
-            - ambient-recording
-            - telehealth
-            - research
-            - information-sharing
-            - financial
-          description: What the consent is for. `ambient-recording` is the recording consent AI-01 needs.
-          x-phi: clinical
-        decision:
-          type: string
-          enum:
-            - permit
-            - deny
-          default: permit
-          description: The patient's decision.
-          x-phi: clinical
-        signatureMethod:
-          type: string
-          enum:
-            - verbal
-            - written
-            - electronic
-          description: How it was given.
-          x-phi: none
-        signedAt:
-          $ref: '#/components/schemas/Timestamp'
-          description: When it was given.
-          x-phi: identifier
-        policyVersion:
-          type: string
-          maxLength: 40
-          description: Version of the form or notice the patient saw.
-          x-phi: none
-        grantorRelatedPersonId:
-          $ref: '#/components/schemas/Id'
-          description: Who gave it for the patient, e.g. a guardian of a minor. Must be a related person of this patient (the database enforces same-patient links).
-          x-phi: internal-id
-        signedFormFileId:
-          $ref: '#/components/schemas/Id'
-          description: Signed form or signature image, uploaded through the file service (purpose `document`) by the same user and not yet attached to anything; otherwise `422 file-not-ready`.
-          x-phi: internal-id
     PreferredPharmacySet:
       description: Body to set the preferred pharmacy.
       type: object
@@ -29651,6 +29658,22 @@ components:
         - finished
         - cancelled
         - entered-in-error
+    ClinicianRef:
+      description: A clinician or staff member, for display.
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Practitioner ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
     EncounterDiagnosis:
       description: 'A diagnosis on this encounter: a Condition with category `encounter-diagnosis`, ranked 1 to 12 for the claim (FRS FR-ENC-02; DATA_OWNERSHIP §2.5). Entered-in-error diagnoses are kept for audit but left out of the chart, problem list, decision support, AI summaries, claims and patient views (D24).'
       type: object
@@ -36701,22 +36724,6 @@ components:
           $ref: '#/components/schemas/Id'
           description: Record ID.
           x-phi: internal-id
-    StaffRef:
-      description: A staff member, for display.
-      type: object
-      required:
-        - id
-        - displayName
-      properties:
-        id:
-          $ref: '#/components/schemas/Id'
-          description: User ID.
-          x-phi: internal-id
-        displayName:
-          type: string
-          maxLength: 200
-          description: Name as shown on screens (staff, not patient data).
-          x-phi: none
     InboxThreadEvent:
       description: 'One step in the item''s history (`work_item_event`), oldest first: created, assigned (including reassignment and taking it from a queue), status change, comment (a reply), escalated. Insert-only.'
       type: object
