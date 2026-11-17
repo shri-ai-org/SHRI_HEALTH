@@ -679,7 +679,7 @@ def test_todays_visits_start_just_after_the_reset_and_stay_on_its_day(
     assert {s.date() for s in starts} == {day}                 # check-in is same-day only
     assert all(s.minute % 5 == 0 for s in starts)
     assert all(b - a == dt.timedelta(minutes=m)
-               for a, b, m in zip(starts, starts[1:], LENGTHS[:-1], strict=True))
+               for a, b, m in zip(starts[:-1], starts[1:], LENGTHS[:-1], strict=True))
     end = starts[-1] + dt.timedelta(minutes=LENGTHS[-1])
     assert end.time() <= demo.LATEST_END and end.date() == day
     if at < dt.time(20):
