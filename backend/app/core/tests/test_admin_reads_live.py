@@ -106,9 +106,13 @@ def _messages(practice: Practice) -> dict[str, uuid.UUID]:
 
 # ------------------------------------------------------------------------------- listRoles
 def test_roles_with_their_permissions_and_users(client: Any) -> None:
-    found = client("adm").get(f"{API_PREFIX}/roles")
+    found = client("adm").get(f"{API_PREFIX}/roles", params={"limit": 100})
     assert found.status_code == 200, found.text
     roles = {r["code"]: r for r in found.json()["items"]}
+    first = client("adm").get(f"{API_PREFIX}/roles", params={"limit": 3}).json()
+    rest = client("adm").get(f"{API_PREFIX}/roles", params={"cursor": first["nextCursor"],
+                                                            "limit": 100}).json()
+    assert [r["code"] for r in first["items"] + rest["items"]] == sorted(roles)
     assert set(roles) >= {"FD", "MA", "RN", "MD", "APP", "BIL", "ADM", "CO", "SUP", "DSP"}
     assert roles["MD"]["name"] == "Physician"
     assert "prescriptions:sign-and-send" in roles["MD"]["permissions"]
@@ -186,7 +190,7 @@ def test_another_clinics_audit_events_never_show(client: Any, practice: Practice
 def test_the_integration_monitor_shows_the_flow_never_the_payload(
         client: Any, practice: Practice) -> None:
     ids = _messages(practice)
-    found = client("adm").get(f"{API_PREFIX}/admin/integration-messages")
+    found = client("adm").get(f"{API_PREFIX}/integration-messages")
     assert found.status_code == 200, found.text
     items = {m["id"]: m for m in found.json()["items"]}
     assert set(items) == {str(ids["a-acknowledged"]), str(ids["a-failed"])}   # clinic A only
@@ -198,12 +202,12 @@ def test_the_integration_monitor_shows_the_flow_never_the_payload(
     assert failed["errorCode"] == "AE" and "relatedId" not in failed     # not a UUID: left out
     body = found.text
     assert "free text" not in body and "payload" not in body
-    only = client("adm").get(f"{API_PREFIX}/admin/integration-messages",
+    only = client("adm").get(f"{API_PREFIX}/integration-messages",
                              params={"status": "failed"}).json()["items"]
     assert [m["id"] for m in only] == [str(ids["a-failed"])]
-    assert client("adm").get(f"{API_PREFIX}/admin/integration-messages",
+    assert client("adm").get(f"{API_PREFIX}/integration-messages",
                              params={"partner": "mail"}).status_code == 422
-    assert client("md").get(f"{API_PREFIX}/admin/integration-messages").json()["code"] == (
+    assert client("md").get(f"{API_PREFIX}/integration-messages").json()["code"] == (
         "permission-denied")
 
 
@@ -213,7 +217,9 @@ def test_a_patients_record_as_fhir(client: Any, practice: Practice) -> None:
     found = client("md").get(f"{API_PREFIX}/patients/{patient}/fhir-record")
     assert found.status_code == 200, found.text
     bundle = found.json()
-    assert (bundle["resourceType"], bundle["type"]) == ("Bundle", "collection")
+    assert (bundle["resourceType"], bundle["type"], bundle["truncated"]) == (
+        "Bundle", "collection", False)
+    assert bundle["timestamp"] and "total" not in bundle
     (entry,) = [e for e in bundle["entry"] if e["resource"]["resourceType"] == "Patient"]
     assert entry["resource"]["id"] == str(patient) and entry["fullUrl"] == f"urn:uuid:{patient}"
     only = client("md").get(f"{API_PREFIX}/patients/{patient}/fhir-record",

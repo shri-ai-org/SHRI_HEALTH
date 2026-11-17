@@ -84,7 +84,7 @@ LIMIT :limit OFFSET :offset
 _ZONE = text("SELECT timezone FROM admin.tenant WHERE id = :id")
 
 
-@router.get("/admin/integration-messages", operation_id="listIntegrationMessages")
+@router.get("/integration-messages", operation_id="listIntegrationMessages")
 async def list_integration_messages(
         user: Annotated[CurrentUser, Depends(require("integration-messages:read"))], db: DB,
         partner: Partner | None = None, direction: Direction | None = None,
@@ -171,11 +171,9 @@ async def get_patient_fhir_record(
             entries.append({"fullUrl": f"urn:uuid:{obj.id}", "resource": to_fhir(obj)})
         if truncated:
             break
-    bundle: dict[str, Any] = {"resourceType": "Bundle", "type": "collection",
-                              "total": len(entries), "entry": entries}
-    if truncated:
-        bundle["truncated"] = True
-    return bundle
+    return {"resourceType": "Bundle", "type": "collection",
+            "timestamp": dt.datetime.now(dt.UTC).isoformat(), "truncated": truncated,
+            "entry": entries}
 
 
 def register(app: FastAPI, settings: Settings) -> None:

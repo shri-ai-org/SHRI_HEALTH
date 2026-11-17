@@ -102,15 +102,16 @@ GROUP BY r.code
 
 @router.get("/roles", operation_id="listRoles")
 async def list_roles(user: Annotated[CurrentUser, Depends(require("roles:read"))],
-                     db: DB) -> dict[str, Any]:
+                     db: DB, limit: Limit = 25, cursor: Cursor = None) -> dict[str, Any]:
+    offset = _decode(cursor)
     counts = {r.code: r.users for r in await db.execute(_USER_COUNTS)}
     items = []
-    for code in sorted(permissions.ROLE_PERMISSIONS):
+    for code in sorted(permissions.ROLE_PERMISSIONS)[offset:offset + limit + 1]:
         name, description = ROLE_NAMES.get(code, (code, ""))
         items.append({"code": code, "name": name, "description": description,
                       "permissions": sorted(permissions.ROLE_PERMISSIONS[code]),
                       "userCount": counts.get(code, 0)})
-    return {"items": items}
+    return _page(items, offset, limit)
 
 
 # ------------------------------------------------------------------------------------- users
