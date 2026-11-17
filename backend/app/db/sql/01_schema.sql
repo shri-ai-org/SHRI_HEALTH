@@ -336,14 +336,14 @@ CREATE TABLE admin.binary_object (
 	CONSTRAINT ck_binary_object_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$'), 
 	CONSTRAINT ck_binary_object_size CHECK (size_bytes >= 0), 
 	CONSTRAINT ck_binary_object_scanned_at CHECK ((scan_status = 'pending') = (scanned_at IS NULL)), 
-	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary') OR state = 'clean'), 
+	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary', 'imaging') OR state = 'clean'), 
 	CONSTRAINT ck_binary_object_key_when_clean CHECK (state = 'clean' OR wrapped_data_key IS NULL), 
-	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary')), 
+	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary', 'imaging')), 
 	CONSTRAINT fk_binary_object_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_binary_object_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_binary_object_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT ck_binary_object_scan_status_codes CHECK (scan_status IN ('pending', 'clean', 'infected', 'error')), 
-	CONSTRAINT ck_binary_object_purpose_codes CHECK (purpose IN ('insurance-card', 'identity', 'receipt', 'encounter-audio', 'after-visit-summary', 'document', 'fax', 'ccda', 'export', 'onboarding-import')), 
+	CONSTRAINT ck_binary_object_purpose_codes CHECK (purpose IN ('insurance-card', 'identity', 'receipt', 'encounter-audio', 'after-visit-summary', 'document', 'fax', 'ccda', 'export', 'onboarding-import', 'imaging')), 
 	CONSTRAINT ck_binary_object_state_codes CHECK (state IN ('pending-upload', 'quarantined', 'clean', 'rejected')), 
 	CONSTRAINT uq_binary_object_tenant_id_id UNIQUE (tenant_id, id)
 );
@@ -4434,7 +4434,7 @@ CREATE TABLE clinical.medication_request (
 	verified_by_user_id UUID, 
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_medication_request PRIMARY KEY (id), 
-	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
+	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL) OR (intent = 'proposal' AND requester_patient_id IS NOT NULL AND prior_prescription_id IS NOT NULL)), 
 	CONSTRAINT ck_medication_request_medication_code_binding CHECK (medication_codeable_concept_system IS NULL OR medication_codeable_concept_system IN ('http://www.nlm.nih.gov/research/umls/rxnorm', 'http://hl7.org/fhir/sid/ndc')), 
 	CONSTRAINT ck_medication_request_repeats_range CHECK (dispense_request_number_of_repeats_allowed IS NULL OR dispense_request_number_of_repeats_allowed BETWEEN 0 AND 11), 
 	CONSTRAINT ck_medication_request_cii_no_refills CHECK (ext_dea_schedule IS DISTINCT FROM 'CII' OR coalesce(dispense_request_number_of_repeats_allowed, 0) = 0), 
@@ -4492,6 +4492,8 @@ CREATE TABLE clinical.medication_request (
 CREATE INDEX ix_medication_request_patient_status ON clinical.medication_request (subject_patient_id, status);
 
 CREATE INDEX ix_medication_request_tenant_id ON clinical.medication_request (tenant_id);
+
+CREATE UNIQUE INDEX uq_medication_request_open_refill ON clinical.medication_request (tenant_id, prior_prescription_id) WHERE intent = 'proposal' AND status = 'active';
 
 CREATE TABLE clinical.diagnostic_report (
 	status VARCHAR(40) NOT NULL, 

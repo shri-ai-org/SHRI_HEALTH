@@ -224,6 +224,15 @@ The prescription helpers (D97), on the same rules. A prescription is a Medicatio
 - `set_transmission_status`: the NewRx row moves `queued` to `sent`, then `accepted` or
   `rejected`; `error` (needs the message) is replayed as `queued`. The same status again
   changes nothing.
+- `create_refill_request(db, RefillRequestIn)`: in the portal session, through
+  `admin.portal_request_refill` (0027); a non-empty `note` is `InvalidInput`, another patient
+  `ResourceNotFound`, then `RefillNotAllowed` or `RefillAlreadyRequested`;
+- `respond_to_refill_request(db, id, approve=, reason=, if_version=)`: approve sets the request
+  `completed` and writes the renewal as a draft through `create_prescription`
+  (`prior_prescription_id` the original), which is safety-checked and signed as any
+  prescription; decline sets it `cancelled` with one of `REFILL_DECLINE_REASONS` (a code and the
+  patient's words, no clinician free text). `refill_renewal_id()` reads the renewal back
+  (`newPrescriptionId`).
 
 The note helpers (D8, D73): `create_note`, `update_note` (autosave of a draft; sections merged
 by id; every committed save is a version), `sign_note` (legal attester and Provenance, then
@@ -415,6 +424,16 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     latest outbound NewRx (one of the contract's five, else NULL; both NULL before it's sent).
     Never an address, error text or clinician. shri_portal has no privilege on `admin.pharmacy`
     or `admin.erx_transaction` itself.
+  - **A refill request (migration 0027):** `SELECT admin.portal_request_refill(:prescription_id)`
+    returns the new request's ID. It is built from the prescription alone (drug and sig, no free
+    text): a MedicationRequest, intent `proposal`, status `active`, the patient as subject and
+    requester, `prior_prescription_id` the prescription, with its history and a Provenance by
+    the patient. Only for the session patient's own active, signed prescription that isn't PSY
+    or a controlled substance (its RxNorm concept loaded and without `dea_schedule`; fails
+    closed). `P0002` not hers; `P0001` `refill_not_allowed`; `23505`
+    `uq_medication_request_open_refill` (one open request per prescription). A proposal is never
+    a medication: every list and rule reads intent `plan` and `order` only, and
+    `portal_fhir_no_refill_request` keeps it off /fhir.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own

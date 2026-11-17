@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0026"
+HEAD = "0027"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -170,7 +170,7 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"'{sid(demo.PATIENT, 2)}' AND code_code = '723' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 2)}' AND medication_codeable_concept_code = '861007' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
         Check("Linda Thompson's after-visit summaries (one per signed past visit)",
               "SELECT count(*) FROM clinical.document_reference WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND type_code = '34133-9' AND status = 'current' "
@@ -184,7 +184,7 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"'{sid(demo.PATIENT, 3)}' AND code_code = '2670' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
     ]
 
 
