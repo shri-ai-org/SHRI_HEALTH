@@ -132,6 +132,12 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"a.tenant_id = {clinic} AND a.status = 'booked' AND x.actor_practitioner_id = "
               f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = {today}",
               "6", at_least=True, fix=RESET),
+        # The seed's own visits only (their fixed IDs), so a dry run booked earlier doesn't count.
+        Check("Linda Thompson's visit is the first of today's seeded visits",
+              "SELECT a.subject_patient_id::text FROM clinical.appointment a WHERE "
+              f"a.tenant_id = {clinic} AND a.id::text LIKE '{str(sid(demo.APPOINTMENT, 0))[:9]}%' "
+              f"AND (a.start AT TIME ZONE '{zone}')::date = {today} "
+              "ORDER BY a.start, a.id LIMIT 1", str(sid(demo.PATIENT, 3)), fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
               str(len(demo.SHOWN_PATIENTS)), fix=RESET),

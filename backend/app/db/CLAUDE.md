@@ -550,8 +550,10 @@ pin in `terminology/fetch.py`, in a reviewed PR.
   `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
   container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
   (Thulasi). RDS has its own backups (D30).
-- `demo_dry_run` books from 08:00 facility time, the start of the demo seed's clinic hours
-  (08:00 to 17:00 every day); after 16:40 there it stops with "no free time left today".
+- `demo_dry_run` books today's first free time at least 5 minutes ahead, at the first facility
+  with one left (the demo providers are bookable 00:00 to 23:59 every day; the last free time is
+  23:20, and the two facilities are three hours apart, so it passes at any hour); the revisit is
+  booked from 08:00 there.
 
 ## The demo seed's fixed IDs (`app/db/seed`)
 
