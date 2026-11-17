@@ -120,9 +120,11 @@ def test_codes_are_suggested_then_accepted_or_rejected_by_the_clinician(
     assert [c["decision"] for c in decided] == ["accepted", "rejected"]
     # Requester only; a code is never decided through decideAiSuggestion.
     assert client("md-b").get(f"{CODING}/{set_id}").status_code == 404
-    assert client("app").get(f"{CODING}/{set_id}").status_code == 404
-    assert _decide(client, set_id, upper["id"], user="app",
-                   decision="accepted").status_code == 404
+    # The shared fixture has no second MD or APP in this clinic: rn (no chart-summaries:read,
+    # no ai-suggestions:decision) is refused outright.
+    assert client("rn").get(f"{CODING}/{set_id}").status_code == 403
+    assert _decide(client, set_id, upper["id"], user="rn",
+                   decision="accepted").status_code == 403
     assert client("md").post(f"{API}/ai/suggestions/{diabetes['id']}/decision",
                              json={"decision": "accepted"}).status_code == 404
     rows = _sql(practice, "SELECT feature, error_message FROM admin.ai_request WHERE "
