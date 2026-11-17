@@ -421,6 +421,7 @@ check() {
     local probe
     probe="deploycheck$(openssl rand -hex 16)"
     "${curl[@]}" -o /dev/null "$E/api/v1/files/00000000-0000-4000-8000-000000000000/content?token=$probe" 2>/dev/null || true
+    "${curl[@]}" -o /dev/null "$E/api/v1/portal/me/files/00000000-0000-4000-8000-000000000000/content?token=$probe" 2>/dev/null || true
     sleep 1
     if $DC logs --no-log-prefix --since 2m nginx 2>&1 | grep -q "$probe"; then
         die "a query string reached Nginx's access log"
