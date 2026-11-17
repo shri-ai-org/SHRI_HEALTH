@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import date
 from typing import Literal
 from uuid import UUID
@@ -252,8 +252,16 @@ async def create_registered(db: AsyncSession, repo: PatientRepository, store: Fh
 
 async def register(db: AsyncSession, repo: PatientRepository, store: FhirStore,
                    body: schemas.PatientCreate, *, today: date,
-                   name_patient: Callable[[UUID], None]) -> Versioned[schemas.Patient]:
+                   name_patient: Callable[[UUID], None],
+                   write_consents: Callable[[UUID], Awaitable[None]] | None = None,
+                   ) -> Versioned[schemas.Patient]:
+    """registerPatient. ``write_consents`` writes the body's consents[] (D120) after the patient,
+    in the same transaction: a refused consent registers nothing."""
     patient_id = await create_registered(db, repo, store, body, today=today)
+    if body.consents:
+        if write_consents is None:
+            raise business_rule("body", "/consents", "not-allowed-value")
+        await write_consents(patient_id)
     name_patient(patient_id)  # for the audit row, which commits with the patient (#79)
     await db.commit()
     return await repo.get_patient(db, patient_id)

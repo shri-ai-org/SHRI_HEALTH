@@ -292,3 +292,36 @@ def test_every_consent_kind_has_its_agreed_category() -> None:
     assert set(CATEGORIES) == kinds
     assert [c.code for c in CATEGORIES["financial"]] == ["59284-0"]  # one fixed code (#88)
     assert [c.code for c in CATEGORIES["ambient-recording"]] == ["ICOL"]
+
+
+# ---------------------------------------------------- consents at registration (D120, #398)
+def test_registration_records_its_consents_with_the_patient(as_user: Client) -> None:
+    n = next(_SEQ)
+    response = as_user("fd").post("/api/v1/patients", json=new_patient(
+        name={"family": f"Okafor{n}", "given": [f"Ade{n}"]}, birthDate=f"19{n}-02-11",
+        phones=[{"number": f"+121755501{n}", "use": "mobile"}],
+        consents=[consent_body(), consent_body(kind="privacy-notice")]))
+    assert response.status_code == 201, response.text
+    patient_id = response.json()["id"]
+    listed = as_user("co").get(f"/api/v1/patients/{patient_id}/consents").json()["items"]
+    assert sorted(c["kind"] for c in listed) == ["privacy-notice", "treatment"]
+    assert all(c["status"] == "active" for c in listed)
+
+
+def test_registration_consent_refusals_register_nothing_new(as_user: Client) -> None:
+    def attempt(*consents: dict[str, Any]) -> Any:
+        n = next(_SEQ)
+        return as_user("fd").post("/api/v1/patients", json=new_patient(
+            name={"family": f"Okafor{n}", "given": [f"Ade{n}"]}, birthDate=f"19{n}-02-11",
+            phones=[{"number": f"+121755501{n}", "use": "mobile"}], consents=list(consents)))
+
+    twice = attempt(consent_body(), consent_body())
+    assert twice.status_code == 422 and code(twice) == "business-rule-violation"
+    assert pointer(twice) == "/consents/1/kind"
+    represented = attempt(consent_body(grantorRelatedPersonId=str(uuid4())))
+    assert represented.status_code == 422
+    assert pointer(represented) == "/consents/0/grantorRelatedPersonId"
+    too_many = attempt(*[consent_body() for _ in range(11)])
+    assert too_many.status_code == 422 and code(too_many) == "validation-failed"
+    assert as_user("bil").post("/api/v1/patients", json=new_patient(
+        consents=[consent_body()])).status_code == 403

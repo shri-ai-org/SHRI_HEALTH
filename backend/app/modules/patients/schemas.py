@@ -139,6 +139,8 @@ class PatientCreate(Closed):
     identifiers: Annotated[list[PatientIdentifierCreate], Field(max_length=10)] = []
     duplicate_check: Literal["default", "override"] = "default"
     duplicate_override_reason: Annotated[str, _text(500)] | None = None
+    #: Consents signed at registration, written in the patient's transaction (D120; #398).
+    consents: Annotated[list[ConsentCreate], Field(max_length=10)] = []
 
 
 class Patient(Out):
@@ -409,6 +411,9 @@ class ConsentCreate(Closed):
     policy_version: Annotated[str, _text(40)] | None = None
     grantor_related_person_id: UUID | None = None
     signed_form_file_id: UUID | None = None
+
+
+PatientCreate.model_rebuild()  # consents names ConsentCreate, defined above
 
 
 class Consent(Out):
