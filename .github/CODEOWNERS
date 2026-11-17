@@ -50,6 +50,8 @@
 /frontend/src/features/admin-setup/       @anandshriai @Minalini-shriai
 /frontend/src/features/billing/           @anandshriai @Minalini-shriai
 /frontend/src/features/documents/         @anandshriai @Minalini-shriai
+# generated from contracts/; regenerate, never hand-edit
+/frontend/src/api/generated/              @vimalshriai
 /infra/postgres/                          @anandshriai
 /infra/seaweedfs/                         @anandshriai
 
