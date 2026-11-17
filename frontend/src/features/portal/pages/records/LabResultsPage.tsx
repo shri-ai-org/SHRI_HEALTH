@@ -31,18 +31,34 @@ export const reportName = (r: PortalLabResult): string => r.shortName ?? r.code?
 export const analyteName = (o: PortalLabObservation): string => o.shortName ?? o.code.text ?? o.code.display ?? 'Result'
 const analyteKey = (o: PortalLabObservation): string => o.code.code ?? analyteName(o)
 
+/** A UCUM unit as people write it: `mL/min/{1.73_m2}` is "mL/min/1.73 m²". */
+export const unitText = (unit: string): string => unit.replace(/\{([^}]*)\}/g, '$1').replace(/_m2\b/g, ' m²')
+
+/**
+ * The flag: the lab's, or else from the value and the lab's range (a result outside it is High or
+ * Low, inside it Within range); none without a number and a range.
+ */
+export function flagOf(o: PortalLabObservation): PortalLabObservationInterpretation | undefined {
+  if (o.interpretation) return o.interpretation
+  const r = o.referenceRange
+  if (!o.value || !r || (r.low === undefined && r.high === undefined)) return undefined
+  if (r.high !== undefined && o.value.value > r.high) return 'H'
+  if (r.low !== undefined && o.value.value < r.low) return 'L'
+  return 'N'
+}
+
 /** "0–20 mm/h", "Above 60", "Below 5", the lab's text, or null. */
 export function rangeText(o: PortalLabObservation): string | null {
   const r = o.referenceRange
   if (!r) return null
-  const unit = o.value?.unit ? ` ${o.value.unit}` : ''
+  const unit = o.value?.unit ? ` ${unitText(o.value.unit)}` : ''
   if (r.low !== undefined && r.high !== undefined) return `${r.low}–${r.high}${unit}`
   if (r.low !== undefined) return `${r.low}${unit} or more`
   if (r.high !== undefined) return `${r.high}${unit} or less`
   return r.text ?? null
 }
 
-export const valueText = (o: PortalLabObservation): string => (o.value ? `${o.value.value} ${o.value.unit}`.trim() : (o.text ?? '—'))
+export const valueText = (o: PortalLabObservation): string => (o.value ? `${o.value.value} ${unitText(o.value.unit)}`.trim() : (o.text ?? '—'))
 
 /** When a report was taken: collected, else issued. */
 const takenAt = (r: PortalLabResult): string | undefined => r.effectiveAt ?? r.issuedAt
@@ -92,10 +108,13 @@ export function trendsOf(results: PortalLabResult[]): Trend[] {
     trends.push({
       key,
       name,
-      unit,
+      unit: unitText(unit),
       ...(latest.referenceRange?.low !== undefined ? { low: latest.referenceRange.low } : {}),
       ...(latest.referenceRange?.high !== undefined ? { high: latest.referenceRange.high } : {}),
-      points: same.map((row) => ({ at: row.at, value: row.o.value!.value, ...(row.o.interpretation ? { flag: row.o.interpretation } : {}) })),
+      points: same.map((row) => {
+        const flag = flagOf(row.o)
+        return { at: row.at, value: row.o.value!.value, ...(flag ? { flag } : {}) }
+      }),
     })
   }
   return trends
@@ -158,7 +177,8 @@ function ReportList({ list }: { list: PortalLabResult[] }) {
               <dl className="mt-2 space-y-2">
                 {(r.results ?? []).map((o, i) => {
                   const range = rangeText(o)
-                  const flag = o.interpretation ? FLAG[o.interpretation] : null
+                  const f = flagOf(o)
+                  const flag = f ? FLAG[f] : null
                   return (
                     <div key={`${analyteKey(o)}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                       <dt className="min-w-40 text-sm text-ink">{analyteName(o)}</dt>
@@ -243,11 +263,12 @@ function TrendChart({ trend: t }: { trend: Trend }) {
             </text>
           </g>
         ))}
-        {t.points.map((p, i) => (
+        {/* The first and last dates only once there are more than three, so a phone's labels never overlap; every value is listed below. */}
+        {t.points.map((p, i) => (n > 3 && i !== 0 && i !== n - 1 ? null : (
           <text key={p.at} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} className="fill-ink-subtle text-[11px]">
             {date(p.at)}
           </text>
-        ))}
+        )))}
         <polyline points={t.points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" className="stroke-primary-600" strokeWidth={2.5} strokeLinejoin="round" />
         {t.points.map((p, i) => {
           const out = outOfRange(p, t)

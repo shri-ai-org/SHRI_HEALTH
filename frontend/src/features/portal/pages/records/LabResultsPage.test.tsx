@@ -7,7 +7,7 @@ import { PortalApiContext, type PortalApi } from '../../api/portalApi'
 import { ClinicZone } from '../../clinicZone'
 import { pathEnabled } from '../../features'
 import { PortalRouter } from '../../router'
-import { HELD_TEXT, LabResultsPage, flagWords, outOfRange, rangeText, trendsOf } from './LabResultsPage'
+import { HELD_TEXT, LabResultsPage, flagOf, flagWords, outOfRange, rangeText, trendsOf, unitText } from './LabResultsPage'
 
 // The patient's own lab results with the real API (listPortalLabResults, #398). Synthetic reports
 // only; the API is a stand-in that answers the two reads the page makes.
@@ -148,5 +148,18 @@ describe('the graph series', () => {
     expect(pathEnabled('/test-results', true)).toBe(true)
     expect(pathEnabled('/test-results/:resultId', true)).toBe(false)
     expect(pathEnabled('/test-results/:resultId', false)).toBe(true)
+  })
+
+  it('writes UCUM units as people do', () => {
+    expect(unitText('mL/min/{1.73_m2}')).toBe('mL/min/1.73 m²')
+    expect(unitText('mg/dL')).toBe('mg/dL')
+  })
+
+  it("takes the lab's flag, or else the range, for the flag in words", () => {
+    expect(flagOf({ code: CRP, value: { value: 3.4, unit: 'mg/L' }, referenceRange: { high: 3 } })).toBe('H')
+    expect(flagOf({ code: CRP, value: { value: 1, unit: 'mg/L' }, referenceRange: { low: 2, high: 3 } })).toBe('L')
+    expect(flagOf({ code: CRP, value: { value: 2.5, unit: 'mg/L' }, referenceRange: { low: 2, high: 3 } })).toBe('N')
+    expect(flagOf({ code: CRP, value: { value: 9, unit: 'mg/L' }, referenceRange: { high: 3 }, interpretation: 'A' })).toBe('A')
+    expect(flagOf({ code: CRP, value: { value: 9, unit: 'mg/L' } })).toBeUndefined()
   })
 })
