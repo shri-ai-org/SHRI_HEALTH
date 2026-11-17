@@ -136,14 +136,16 @@ class StoredSummary:
 
 async def store(db: AsyncSession, file_store: FileStore, crypto: FileCrypto, *, patient_id: UUID,
                 encounter_id: UUID, note_id: UUID, author_practitioner_id: UUID,
-                details: AfterVisitSummaryDetails) -> StoredSummary:
+                details: AfterVisitSummaryDetails,
+                generated_at: datetime | None = None) -> StoredSummary:
     """Render, store and record the summary in the caller's transaction; never commits. The PDF
     is sealed with its own data key (``crypto``, #145) like every stored file; no key, no
-    summary (503 from the file service)."""
+    summary (503 from the file service). It is dated the database's ``now()``; only the demo
+    seed passes ``generated_at``, the end of a past visit (``seed/linda.py``)."""
     data = render(details)
     file_id = await store_generated(db, file_store, crypto, purpose=PURPOSE,
                                     content_type=pdf.CONTENT_TYPE, data=data)
-    now: datetime = (await db.execute(text("SELECT now()"))).scalar_one()
+    now: datetime = generated_at or (await db.execute(text("SELECT now()"))).scalar_one()
     user = (await db.execute(text(
         "SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid"))).scalar_one()
     doc = M["document_reference"](

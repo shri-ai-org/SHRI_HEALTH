@@ -448,9 +448,11 @@ HISTORY: dict[int, History] = {
                       "exam normal.",
                       "Flare of chronic low back pain; no red flags.",
                       "Naproxen twice daily for one week, cyclobenzaprine at night as needed, "
-                      "restart the therapy exercises. Revisit in November.",
-                      "Short course of naproxen with food. Restart your exercises when the "
-                      "spasm settles.",
+                      "restart the therapy exercises. Omeprazole 20 mg once daily to protect "
+                      "the stomach while she uses naproxen; 60 days, two refills, sent to her "
+                      "pharmacy. Revisit in November.",
+                      "Short course of naproxen with food. Take omeprazole every morning "
+                      "before breakfast. Restart your exercises when the spasm settles.",
                       (M54_50, G89_29)),
         ),
         problems=(

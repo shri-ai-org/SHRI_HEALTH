@@ -9,7 +9,10 @@ The reset has two halves. Dropping and recreating the database, with its databas
    already has tables in ``admin`` or ``clinical``: this never drops, truncates or deletes;
 2. migrate to head (Alembic, ``MIGRATION_DATABASE_URL``);
 3. load the ``demo`` layer (which loads ``starter`` first) in one transaction;
-4. load the demo patients' clinical history (``history.py``) in a second one;
+4. load the demo patients' clinical history (``history.py``) in a second one, their results
+   and imaging reports (``results.py``) in a third, and Linda Thompson's after-visit
+   summaries and refill-ready prescription (``linda.py``) in a fourth; the images and the
+   summaries are stored encrypted, so the file store and the key service must be reachable;
 5. check the result and print a short summary: the migration head, and the demo clinic's
    patients and appointments, read inside that clinic as row-level security requires. The
    reset fails (a non-zero exit and one line) unless the clinic has at least 512 patients, its
@@ -31,7 +34,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
-from app.db.seed import history, results, starter
+from app.db.seed import history, linda, results, starter
 from app.db.seed.demo import (
     CLINIC_ZONE,
     DEMO_DAY,
@@ -92,6 +95,7 @@ def reset(engine: Engine) -> ResetSummary:
         load_demo(db)
     history.run(engine)
     results.run(engine)
+    linda.run(engine)
     with Session(engine) as db, db.begin():
         found = summary(db)
         problems = verify(db, found)
