@@ -10,6 +10,7 @@ import type {
   PortalChangeRequest,
   PortalChangeRequestCreate,
   PortalDownloadUrl,
+  PortalLabResult,
   PortalMedication,
   PortalProblem,
   PortalProfile,
@@ -95,6 +96,8 @@ export interface PortalContractApi {
 
   /** The patient's own medications, active first; never drafts or entered-in-error (#389). */
   listMedications(): Promise<PortalMedication[]>
+  /** The patient's own lab reports, newest first; a held one has its ID only (D90, #398). */
+  listLabResults(): Promise<PortalLabResult[]>
 }
 
 /**
