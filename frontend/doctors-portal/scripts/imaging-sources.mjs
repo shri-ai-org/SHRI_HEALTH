@@ -17,6 +17,12 @@
  * lists them all.
  */
 
+// SHRI_HEALTH: fenced off before the demo. Runs only with SHRI_ALLOW_SCAN_IMPORT=1.
+if (process.env.SHRI_ALLOW_SCAN_IMPORT !== '1') {
+  console.error("Disabled: these sources include real patients' scans and share-alike/non-commercial images; see D12 and D75")
+  process.exit(1)
+}
+
 const COVID_AR = {
   dataset: 'TCIA COVID-19-AR',
   licence: 'CC BY 4.0',
