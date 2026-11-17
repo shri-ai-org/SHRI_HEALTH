@@ -36,6 +36,12 @@ export async function readyOrWip(page: Page, name: string, ready: Locator): Prom
   await screenOk(page, name)
 }
 
+/** The headers an unsafe API call needs, as the screens send them: the session's CSRF token and an
+ *  allowed Origin (core refuses a write without both; Playwright's request context sends no Origin). */
+export async function unsafe(page: Page): Promise<Record<string, string>> {
+  return { 'X-CSRF-Token': await csrf(page), Origin: new URL(page.url()).origin }
+}
+
 /** The signed-in session's CSRF token, for the API reads that are POSTs (patient search, D13). */
 export async function csrf(page: Page): Promise<string> {
   const res = await page.request.get(`${API}/auth/session`)
@@ -46,7 +52,7 @@ export async function csrf(page: Page): Promise<string> {
 /** Linda Thompson's patient ID, by the typed search the desk uses (D117). */
 export async function lindaId(page: Page): Promise<string> {
   const res = await page.request.post(`${API}/patients/search`, {
-    headers: { 'X-CSRF-Token': await csrf(page) },
+    headers: await unsafe(page),
     data: { criteria: { query: 'Thompson Linda' }, limit: 10 },
   })
   expect(res.status(), await res.text()).toBe(200)

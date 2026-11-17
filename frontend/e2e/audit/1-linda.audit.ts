@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { expect, test } from '@playwright/test'
 
-import { API, as, csrf, lindaId, readyOrWip, screenOk, todaysVisit } from './audit'
+import { API, as, lindaId, readyOrWip, screenOk, todaysVisit, unsafe } from './audit'
 
 // Sena's demo flow for Linda Thompson (the 16 Nov plan on #85; D119), on the stack the demo-audit
 // job builds like the demo server. A step whose screen isn't merged yet is skipped with the reason,
@@ -43,7 +43,7 @@ test("2. Check-in from today's outpatients", async ({ page }) => {
   // The audit checks the screen, then checks in through the API so the later steps have a visit.
   await expect.soft(row.getByRole('button', { name: /Check in/i }), 'Check in is offered').toBeVisible()
   const res = await page.request.post(`${API}/appointments/${appointmentId}/check-in`, {
-    headers: { 'Idempotency-Key': randomUUID(), 'X-CSRF-Token': await csrf(page) },
+    headers: { 'Idempotency-Key': randomUUID(), ...(await unsafe(page)) },
     data: { selfPay: true },
   })
   expect(res.status(), await res.text()).toBe(200)
