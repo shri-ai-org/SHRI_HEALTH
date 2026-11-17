@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 
 import { realApiProxy, realApiSettings, sessionStub } from '../dev/realApi.ts'
 
@@ -46,6 +46,26 @@ const realApi = realApiSettings(process.env)
 // keeps its own switch (SHRI_API=real).
 const realApiBuild = process.env.SHRI_API !== 'mock'
 
+// SHRI_HEALTH: the sample screens' imported scans (src/data/imaging.generated.ts, ncct.generated.ts)
+// list real, de-identified patients' studies and share-alike or non-commercial images, against D12
+// and D75. With the real API, both resolve to the empty stand-ins in shri-health/, the same way
+// fix-webm-duration is stubbed below, so a real-API build carries none of it (scripts/check-bundle.mjs
+// proves it). A hook rather than an alias, because src/data imports them by relative path too.
+const FENCED = {
+  'imaging.generated': fileURLToPath(new URL('./shri-health/imagingGeneratedStub.ts', import.meta.url)),
+  'ncct.generated': fileURLToPath(new URL('./shri-health/ncctGeneratedStub.ts', import.meta.url)),
+}
+function fenceImportedScans(): Plugin {
+  return {
+    name: 'shri-fence-imported-scans',
+    enforce: 'pre',
+    resolveId(source) {
+      const m = /(?:^|\/)(imaging|ncct)\.generated(?:\.ts)?$/.exec(source)
+      return m ? FENCED[`${m[1] as 'imaging' | 'ncct'}.generated`] : null
+    },
+  }
+}
+
 export default defineConfig(({ command }) => ({
   /**
    * Where the built app is mounted. The dev server and the harness run at `/`;
@@ -54,7 +74,12 @@ export default defineConfig(({ command }) => ({
    * and index.html all read this, so nothing else needs to know.
    */
   base: process.env.PORTAL_BASE ?? '/',
-  plugins: [react(), tailwindcss(), ...(realApi?.stubSessions ? [sessionStub(realApi)] : [])],
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(realApi?.stubSessions ? [sessionStub(realApi)] : []),
+    ...(realApi || (command === 'build' && realApiBuild) ? [fenceImportedScans()] : []),
+  ],
   define: {
     __BUILD_STAMP__: JSON.stringify(buildStamp(new Date())),
     __BUILD_COMMIT__: JSON.stringify(buildCommit()),
