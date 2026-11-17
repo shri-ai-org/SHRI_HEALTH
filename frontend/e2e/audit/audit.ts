@@ -69,3 +69,11 @@ export async function todaysVisit(page: Page, patientId: string): Promise<{ id: 
   const items = ((await res.json()) as { items: { id: string; status: string; encounterId?: string; patient: { id: string } }[] }).items
   return items.find((a) => a.patient.id === patientId)
 }
+
+/** The patient's open visit today (checked in by step 2), from the patient's own encounters. */
+export async function openEncounter(page: Page, patientId: string): Promise<string | undefined> {
+  const res = await page.request.get(`${API}/patients/${patientId}/encounters?limit=25`)
+  if (res.status() !== 200) return undefined
+  const items = ((await res.json()) as { items: { id: string; status: string }[] }).items
+  return items.find((e) => !['finished', 'cancelled', 'entered-in-error'].includes(e.status))?.id
+}

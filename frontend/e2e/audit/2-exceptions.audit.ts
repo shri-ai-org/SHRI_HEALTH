@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { expect, test } from '@playwright/test'
 
-import { as, lindaId, readyOrWip, screenOk, todaysVisit, unsafe } from './audit'
+import { as, lindaId, openEncounter, readyOrWip, screenOk, unsafe } from './audit'
 
 // The demo's exception paths (Sena's plan): a duplicate registration, a medication allergy alert,
 // and a physician editing an AI-drafted note. On the demo-audit stack, as the demo accounts.
@@ -35,9 +35,9 @@ test('A. Registering Linda again warns about a possible duplicate', async ({ pag
 
 test("B. Prescribing a drug she can't take raises the allergy alert", async ({ page }) => {
   await as(page, 'doctor', '/clinician/')
-  const visit = await todaysVisit(page, await lindaId(page))
-  test.skip(!visit?.encounterId, 'needs Linda checked in (1-linda.audit.ts step 2 runs first)')
-  await page.goto(`/clinician/encounter/${visit!.encounterId}/rx`)
+  const encounter = await openEncounter(page, await lindaId(page))
+  test.skip(!encounter, 'needs Linda checked in (1-linda.audit.ts step 2 runs first)')
+  await page.goto(`/clinician/encounter/${encounter}/rx`)
   await page.getByLabel('Search the formulary').fill('codeine')
   await expect.soft(page.getByLabel('Formulary matches').getByRole('button').first(), 'codeine is found').toBeVisible({ timeout: 30_000 })
   await page.getByLabel('Formulary matches').getByRole('button').first().click()
@@ -48,9 +48,9 @@ test("B. Prescribing a drug she can't take raises the allergy alert", async ({ p
 
 test('C. Editing an AI-drafted note section', async ({ page }) => {
   await as(page, 'doctor', '/clinician/')
-  const visit = await todaysVisit(page, await lindaId(page))
-  test.skip(!visit?.encounterId, 'needs Linda checked in (1-linda.audit.ts step 2 runs first)')
-  await page.goto(`/clinician/encounter/${visit!.encounterId}/note`)
+  const encounter = await openEncounter(page, await lindaId(page))
+  test.skip(!encounter, 'needs Linda checked in (1-linda.audit.ts step 2 runs first)')
+  await page.goto(`/clinician/encounter/${encounter}/note`)
   await readyOrWip(page, 'C-note', page.getByRole('button', { name: 'Draft with AI' }).first())
   await page.getByRole('button', { name: 'Draft with AI' }).first().click()
   // The dictation sheet: type instead of speaking (the audit has no microphone).
