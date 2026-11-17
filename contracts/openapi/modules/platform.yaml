@@ -654,6 +654,59 @@ paths:
       parameters: *id_hook_parameters
       requestBody: *id_hook_body
       responses: *id_hook_responses
+  /hooks/lab:
+    servers:
+    - url: /
+      description: Outside /api/v1 (API_STANDARDS §2).
+    post:
+      operationId: receiveLabMessage
+      summary: Receive a lab or imaging message
+      description: "A message from the lab or imaging center, for the demo the simulated center (`SIMULATED_PARTNERS=true`, never in production): a LabOrderStatus acknowledging an order (`received` with the center's filler order number, `rejected` or `cancelled`) or a LabResult with the report for one order (contracts/partners/lab). Verified and recorded exactly as `receiveClearinghouseMessage`, then handed to the orders module: an acknowledgement moves the order's tracking status to `received` (or `error` on `rejected`); a result files the `DiagnosticReport` and its results against the order, sets the order `completed` and its tracking status `resulted`, in one transaction. A message for an unknown or cancelled order is refused (`409`) and logged, and nothing is filed. Not for browsers, so it is left out of the generated client."
+      tags:
+      - partner-callbacks
+      x-owner: thulasi
+      x-permission: partner-signed
+      x-audit:
+        action: C
+        category: phi-write
+        actor: partner
+      x-storage: admin
+      x-release: P0
+      security: []
+      parameters: *id_hook_parameters
+      requestBody: *id_hook_body
+      responses:
+        '200':
+          description: Received (or a repeat of a message already received). No body.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not a valid partner message, or is over 64 KB).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (a missing or wrong signature, a timestamp outside 5 minutes, or an unknown
+            clinic); never says which.
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (the `correlationId` names no order of this clinic sent to this partner,
+            or the order is cancelled); nothing is filed and the partner does not retry.
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error; the partner retries).
+        '503':
+          $ref: ../components/responses/ServiceUnavailable.yaml
+          description: 503. `service-unavailable` (this partner's callbacks are not configured).
   /operations/{operationId}:
     parameters:
     - name: operationId
@@ -1287,8 +1340,9 @@ components:
   schemas:
     PartnerMessage:
       description: 'A partner reply as the partner contracts define it (contracts/partners): the clearinghouse''s 271 (`result`,
-        `plan`, `benefits`, `errors`) or the pharmacy''s RxStatus (`status`, `rejection`). Core checks this envelope; the
-        owning module validates the whole message against its own partner schema.'
+        `plan`, `benefits`, `errors`), the pharmacy''s RxStatus (`status`, `rejection`), or the lab or imaging center''s LabOrderStatus
+        (`status`, `fillerOrderNumber`, `rejection`) or LabResult (`fillerOrderNumber`, `category`, `report`). Core checks
+        this envelope; the owning module validates the whole message against its own partner schema.'
       type: object
       additionalProperties: false
       required:
@@ -1303,6 +1357,8 @@ components:
           enum:
           - '271'
           - RxStatus
+          - LabOrderStatus
+          - LabResult
           description: The partner message type.
           x-phi: none
         schemaVersion:
@@ -1360,13 +1416,34 @@ components:
           enum:
           - accepted
           - rejected
-          description: 'RxStatus only: the pharmacy''s answer.'
+          - received
+          - cancelled
+          description: 'RxStatus: the pharmacy''s answer (`accepted`, `rejected`). LabOrderStatus: the center''s answer (`received`,
+            `rejected`, `cancelled`).'
           x-phi: none
         rejection:
           type: object
           maxProperties: 10
-          description: 'RxStatus only: why it was rejected (the pharmacy partner schema).'
+          description: 'RxStatus and LabOrderStatus only: why it was rejected (the pharmacy or lab partner schema).'
           x-phi: none
+        fillerOrderNumber:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,60}$
+          maxLength: 60
+          description: 'LabOrderStatus and LabResult only: the center''s order number. Never a patient identifier.'
+          x-phi: none
+        category:
+          type: string
+          enum:
+          - laboratory
+          - imaging
+          description: 'LabResult only: a lab or imaging report.'
+          x-phi: none
+        report:
+          type: object
+          maxProperties: 20
+          description: 'LabResult only: the report and its results (the lab partner schema).'
+          x-phi: clinical
     SessionUser:
       description: The signed-in user, as the session knows them. Roles use the codes in SECURITY_MODEL §4.3.
       type: object

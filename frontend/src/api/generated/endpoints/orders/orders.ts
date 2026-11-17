@@ -16,6 +16,10 @@
  */
 import type {
   BadRequestResponse,
+  CancelOrderHeaders,
+  ConflictResponse,
+  CreateOrderHeaders,
+  CreateReferralHeaders,
   ForbiddenResponse,
   Id,
   ImagingReportList,
@@ -23,10 +27,28 @@ import type {
   LabResultList,
   ListImagingReportsParams,
   ListLabResultsParams,
+  ListOrderableTestsParams,
+  ListOrdersParams,
+  ListReferralsParams,
+  MarkOrderEnteredInErrorHeaders,
   NotFoundResponse,
+  Order,
+  OrderCancel,
+  OrderCreate,
+  OrderEnteredInError,
+  OrderList,
+  OrderableTestList,
+  PreconditionFailedResponse,
+  PreconditionRequiredResponse,
+  Referral,
+  ReferralCreate,
+  ReferralList,
+  ReferralStatusUpdate,
+  SignAndSendOrderHeaders,
   TooManyRequestsResponse,
   UnauthorizedResponse,
-  UnprocessableContentResponse
+  UnprocessableContentResponse,
+  UpdateReferralStatusHeaders
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -191,6 +213,910 @@ export const listImagingReports = async (patientId: Id,
     method: 'GET'
 
 
+  }
+);}
+
+
+export type listOrderableTestsResponse200 = {
+  data: OrderableTestList
+  status: 200
+}
+
+export type listOrderableTestsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listOrderableTestsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listOrderableTestsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listOrderableTestsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listOrderableTestsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listOrderableTestsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listOrderableTestsResponseSuccess = (listOrderableTestsResponse200) & {
+  headers: Headers;
+};
+export type listOrderableTestsResponseError = (listOrderableTestsResponse400 | listOrderableTestsResponse401 | listOrderableTestsResponse403 | listOrderableTestsResponse422 | listOrderableTestsResponse429 | listOrderableTestsResponse500) & {
+  headers: Headers;
+};
+
+export type listOrderableTestsResponse = (listOrderableTestsResponseSuccess | listOrderableTestsResponseError)
+
+export const getListOrderableTestsUrl = (params?: ListOrderableTestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/lab-compendium?${stringifiedParams}` : `/lab-compendium`
+}
+
+/**
+ * The tests and imaging studies the clinic's lab and imaging centers offer (inventory #132): reference data, not patient data, so the query string is allowed and nothing is audited. `q` matches the start of a word in the name, or the code. Ordered by name.
+ * @summary Search what can be ordered
+ */
+export const listOrderableTests = async (params?: ListOrderableTestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listOrderableTestsResponse> => {
+
+  return apiFetch<listOrderableTestsResponse>(getListOrderableTestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type listOrdersResponse200 = {
+  data: OrderList
+  status: 200
+}
+
+export type listOrdersResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listOrdersResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listOrdersResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listOrdersResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listOrdersResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listOrdersResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listOrdersResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listOrdersResponseSuccess = (listOrdersResponse200) & {
+  headers: Headers;
+};
+export type listOrdersResponseError = (listOrdersResponse400 | listOrdersResponse401 | listOrdersResponse403 | listOrdersResponse404 | listOrdersResponse422 | listOrdersResponse429 | listOrdersResponse500) & {
+  headers: Headers;
+};
+
+export type listOrdersResponse = (listOrdersResponseSuccess | listOrdersResponseError)
+
+export const getListOrdersUrl = (params: ListOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/orders?${stringifiedParams}` : `/orders`
+}
+
+/**
+ * A patient's lab and imaging orders, drafts included, newest first (inventory #135), with each order's tracking status for the screen's chips. Entered-in-error orders are left out. Restricted charts need a break-glass grant or care-team membership (D37).
+ * @summary List a patient's orders
+ */
+export const listOrders = async (params: ListOrdersParams, options?: Parameters<typeof apiFetch>[1]): Promise<listOrdersResponse> => {
+
+  return apiFetch<listOrdersResponse>(getListOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createOrderResponse201 = {
+  data: Order
+  status: 201
+}
+
+export type createOrderResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createOrderResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createOrderResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createOrderResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createOrderResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createOrderResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createOrderResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createOrderResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createOrderResponseSuccess = (createOrderResponse201) & {
+  headers: Headers;
+};
+export type createOrderResponseError = (createOrderResponse400 | createOrderResponse401 | createOrderResponse403 | createOrderResponse404 | createOrderResponse409 | createOrderResponse422 | createOrderResponse429 | createOrderResponse500) & {
+  headers: Headers;
+};
+
+export type createOrderResponse = (createOrderResponseSuccess | createOrderResponseError)
+
+export const getCreateOrderUrl = () => {
+
+
+
+
+  return `/orders`
+}
+
+/**
+ * Starts a draft order (inventory #134): a `ServiceRequest`, intent `order`, category `laboratory` or `imaging` from the test. The test comes from `GET /lab-compendium`. If the same test is already active for the patient from the last 7 days, the server answers `409 duplicate-order` (`errors` names `/testId`); the clinician may send the request again with `duplicateOverrideReason`. The draft is signed and sent with `POST /orders/{orderId}/sign-and-send`.
+ * @summary Start a lab or imaging order
+ */
+export const createOrder = async (orderCreate: OrderCreate,
+    headers: CreateOrderHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createOrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createOrderResponse>(getCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(orderCreate)
+  }
+);}
+
+
+export type getOrderResponse200 = {
+  data: Order
+  status: 200
+}
+
+export type getOrderResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getOrderResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getOrderResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getOrderResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getOrderResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getOrderResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getOrderResponseSuccess = (getOrderResponse200) & {
+  headers: Headers;
+};
+export type getOrderResponseError = (getOrderResponse401 | getOrderResponse403 | getOrderResponse404 | getOrderResponse422 | getOrderResponse429 | getOrderResponse500) & {
+  headers: Headers;
+};
+
+export type getOrderResponse = (getOrderResponseSuccess | getOrderResponseError)
+
+export const getGetOrderUrl = (orderId: Id,) => {
+
+
+
+
+  return `/orders/${orderId}`
+}
+
+/**
+ * One order with its tracking status (inventory #136). Its `ETag` is the `If-Match` for signing, cancelling or marking it entered-in-error.
+ * @summary Get an order
+ */
+export const getOrder = async (orderId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getOrderResponse> => {
+
+  return apiFetch<getOrderResponse>(getGetOrderUrl(orderId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type signAndSendOrderResponse200 = {
+  data: Order
+  status: 200
+}
+
+export type signAndSendOrderResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type signAndSendOrderResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type signAndSendOrderResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type signAndSendOrderResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type signAndSendOrderResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type signAndSendOrderResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type signAndSendOrderResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type signAndSendOrderResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type signAndSendOrderResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type signAndSendOrderResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type signAndSendOrderResponseSuccess = (signAndSendOrderResponse200) & {
+  headers: Headers;
+};
+export type signAndSendOrderResponseError = (signAndSendOrderResponse400 | signAndSendOrderResponse401 | signAndSendOrderResponse403 | signAndSendOrderResponse404 | signAndSendOrderResponse409 | signAndSendOrderResponse412 | signAndSendOrderResponse422 | signAndSendOrderResponse428 | signAndSendOrderResponse429 | signAndSendOrderResponse500) & {
+  headers: Headers;
+};
+
+export type signAndSendOrderResponse = (signAndSendOrderResponseSuccess | signAndSendOrderResponseError)
+
+export const getSignAndSendOrderUrl = (orderId: Id,) => {
+
+
+
+
+  return `/orders/${orderId}/sign-and-send`
+}
+
+/**
+ * Signs exactly the version read (`If-Match`): in one transaction the order becomes `active` with its signer and time, its Provenance is written, and it is queued for its lab or imaging center through the outbox (inventory #138; D8, D25: `enqueue(db, "lab", "ORM^O01", …)`, the LabOrder shape in contracts/partners/lab). Tracking then moves `ordered` → `sent` → `received` → `resulted`, reported back through `/hooks/lab`; for the demo the outbox delivers to the simulated lab and imaging center.
+ * @summary Sign an order and send it to the lab or imaging center
+ */
+export const signAndSendOrder = async (orderId: Id,
+    headers: SignAndSendOrderHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<signAndSendOrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<signAndSendOrderResponse>(getSignAndSendOrderUrl(orderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { ...headers, ...getHeaders(options?.headers) }
+
+  }
+);}
+
+
+export type cancelOrderResponse200 = {
+  data: Order
+  status: 200
+}
+
+export type cancelOrderResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type cancelOrderResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type cancelOrderResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type cancelOrderResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type cancelOrderResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type cancelOrderResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type cancelOrderResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type cancelOrderResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type cancelOrderResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type cancelOrderResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type cancelOrderResponseSuccess = (cancelOrderResponse200) & {
+  headers: Headers;
+};
+export type cancelOrderResponseError = (cancelOrderResponse400 | cancelOrderResponse401 | cancelOrderResponse403 | cancelOrderResponse404 | cancelOrderResponse409 | cancelOrderResponse412 | cancelOrderResponse422 | cancelOrderResponse428 | cancelOrderResponse429 | cancelOrderResponse500) & {
+  headers: Headers;
+};
+
+export type cancelOrderResponse = (cancelOrderResponseSuccess | cancelOrderResponseError)
+
+export const getCancelOrderUrl = (orderId: Id,) => {
+
+
+
+
+  return `/orders/${orderId}/cancel`
+}
+
+/**
+ * Cancels a signed order with a reason (inventory #139): FHIR status `revoked`, tracking `cancelled`. Allowed while the order is `ordered`, `sent` or `received`; refused with `409` once it is `resulted` or already cancelled (T34's cut-off is specimen collection, which isn't tracked separately, so the result is the cut-off; Thulasi on #400). An order already sent also queues a cancel to the center through the outbox (`ORM^O01`, order control `CA`, with the center's `fillerOrderNumber` once it has acknowledged; D25). A draft is marked entered-in-error instead.
+ * @summary Cancel a signed order
+ */
+export const cancelOrder = async (orderId: Id,
+    orderCancel: OrderCancel,
+    headers: CancelOrderHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<cancelOrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<cancelOrderResponse>(getCancelOrderUrl(orderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(orderCancel)
+  }
+);}
+
+
+export type markOrderEnteredInErrorResponse200 = {
+  data: Order
+  status: 200
+}
+
+export type markOrderEnteredInErrorResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type markOrderEnteredInErrorResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markOrderEnteredInErrorResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type markOrderEnteredInErrorResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type markOrderEnteredInErrorResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type markOrderEnteredInErrorResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type markOrderEnteredInErrorResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type markOrderEnteredInErrorResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type markOrderEnteredInErrorResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type markOrderEnteredInErrorResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markOrderEnteredInErrorResponseSuccess = (markOrderEnteredInErrorResponse200) & {
+  headers: Headers;
+};
+export type markOrderEnteredInErrorResponseError = (markOrderEnteredInErrorResponse400 | markOrderEnteredInErrorResponse401 | markOrderEnteredInErrorResponse403 | markOrderEnteredInErrorResponse404 | markOrderEnteredInErrorResponse409 | markOrderEnteredInErrorResponse412 | markOrderEnteredInErrorResponse422 | markOrderEnteredInErrorResponse428 | markOrderEnteredInErrorResponse429 | markOrderEnteredInErrorResponse500) & {
+  headers: Headers;
+};
+
+export type markOrderEnteredInErrorResponse = (markOrderEnteredInErrorResponseSuccess | markOrderEnteredInErrorResponseError)
+
+export const getMarkOrderEnteredInErrorUrl = (orderId: Id,) => {
+
+
+
+
+  return `/orders/${orderId}/entered-in-error`
+}
+
+/**
+ * A draft written by mistake (inventory #228): entered-in-error with a reason and its Provenance; nothing is deleted (D14). Drafts only, as for prescriptions; a signed order is cancelled instead.
+ * @summary Mark a draft order wrong
+ */
+export const markOrderEnteredInError = async (orderId: Id,
+    orderEnteredInError: OrderEnteredInError,
+    headers: MarkOrderEnteredInErrorHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<markOrderEnteredInErrorResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<markOrderEnteredInErrorResponse>(getMarkOrderEnteredInErrorUrl(orderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(orderEnteredInError)
+  }
+);}
+
+
+export type listReferralsResponse200 = {
+  data: ReferralList
+  status: 200
+}
+
+export type listReferralsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listReferralsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listReferralsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listReferralsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listReferralsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listReferralsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listReferralsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listReferralsResponseSuccess = (listReferralsResponse200) & {
+  headers: Headers;
+};
+export type listReferralsResponseError = (listReferralsResponse400 | listReferralsResponse401 | listReferralsResponse403 | listReferralsResponse404 | listReferralsResponse422 | listReferralsResponse429 | listReferralsResponse500) & {
+  headers: Headers;
+};
+
+export type listReferralsResponse = (listReferralsResponseSuccess | listReferralsResponseError)
+
+export const getListReferralsUrl = (params?: ListReferralsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/referrals?${stringifiedParams}` : `/referrals`
+}
+
+/**
+ * Outbound referrals (our clinician sends the patient to a specialist), newest first. With `patientId`, that patient's referrals; a restricted chart needs a break-glass grant or care-team membership (D37). Without it, the referrals the signed-in user sent; a referral whose restricted chart the user may not open (D37) is left out. Names for the cards come from `POST /patients/summaries` (D54).
+ * @summary List referrals
+ */
+export const listReferrals = async (params?: ListReferralsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listReferralsResponse> => {
+
+  return apiFetch<listReferralsResponse>(getListReferralsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createReferralResponse201 = {
+  data: Referral
+  status: 201
+}
+
+export type createReferralResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createReferralResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createReferralResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createReferralResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createReferralResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createReferralResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createReferralResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createReferralResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createReferralResponseSuccess = (createReferralResponse201) & {
+  headers: Headers;
+};
+export type createReferralResponseError = (createReferralResponse400 | createReferralResponse401 | createReferralResponse403 | createReferralResponse404 | createReferralResponse409 | createReferralResponse422 | createReferralResponse429 | createReferralResponse500) & {
+  headers: Headers;
+};
+
+export type createReferralResponse = (createReferralResponseSuccess | createReferralResponseError)
+
+export const getCreateReferralUrl = () => {
+
+
+
+
+  return `/referrals`
+}
+
+/**
+ * Creates and signs an outbound referral in one step (a referral has no safety check): a `ServiceRequest` with category SNOMED CT `3457005` (patient referral), the specialty in `performerType`, the reason in `reasonCode` and the urgency in `priority`, with its Provenance in the same transaction. Status `sent`. Nothing is sent to a partner. the practice sends the referral letter as it does today.
+ * @summary Refer the patient to a specialist
+ */
+export const createReferral = async (referralCreate: ReferralCreate,
+    headers: CreateReferralHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createReferralResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createReferralResponse>(getCreateReferralUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(referralCreate)
+  }
+);}
+
+
+export type updateReferralStatusResponse200 = {
+  data: Referral
+  status: 200
+}
+
+export type updateReferralStatusResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type updateReferralStatusResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type updateReferralStatusResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type updateReferralStatusResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type updateReferralStatusResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type updateReferralStatusResponse412 = {
+  data: PreconditionFailedResponse
+  status: 412
+}
+
+export type updateReferralStatusResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type updateReferralStatusResponse428 = {
+  data: PreconditionRequiredResponse
+  status: 428
+}
+
+export type updateReferralStatusResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type updateReferralStatusResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type updateReferralStatusResponseSuccess = (updateReferralStatusResponse200) & {
+  headers: Headers;
+};
+export type updateReferralStatusResponseError = (updateReferralStatusResponse400 | updateReferralStatusResponse401 | updateReferralStatusResponse403 | updateReferralStatusResponse404 | updateReferralStatusResponse409 | updateReferralStatusResponse412 | updateReferralStatusResponse422 | updateReferralStatusResponse428 | updateReferralStatusResponse429 | updateReferralStatusResponse500) & {
+  headers: Headers;
+};
+
+export type updateReferralStatusResponse = (updateReferralStatusResponseSuccess | updateReferralStatusResponseError)
+
+export const getUpdateReferralStatusUrl = (referralId: Id,) => {
+
+
+
+
+  return `/referrals/${referralId}/status`
+}
+
+/**
+ * Moves a referral on (`If-Match` with the referral's `version`, its `ETag`): `sent` → `scheduled` → `completed`, and `cancelled` from `sent` or `scheduled`. Anything else is `409`. A note is required to cancel.
+ * @summary Record what happened to a referral
+ */
+export const updateReferralStatus = async (referralId: Id,
+    referralStatusUpdate: ReferralStatusUpdate,
+    headers: UpdateReferralStatusHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<updateReferralStatusResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<updateReferralStatusResponse>(getUpdateReferralStatusUrl(referralId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(referralStatusUpdate)
   }
 );}
 

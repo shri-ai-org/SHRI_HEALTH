@@ -116,6 +116,8 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1hooks~1clearinghouse'
   /hooks/erx:
     $ref: 'modules/platform.yaml#/paths/~1hooks~1erx'
+  /hooks/lab:
+    $ref: 'modules/platform.yaml#/paths/~1hooks~1lab'
   /operations/{operationId}:
     $ref: 'modules/platform.yaml#/paths/~1operations~1{operationId}'
   /operations/{operationId}/cancel:
@@ -300,6 +302,22 @@ paths:
     $ref: 'modules/orders.yaml#/paths/~1patients~1{patientId}~1lab-results'
   /patients/{patientId}/imaging-reports:
     $ref: 'modules/orders.yaml#/paths/~1patients~1{patientId}~1imaging-reports'
+  /lab-compendium:
+    $ref: 'modules/orders.yaml#/paths/~1lab-compendium'
+  /orders:
+    $ref: 'modules/orders.yaml#/paths/~1orders'
+  /orders/{orderId}:
+    $ref: 'modules/orders.yaml#/paths/~1orders~1{orderId}'
+  /orders/{orderId}/sign-and-send:
+    $ref: 'modules/orders.yaml#/paths/~1orders~1{orderId}~1sign-and-send'
+  /orders/{orderId}/cancel:
+    $ref: 'modules/orders.yaml#/paths/~1orders~1{orderId}~1cancel'
+  /orders/{orderId}/entered-in-error:
+    $ref: 'modules/orders.yaml#/paths/~1orders~1{orderId}~1entered-in-error'
+  /referrals:
+    $ref: 'modules/orders.yaml#/paths/~1referrals'
+  /referrals/{referralId}/status:
+    $ref: 'modules/orders.yaml#/paths/~1referrals~1{referralId}~1status'
   /patients/{patientId}/allergies:
     $ref: 'modules/history.yaml#/paths/~1patients~1{patientId}~1allergies'
   /patients/{patientId}/allergies/{allergyId}:
@@ -428,6 +446,10 @@ paths:
     $ref: 'modules/medications.yaml#/paths/~1alerts~1{alertId}~1override'
   /prescriptions/{prescriptionId}/sign-and-send:
     $ref: 'modules/medications.yaml#/paths/~1prescriptions~1{prescriptionId}~1sign-and-send'
+  /refill-requests:
+    $ref: 'modules/medications.yaml#/paths/~1refill-requests'
+  /refill-requests/{refillRequestId}/respond:
+    $ref: 'modules/medications.yaml#/paths/~1refill-requests~1{refillRequestId}~1respond'
   /patients/{patientId}/payments:
     $ref: 'modules/billing.yaml#/paths/~1patients~1{patientId}~1payments'
   /payments/card-session:
@@ -494,6 +516,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1allergies~1{allergyId}'
   /portal/me/medications:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1medications'
+  /portal/me/refill-requests:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1me~1refill-requests'
   /portal/me/vitals:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me~1vitals'
   /portal/me/lab-results:

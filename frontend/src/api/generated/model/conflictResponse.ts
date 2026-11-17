@@ -17,6 +17,6 @@
 import type { Problem } from './problem';
 
 /**
- * 409. Conflicts with the current state. Codes: `invalid-state-transition`, `record-locked`, `booking-conflict`, `possible-duplicate`, `patient-merged`, `idempotency-request-in-progress`, `feature-disabled`, `consent-required`.
+ * 409. Conflicts with the current state. Codes: `invalid-state-transition`, `record-locked`, `booking-conflict`, `possible-duplicate`, `duplicate-order`, `patient-merged`, `idempotency-request-in-progress`, `feature-disabled`, `consent-required`.
  */
 export type ConflictResponse = Problem;

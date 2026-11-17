@@ -250,7 +250,7 @@ Code system URIs (FHIR canonical):
 
 Codes are an extensible list (§6.5): clients treat a code they do not know as a generic field error.
 
-`required`, `unknown-field`, `invalid-format`, `invalid-type`, `too-short`, `too-long`, `out-of-range`, `not-allowed-value`, `invalid-reference` (an ID that does not exist in this clinic), `conflicting-fields`, `not-editable`, `safety-check-stale` (a prescription's safety check must run again before signing, D97), `override-required` (an alert at that pointer needs an override before signing, D97).
+`required`, `unknown-field`, `invalid-format`, `invalid-type`, `too-short`, `too-long`, `out-of-range`, `not-allowed-value`, `invalid-reference` (an ID that does not exist in this clinic), `conflicting-fields`, `not-editable`, `safety-check-stale` (a prescription's safety check must run again before signing, D97), `override-required` (an alert at that pointer needs an override before signing, D97), `duplicate-order` (the same test is already active for the patient, `createOrder`), `not-active`, `refill-already-requested` and `not-refillable` (why a prescription can't be refilled from the portal, `createPortalRefillRequest`).
 
 **400 vs 422** (agreed with Thulasi on PR #7, 2026-10-22): an invalid or unparseable **parameter** (path, query or header: a bad UUID, a number out of range, a malformed `If-Match` or `Idempotency-Key` value) returns `422 validation-failed`, with a field error naming the parameter (`in` + `name`). `400 malformed-request` is **only** for a request **body** that is not parseable JSON. Two specific 400 codes remain in the catalogue for their own cases: `invalid-cursor` and `idempotency-key-missing` (the latter from the IETF draft); **pending Thulasi** to confirm they stay 400.
 
@@ -275,6 +275,7 @@ Codes are permanent once released; new codes may be added; meanings never change
 | 409 | `record-locked` | Edit attempted on a signed note or prescription; use an addendum or a new version | — |
 | 409 | `booking-conflict` | Slot taken or overlaps another appointment | — |
 | 409 | `possible-duplicate` | Registration matches existing patients; resend with `"duplicateCheck": "override"` and a reason to proceed | `candidateIds` (IDs only) |
+| 409 | `duplicate-order` | The same lab or imaging test is already active for the patient from the last 7 days; resend with `duplicateOverrideReason` to proceed | `errors` naming `/testId` |
 | 409 | `patient-merged` | The patient was merged into another record | `mergedIntoId` |
 | 409 | `idempotency-request-in-progress` | Same key is still being processed (draft-07 §2.7) | — |
 | 409 | `feature-disabled` | AI feature switched off for this clinic or user | `feature` |

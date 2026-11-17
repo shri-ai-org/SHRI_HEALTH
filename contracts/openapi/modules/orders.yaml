@@ -3,8 +3,8 @@
 # Scope: Lab compendium, orders, results, unmatched results (`backend/app/modules/orders/`)
 #
 # The first two operations are the doctor's reads of a patient's lab results and imaging reports
-# (the record's Test results and Imaging reports tabs; demo, 13 Nov). Orders, the compendium and
-# result filing follow in batch 5.
+# (the record's Test results and Imaging reports tabs; demo, 13 Nov). Then the compendium, orders and
+# outbound referrals (Thulasi's spec on #85, 2026-11-17); results come back through `/hooks/lab` (platform.yaml).
 paths:
   /patients/{patientId}/lab-results:
     parameters:
@@ -189,6 +189,1100 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /lab-compendium:
+    get:
+      operationId: listOrderableTests
+      summary: Search what can be ordered
+      description: 'The tests and imaging studies the clinic''s lab and imaging centers offer (inventory #132): reference
+        data, not patient data, so the query string is allowed and nothing is audited. `q` matches the start of a word in
+        the name, or the code. Ordered by name.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: lab-compendium:read
+      x-audit:
+        action: R
+        category: none
+      x-storage: admin
+      x-release: P0
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: q
+        in: query
+        required: false
+        description: Tests whose name has a word starting with this text, or whose code starts with it. Ignores case.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+      - name: category
+        in: query
+        required: false
+        description: Only lab tests or only imaging studies.
+        schema:
+          $ref: '#/components/schemas/OrderCategory'
+      responses:
+        '200':
+          description: One page of orderable tests.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderableTestList'
+              examples:
+                a1c:
+                  summary: Searching "a1c"
+                  value:
+                    items:
+                    - id: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                      code:
+                        codings:
+                        - system: http://loinc.org
+                          code: 4548-4
+                          display: Hemoglobin A1c/Hemoglobin.total in Blood
+                      name: Hemoglobin A1c
+                      category: laboratory
+                      providerName: Example Reference Laboratory (synthetic)
+                      specimenType: Whole blood
+                      requiresFasting: false
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `lab-compendium:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List a patient's orders
+      description: 'A patient''s lab and imaging orders, drafts included, newest first (inventory #135), with each order''s
+        tracking status for the screen''s chips. Entered-in-error orders are left out. Restricted charts need a break-glass
+        grant or care-team membership (D37).'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: patientId
+        in: query
+        required: true
+        description: The patient (an opaque ID, D13).
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: encounterId
+        in: query
+        required: false
+        description: Only the orders of this visit.
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: status
+        in: query
+        required: false
+        description: Only orders with this tracking status.
+        schema:
+          $ref: '#/components/schemas/OrderTrackingStatus'
+      responses:
+        '200':
+          description: One page of orders.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderList'
+              examples:
+                page:
+                  summary: A sent lab order and a resulted imaging order
+                  value:
+                    items:
+                    - id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                      category: laboratory
+                      code:
+                        codings:
+                        - system: http://loinc.org
+                          code: 4548-4
+                          display: Hemoglobin A1c/Hemoglobin.total in Blood
+                      display: Hemoglobin A1c
+                      priority: routine
+                      status: active
+                      trackingStatus: received
+                      orderedAt: '2026-11-20T15:24:00Z'
+                      orderedBy:
+                        id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                      performerName: Example Reference Laboratory (synthetic)
+                      reason: Follow-up of type 2 diabetes.
+                      trackingUpdatedAt: '2026-11-20T15:25:00Z'
+                    - id: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8c
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                      category: imaging
+                      code:
+                        codings:
+                        - system: http://loinc.org
+                          code: 36643-5
+                          display: XR Chest 2 Views
+                      display: Chest X-ray, two views
+                      priority: routine
+                      status: completed
+                      trackingStatus: resulted
+                      orderedAt: '2026-11-20T15:24:00Z'
+                      orderedBy:
+                        id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                      performerName: Example Radiology Group (synthetic)
+                      resultId: 8b9c0d1e-2f3a-4b4c-8d5e-6f7a8b9c0d1e
+                      trackingUpdatedAt: '2026-11-20T15:27:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createOrder
+      summary: Start a lab or imaging order
+      description: 'Starts a draft order (inventory #134): a `ServiceRequest`, intent `order`, category `laboratory` or `imaging`
+        from the test. The test comes from `GET /lab-compendium`. If the same test is already active for the patient from
+        the last 7 days, the server answers `409 duplicate-order` (`errors` names `/testId`); the clinician may send the request
+        again with `duplicateOverrideReason`. The draft is signed and sent with `POST /orders/{orderId}/sign-and-send`.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: body:/patientId
+      x-idempotency: required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreate'
+            examples:
+              a1c:
+                summary: An HbA1c
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                  testId: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                  priority: routine
+                  reason: Follow-up of type 2 diabetes.
+              override:
+                summary: The same test again, with a reason
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                  testId: 2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f
+                  priority: routine
+                  duplicateOverrideReason: The earlier specimen was hemolyzed.
+      responses:
+        '201':
+          description: Created. The draft.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                draft:
+                  summary: A draft
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    category: laboratory
+                    code:
+                      codings:
+                      - system: http://loinc.org
+                        code: 4548-4
+                        display: Hemoglobin A1c/Hemoglobin.total in Blood
+                    display: Hemoglobin A1c
+                    priority: routine
+                    status: draft
+                    trackingStatus: draft
+                    performerName: Example Reference Laboratory (synthetic)
+                    reason: Follow-up of type 2 diabetes.
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:create`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient, encounter or test in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `duplicate-order` (the same test is already active for the patient from the last 7 days; `errors`
+            names `/testId` with `duplicate-order`; send again with `duplicateOverrideReason` to go ahead); `patient-merged`
+            (the patient was merged into another record); `idempotency-request-in-progress` (a request with this Idempotency-Key
+            is still running).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (the encounter is not this
+            patient's, or is closed); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /orders/{orderId}:
+    parameters:
+    - name: orderId
+      in: path
+      required: true
+      description: Order ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    get:
+      operationId: getOrder
+      summary: Get an order
+      description: 'One order with its tracking status (inventory #136). Its `ETag` is the `If-Match` for signing, cancelling
+        or marking it entered-in-error.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: The order.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                sent:
+                  summary: Signed and sent
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    category: laboratory
+                    code:
+                      codings:
+                      - system: http://loinc.org
+                        code: 4548-4
+                        display: Hemoglobin A1c/Hemoglobin.total in Blood
+                    display: Hemoglobin A1c
+                    priority: routine
+                    status: active
+                    trackingStatus: sent
+                    orderedAt: '2026-11-20T15:24:00Z'
+                    orderedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    performerName: Example Reference Laboratory (synthetic)
+                    reason: Follow-up of type 2 diabetes.
+                    trackingUpdatedAt: '2026-11-20T15:24:30Z'
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:read`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such order in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /orders/{orderId}/sign-and-send:
+    parameters:
+    - name: orderId
+      in: path
+      required: true
+      description: Order ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: signAndSendOrder
+      summary: Sign an order and send it to the lab or imaging center
+      description: 'Signs exactly the version read (`If-Match`): in one transaction the order becomes `active` with its signer
+        and time, its Provenance is written, and it is queued for its lab or imaging center through the outbox (inventory
+        #138; D8, D25: `enqueue(db, "lab", "ORM^O01", …)`, the LabOrder shape in contracts/partners/lab). Tracking then moves
+        `ordered` → `sent` → `received` → `resulted`, reported back through `/hooks/lab`; for the demo the outbox delivers
+        to the simulated lab and imaging center.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:sign-and-send
+      x-audit:
+        action: E
+        category: sign
+        patient: result
+      x-idempotency: required
+      x-concurrency: if-match-required
+      x-events:
+      - order.status-changed
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      - $ref: ../components/parameters/IfMatch.yaml
+      responses:
+        '200':
+          description: The order, signed and queued.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                signed:
+                  summary: Signed and queued
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    category: laboratory
+                    code:
+                      codings:
+                      - system: http://loinc.org
+                        code: 4548-4
+                        display: Hemoglobin A1c/Hemoglobin.total in Blood
+                    display: Hemoglobin A1c
+                    priority: routine
+                    status: active
+                    trackingStatus: ordered
+                    orderedAt: '2026-11-20T15:24:00Z'
+                    orderedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    performerName: Example Reference Laboratory (synthetic)
+                    reason: Follow-up of type 2 diabetes.
+                    trackingUpdatedAt: '2026-11-20T15:24:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `idempotency-key-missing` (the Idempotency-Key header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:sign-and-send`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such order in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (not a draft; the problem carries `currentState`); `idempotency-request-in-progress`
+            (a request with this Idempotency-Key is still running).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
+            `ETag`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different body).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /orders/{orderId}/cancel:
+    parameters:
+    - name: orderId
+      in: path
+      required: true
+      description: Order ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: cancelOrder
+      summary: Cancel a signed order
+      description: 'Cancels a signed order with a reason (inventory #139): FHIR status `revoked`, tracking `cancelled`. Allowed
+        while the order is `ordered`, `sent` or `received`; refused with `409` once it is `resulted` or already cancelled
+        (T34''s cut-off is specimen collection, which isn''t tracked separately, so the result is the cut-off; Thulasi on
+        #400). An order already sent also queues a cancel to the center through the outbox (`ORM^O01`, order control `CA`,
+        with the center''s `fillerOrderNumber` once it has acknowledged; D25). A draft is marked entered-in-error instead.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:cancel
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: required
+      x-concurrency: if-match-required
+      x-events:
+      - order.status-changed
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCancel'
+            examples:
+              not-needed:
+                summary: No longer needed
+                value:
+                  reason: Result already available from an outside lab.
+      responses:
+        '200':
+          description: The order, cancelled.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                cancelled:
+                  summary: Cancelled
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    category: laboratory
+                    code:
+                      codings:
+                      - system: http://loinc.org
+                        code: 4548-4
+                        display: Hemoglobin A1c/Hemoglobin.total in Blood
+                    display: Hemoglobin A1c
+                    priority: routine
+                    status: revoked
+                    trackingStatus: cancelled
+                    orderedAt: '2026-11-20T15:24:00Z'
+                    orderedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    performerName: Example Reference Laboratory (synthetic)
+                    reason: Follow-up of type 2 diabetes.
+                    trackingUpdatedAt: '2026-11-20T15:26:00Z'
+                    cancelReason: Result already available from an outside lab.
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:cancel`); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such order in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `invalid-state-transition` (a draft, which is marked entered-in-error instead; already cancelled,
+            or resulted (FHIR `completed`); the problem carries `currentState`); `idempotency-request-in-progress` (a request
+            with this Idempotency-Key is still running).'
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
+            `ETag`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /orders/{orderId}/entered-in-error:
+    parameters:
+    - name: orderId
+      in: path
+      required: true
+      description: Order ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: markOrderEnteredInError
+      summary: Mark a draft order wrong
+      description: 'A draft written by mistake (inventory #228): entered-in-error with a reason and its Provenance; nothing
+        is deleted (D14). Drafts only, as for prescriptions; a signed order is cancelled instead.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:entered-in-error
+      x-audit:
+        action: E
+        category: phi-write
+        patient: result
+      x-idempotency: required
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderEnteredInError'
+            examples:
+              wrong:
+                summary: Wrong test
+                value:
+                  reason: Picked the wrong test.
+      responses:
+        '200':
+          description: The order.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                wrong:
+                  summary: Entered in error
+                  value:
+                    id: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    category: laboratory
+                    code:
+                      codings:
+                      - system: http://loinc.org
+                        code: 4548-4
+                        display: Hemoglobin A1c/Hemoglobin.total in Blood
+                    display: Hemoglobin A1c
+                    priority: routine
+                    status: entered-in-error
+                    trackingStatus: draft
+                    performerName: Example Reference Laboratory (synthetic)
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:entered-in-error`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such order in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `invalid-state-transition` (not a draft: a signed order is cancelled instead; the problem carries
+            `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).'
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
+            `ETag`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (the `If-Match` header is missing).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /referrals:
+    get:
+      operationId: listReferrals
+      summary: List referrals
+      description: 'Outbound referrals (our clinician sends the patient to a specialist), newest first. With `patientId`,
+        that patient''s referrals; a restricted chart needs a break-glass grant or care-team membership (D37). Without it,
+        the referrals the signed-in user sent; a referral whose restricted chart the user may not open (D37) is left out.
+        Names for the cards come from `POST /patients/summaries` (D54).'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P1
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: patientId
+        in: query
+        required: false
+        description: Only this patient's referrals (an opaque ID, D13).
+        schema:
+          $ref: ../components/schemas/Id.yaml
+      - name: status
+        in: query
+        required: false
+        description: Only referrals with this status.
+        schema:
+          $ref: '#/components/schemas/ReferralStatus'
+      responses:
+        '200':
+          description: One page of referrals.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralList'
+              examples:
+                page:
+                  summary: One page
+                  value:
+                    items:
+                    - id: 9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                      specialty:
+                        codings:
+                        - system: http://nucc.org/provider-taxonomy
+                          code: 207RE0101X
+                          display: Endocrinology, Diabetes & Metabolism
+                        text: Endocrinology
+                      reason: Type 2 diabetes not at goal on two agents.
+                      urgency: routine
+                      status: scheduled
+                      referredAt: '2026-11-20T15:28:00Z'
+                      referredBy:
+                        id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                        displayName: Dr. Lowe58
+                      statusUpdatedAt: '2026-11-21T17:00:00Z'
+                      note: Seen on 2 December at the endocrinology clinic.
+                      version: '"2"'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:read`); `break-glass-required` (with `patientId`,
+            the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient in this clinic or the user's facilities).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createReferral
+      summary: Refer the patient to a specialist
+      description: 'Creates and signs an outbound referral in one step (a referral has no safety check): a `ServiceRequest`
+        with category SNOMED CT `3457005` (patient referral), the specialty in `performerType`, the reason in `reasonCode`
+        and the urgency in `priority`, with its Provenance in the same transaction. Status `sent`. Nothing is sent to a partner.
+        the practice sends the referral letter as it does today.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:sign-and-send
+      x-audit:
+        action: C
+        category: sign
+        patient: body:/patientId
+      x-idempotency: required
+      x-storage: clinical
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferralCreate'
+            examples:
+              endocrinology:
+                summary: To endocrinology
+                value:
+                  patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                  encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                  specialty: 207RE0101X
+                  reason: Type 2 diabetes not at goal on two agents.
+                  urgency: routine
+      responses:
+        '201':
+          description: Created. The referral, sent.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+              examples:
+                sent:
+                  summary: Sent
+                  value:
+                    id: 9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    specialty:
+                      codings:
+                      - system: http://nucc.org/provider-taxonomy
+                        code: 207RE0101X
+                        display: Endocrinology, Diabetes & Metabolism
+                      text: Endocrinology
+                    reason: Type 2 diabetes not at goal on two agents.
+                    urgency: routine
+                    status: sent
+                    referredAt: '2026-11-20T15:28:00Z'
+                    referredBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    version: '"1"'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:sign-and-send`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such patient or encounter in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `patient-merged` (the patient was merged into another record); `idempotency-request-in-progress`
+            (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `business-rule-violation` (the encounter is not this
+            patient's); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /referrals/{referralId}/status:
+    parameters:
+    - name: referralId
+      in: path
+      required: true
+      description: Referral ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: updateReferralStatus
+      summary: Record what happened to a referral
+      description: 'Moves a referral on (`If-Match` with the referral''s `version`, its `ETag`): `sent` → `scheduled` → `completed`,
+        and `cancelled` from `sent` or `scheduled`. Anything else is `409`. A note is required to cancel.'
+      tags:
+      - orders
+      x-owner: thulasi
+      x-permission: orders:sign-and-send
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-idempotency: required
+      x-concurrency: if-match-required
+      x-storage: clinical
+      x-release: P1
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      - $ref: ../components/parameters/IfMatch.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferralStatusUpdate'
+            examples:
+              scheduled:
+                summary: Scheduled
+                value:
+                  status: scheduled
+                  note: Seen on 2 December at the endocrinology clinic.
+              cancelled:
+                summary: Cancelled
+                value:
+                  status: cancelled
+                  note: The patient chose to stay with the current plan.
+      responses:
+        '200':
+          description: The referral.
+          headers:
+            ETag:
+              $ref: ../components/headers/ETag.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+              examples:
+                scheduled:
+                  summary: Scheduled
+                  value:
+                    id: 9a0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+                    specialty:
+                      codings:
+                      - system: http://nucc.org/provider-taxonomy
+                        code: 207RE0101X
+                        display: Endocrinology, Diabetes & Metabolism
+                      text: Endocrinology
+                    reason: Type 2 diabetes not at goal on two agents.
+                    urgency: routine
+                    status: scheduled
+                    referredAt: '2026-11-20T15:28:00Z'
+                    referredBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    statusUpdatedAt: '2026-11-21T17:00:00Z'
+                    note: Seen on 2 December at the endocrinology clinic.
+                    version: '"2"'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `orders:sign-and-send`); `break-glass-required` (the patient's
+            chart is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such referral in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (that move is not allowed from the current status; the problem carries
+            `currentState`); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '412':
+          $ref: ../components/responses/PreconditionFailed.yaml
+          description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
+            `ETag`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid; `note` is `required` to cancel); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '428':
+          $ref: ../components/responses/PreconditionRequired.yaml
+          description: 428. `precondition-required` (the `If-Match` header is missing).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -469,3 +1563,446 @@ components:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    OrderCategory:
+      description: '`laboratory` or `imaging` (US Core ServiceRequest category).'
+      type: string
+      enum:
+      - laboratory
+      - imaging
+    OrderPriority:
+      description: How urgent the order is (FHIR request priority).
+      type: string
+      enum:
+      - routine
+      - urgent
+      - asap
+      - stat
+    OrderStatus:
+      description: 'The order''s FHIR status (ServiceRequest.status): `draft` (editable, not signed), `active` (signed), `completed`
+        (resulted), `revoked` (cancelled), `entered-in-error` (a draft written by mistake; never shown on screens).'
+      type: string
+      enum:
+      - draft
+      - active
+      - completed
+      - revoked
+      - entered-in-error
+    OrderTrackingStatus:
+      description: 'Where the order is on its way, for the screen''s status chips: `draft` (not signed), `ordered` (signed,
+        waiting in the outbox), `sent` (delivered to the lab or imaging center), `received` (the center acknowledged it),
+        `resulted` (the report is filed; `resultId` set), `cancelled`, `error` (the center rejected it, or the outbox gave
+        up after retries). Changes arrive through `/hooks/lab` and publish `order.status-changed`.'
+      type: string
+      enum:
+      - draft
+      - ordered
+      - sent
+      - received
+      - resulted
+      - cancelled
+      - error
+    OrderableTest:
+      description: A test or imaging study the clinic can order, from its lab's or imaging center's compendium. Reference
+        data, not patient data.
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - category
+      - providerName
+      - requiresFasting
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Test ID (the `testId` of `POST /orders`).
+          x-phi: internal-id
+        code:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: The test or study (LOINC).
+          x-phi: none
+        name:
+          type: string
+          maxLength: 200
+          description: The name shown to clinicians.
+          x-phi: none
+        category:
+          $ref: '#/components/schemas/OrderCategory'
+          description: Lab test or imaging study.
+          x-phi: none
+        providerName:
+          type: string
+          maxLength: 200
+          description: The lab or imaging center that performs it.
+          x-phi: none
+        specimenType:
+          type: string
+          maxLength: 100
+          description: The specimen, for a lab test (for example "Whole blood").
+          x-phi: none
+        requiresFasting:
+          type: boolean
+          description: True when the patient must fast first.
+          x-phi: none
+    OrderableTestList:
+      description: One page of orderable tests, by name.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/OrderableTest'
+          description: The items on this page.
+          x-phi: none
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    Order:
+      description: 'A lab or imaging order (`ServiceRequest`, intent `order`). Drafts are signed and sent with `If-Match`;
+        signing writes its Provenance and queues it for the center in one transaction (D8, D25).'
+      type: object
+      required:
+      - id
+      - patientId
+      - encounterId
+      - category
+      - code
+      - display
+      - priority
+      - status
+      - trackingStatus
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Order ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit it was ordered in.
+          x-phi: internal-id
+        category:
+          $ref: '#/components/schemas/OrderCategory'
+          description: Lab test or imaging study.
+          x-phi: clinical
+        code:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: The test or study (LOINC).
+          x-phi: clinical
+        display:
+          type: string
+          maxLength: 200
+          description: The test's name, as shown on screens.
+          x-phi: clinical
+        priority:
+          $ref: '#/components/schemas/OrderPriority'
+          description: How urgent.
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+          description: FHIR status.
+          x-phi: clinical
+        trackingStatus:
+          $ref: '#/components/schemas/OrderTrackingStatus'
+          description: Where it is on its way.
+          x-phi: clinical
+        orderedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was signed. Absent on a draft.
+          x-phi: none
+        orderedBy:
+          $ref: encounters.yaml#/components/schemas/ClinicianRef
+          description: Who signed it. Absent on a draft.
+          x-phi: none
+        performerName:
+          type: string
+          maxLength: 200
+          description: The lab or imaging center that performs it.
+          x-phi: none
+        reason:
+          type: string
+          maxLength: 500
+          description: Why it was ordered.
+          x-phi: clinical
+        resultId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'The report, once resulted: shown by `listLabResults` or `listImagingReports`.'
+          x-phi: internal-id
+        trackingUpdatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the tracking status last changed.
+          x-phi: none
+        cancelReason:
+          type: string
+          maxLength: 500
+          description: Why it was cancelled.
+          x-phi: clinical
+    OrderList:
+      description: One page of a patient's orders, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Order'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    OrderCreate:
+      description: Body to start a draft order.
+      type: object
+      additionalProperties: false
+      required:
+      - patientId
+      - encounterId
+      - testId
+      - priority
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit.
+          x-phi: internal-id
+        testId:
+          $ref: ../components/schemas/Id.yaml
+          description: The test, from `GET /lab-compendium`.
+          x-phi: internal-id
+        priority:
+          $ref: '#/components/schemas/OrderPriority'
+          description: How urgent.
+          x-phi: clinical
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Why it is ordered.
+          x-phi: clinical
+        noteToPerformer:
+          type: string
+          maxLength: 500
+          description: A note for the lab or imaging center.
+          x-phi: clinical
+        duplicateOverrideReason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Why the same test is ordered again within 7 days, after a `409 duplicate-order`. Audited.
+          x-phi: clinical
+    OrderCancel:
+      description: Body to cancel a signed order.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Why.
+          x-phi: clinical
+    OrderEnteredInError:
+      description: Body to mark a draft order wrong.
+      type: object
+      additionalProperties: false
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why.
+          x-phi: clinical
+    ReferralSpecialty:
+      description: 'The specialty to refer to, as its NUCC Health Care Provider Taxonomy code (system `http://nucc.org/provider-taxonomy`):
+        `207RC0000X` cardiology (cardiovascular disease), `207N00000X` dermatology, `207RE0101X` endocrinology (endocrinology,
+        diabetes and metabolism), `207RG0100X` gastroenterology, `2084N0400X` neurology, `207X00000X` orthopedics (orthopaedic
+        surgery), `225100000X` physical therapy (physical therapist), `207RP1001X` pulmonology (pulmonary disease), `207RR0500X`
+        rheumatology, `208800000X` urology.'
+      type: string
+      enum:
+      - 207RC0000X
+      - 207N00000X
+      - 207RE0101X
+      - 207RG0100X
+      - 2084N0400X
+      - 207X00000X
+      - 225100000X
+      - 207RP1001X
+      - 207RR0500X
+      - 208800000X
+    ReferralUrgency:
+      description: How soon the patient should be seen (FHIR request priority).
+      type: string
+      enum:
+      - routine
+      - urgent
+      - asap
+    ReferralStatus:
+      description: '`sent` (signed), `scheduled` (the specialist booked the patient), `completed` (the patient was seen),
+        `cancelled`.'
+      type: string
+      enum:
+      - sent
+      - scheduled
+      - completed
+      - cancelled
+    Referral:
+      description: 'An outbound referral (`ServiceRequest`, category SNOMED CT `3457005`): the specialty in `performerType`,
+        the reason in `reasonCode`, the urgency in `priority`.'
+      type: object
+      required:
+      - id
+      - patientId
+      - specialty
+      - reason
+      - urgency
+      - status
+      - referredAt
+      - referredBy
+      - version
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Referral ID.
+          x-phi: internal-id
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit it was made in, when there is one.
+          x-phi: internal-id
+        specialty:
+          $ref: ../components/schemas/CodeableConcept.yaml
+          description: The specialty (NUCC Health Care Provider Taxonomy, `ReferralSpecialty`).
+          x-phi: clinical
+        reason:
+          type: string
+          maxLength: 500
+          description: Why the patient is referred.
+          x-phi: clinical
+        urgency:
+          $ref: '#/components/schemas/ReferralUrgency'
+          description: How soon.
+          x-phi: clinical
+        status:
+          $ref: '#/components/schemas/ReferralStatus'
+          description: Status.
+          x-phi: clinical
+        referredAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was signed.
+          x-phi: none
+        referredBy:
+          $ref: encounters.yaml#/components/schemas/ClinicianRef
+          description: Who signed it.
+          x-phi: none
+        statusUpdatedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the status last changed after `sent`.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The latest note (from the referral, or from the latest status change).
+          x-phi: clinical
+        version:
+          type: string
+          pattern: ^"[^"]{1,126}"$
+          maxLength: 128
+          description: Opaque version of the referral (its `ETag`). Send it unchanged as `If-Match` to `POST /referrals/{referralId}/status`,
+            so a list needs no read of each referral.
+          x-phi: none
+    ReferralList:
+      description: One page of referrals, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Referral'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ReferralCreate:
+      description: Body to refer a patient to a specialist.
+      type: object
+      additionalProperties: false
+      required:
+      - patientId
+      - specialty
+      - reason
+      - urgency
+      properties:
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        encounterId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit, when the referral is made in one.
+          x-phi: internal-id
+        specialty:
+          $ref: '#/components/schemas/ReferralSpecialty'
+          description: The specialty's NUCC code, from the fixed list.
+          x-phi: clinical
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Why the patient is referred.
+          x-phi: clinical
+        urgency:
+          $ref: '#/components/schemas/ReferralUrgency'
+          description: How soon.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 500
+          description: A note for the specialist.
+          x-phi: clinical
+    ReferralStatusUpdate:
+      description: Body to move a referral on. `note` is required with `cancelled`.
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - scheduled
+          - completed
+          - cancelled
+          description: The new status.
+          x-phi: clinical
+        note:
+          type: string
+          maxLength: 500
+          description: What happened (for example the appointment date). Required to cancel.
+          x-phi: clinical
