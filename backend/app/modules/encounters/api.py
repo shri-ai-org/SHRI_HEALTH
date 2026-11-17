@@ -24,6 +24,8 @@ The pieces from other owners are FastAPI dependencies, so the tests can replace 
 repository, Anand's write helpers, core's chart check, audit hook and operations, the facility's
 rooms (practice setup, read through scheduling's seam until Anand's read service lands), and the
 after-visit summary's store, file store and links.
+
+B8a: the patient portal's visit summaries (portal_api.py), mounted at the end.
 """
 
 from collections.abc import Awaitable, Callable, Iterable
@@ -353,3 +355,9 @@ def mount_pending_routes(target: APIRouter, exclude: frozenset[str] = frozenset(
 
 #: The waiting routes this process serves: none until core has T50's permissions.
 MOUNTED_PENDING = mount_pending_routes(router)
+
+
+# ------------------------------------------------------- patient portal: own visit summaries (B8a)
+from .portal_api import router as _portal_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_portal_router)

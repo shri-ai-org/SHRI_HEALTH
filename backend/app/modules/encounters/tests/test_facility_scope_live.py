@@ -13,10 +13,12 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from fastapi.routing import APIRoute
 
 from app.core import download_tokens as core_tokens
 from app.core.deps import CurrentUser
 from app.db.tests.conftest import TEST_DATABASE_URL
+from app.modules.encounters.portal_api import router as portal_router
 from app.modules.files.tests.fakes import download_tokens
 from app.modules.scheduling.tests.conftest import Practice, make_client
 from app.modules.scheduling.tests.facility_scope import (
@@ -206,5 +208,9 @@ def test_every_encounter_operation_keeps_to_the_users_facilities(
     client = swept
     outcomes = sweep(client, practice, _rows(client, practice, users))
     assert not failures(outcomes), report(failures(outcomes))
-    assert {o.row.operation for o in outcomes} == served_operations("encounters"), \
-        "the table must cover every operation encounters serves"
+    # The portal's visit summaries (portal_api.py) belong to the patient session, not to a staff
+    # user's facilities (D84): their own-record 404s are in test_portal_visit_summaries_live.py.
+    portal = {r.operation_id for r in portal_router.routes
+              if isinstance(r, APIRoute) and r.operation_id}
+    assert {o.row.operation for o in outcomes} == served_operations("encounters") - portal, \
+        "the table must cover every staff operation encounters serves"
