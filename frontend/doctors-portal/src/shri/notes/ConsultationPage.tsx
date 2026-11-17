@@ -37,6 +37,8 @@ import { Disclosure, Why } from '../ui/Disclosure'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Pill } from '../ui/primitives'
 
+import { AiCodeChips } from './AiCodeChips'
+import { AiVisitSummary } from './AiVisitSummary'
 import { AmbientScribe } from './AmbientScribe'
 import { NoteAuthoring } from './NoteAuthoring'
 import { RealDifferentialRail } from './RealDifferentialRail'
@@ -88,6 +90,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
   const aiActive = useAiActive()
   // MD and APP only (D116): the differential needs chart-summaries:create and diagnoses:create.
   const realDdx = AI_DIFFERENTIAL_ON && ddxUp && aiActive && hasPermission('chart-summaries:create') && hasPermission('diagnoses:create')
+  // The AI visit summary and ICD-10 suggestions (D119): with the API only; locked once the note is signed.
+  const signed = useClinical((s) => s.notes[encounterId]?.status === 'signed')
 
   const enc = maybeEncounter(encounterId)!
   const p = patient(enc.patientId)
@@ -155,6 +159,8 @@ function Consultation({ encounterId }: { encounterId: string }) {
         // SHRI_HEALTH: with SHRI_API=real, the Differential panel is AI-03 on the API (D116), behind its
         // flag and only while the AI works here; otherwise it is the sample's suggestions.
         rail={REAL_API ? (realDdx ? <RealDifferentialRail key={enc.id} encounterId={enc.id} patientId={p.id} /> : undefined) : <DifferentialRail encounterId={enc.id} patientId={p.id} />}
+        noteTop={REAL_API ? <AiVisitSummary key={enc.id} encounterId={enc.id} patientId={p.id} locked={signed} /> : undefined}
+        afterAssessment={REAL_API ? <AiCodeChips key={enc.id} encounterId={enc.id} patientId={p.id} locked={signed} /> : undefined}
         railTitle="Differential"
         railBadge={REAL_API ? undefined : differentials.length || undefined}
       />
