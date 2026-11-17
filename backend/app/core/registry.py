@@ -21,6 +21,7 @@ from fastapi import FastAPI
 
 from app.core import (
     access_log,
+    admin_api,
     audit,
     auth_api,
     backchannel,
@@ -44,6 +45,7 @@ from app.core import (
     session,
 )
 from app.core.config import Settings
+from app.integration import admin_api as integration_admin_api
 from app.integration import inbound
 
 Register = Callable[[FastAPI, Settings], None]
@@ -78,6 +80,8 @@ FEATURES: tuple[tuple[str, Register], ...] = (
     ("events", events.register),
     ("operations", long_running.register),
     ("break-glass", break_glass_api.register),
+    ("administration", admin_api.register),
+    ("interoperability", integration_admin_api.register),
     ("modules", routing.register),
 )
 

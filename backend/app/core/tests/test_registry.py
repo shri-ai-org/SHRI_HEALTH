@@ -14,6 +14,7 @@ from pydantic import SecretStr
 
 from app.core import (
     access_log,
+    admin_api,
     auth_api,
     backchannel,
     break_glass_api,
@@ -41,6 +42,7 @@ from app.core.request_id import RequestIdMiddleware
 from app.core.response_headers import NoStoreMiddleware
 from app.core.routing import API_PREFIX, include_module_routers
 from app.core.session import Keycloak, LoginStates
+from app.integration import admin_api as integration_admin_api
 from app.integration import inbound
 from app.main import create_app
 
@@ -89,6 +91,8 @@ def _legacy_app(settings: Settings) -> FastAPI:
     application.include_router(events.router, prefix=API_PREFIX)
     application.include_router(long_running.router, prefix=API_PREFIX)
     break_glass_api.register(application, settings)  # added after the registry
+    admin_api.register(application, settings)  # added after the registry
+    integration_admin_api.register(application, settings)  # added after the registry
     include_module_routers(application)
     return application
 
