@@ -1,8 +1,8 @@
 """The facility-scope sweep (SECURITY_MODEL §5.1, D37) for the AI's morning brief and differential
-(D116) and the visit summary (D119): a visit at another facility of the clinic, or in another
-clinic, is 404 and nothing changes; a brief, differential or visit summary is its requester's
-only; a brief lists only appointments at the user's own facilities. The other AI operations
-check their scope in their own live tests. Synthetic data only."""
+(D116), the visit summary and the coding suggestions (D119): a visit at another facility of the
+clinic, or in another clinic, is 404 and nothing changes; each is its requester's only; a brief
+lists only appointments at the user's own facilities. The other AI operations check their scope
+in their own live tests. Synthetic data only."""
 
 from __future__ import annotations
 
@@ -35,7 +35,8 @@ pytestmark = [
 ]
 
 COVERED = {"createDifferential", "getDifferential", "createMorningBrief", "getMorningBrief",
-           "createVisitSummary", "getVisitSummary"}
+           "createVisitSummary", "getVisitSummary", "createCodingSuggestion",
+           "getCodingSuggestion", "decideSuggestedCode"}
 
 
 def _visit(client: Any, practice: Practice, *, at_a2: bool, front_desk: str) -> str:
@@ -72,6 +73,11 @@ def test_the_brief_differential_and_visit_summary_follow_the_facility_rules(
     summary = client("md").post(f"{API}/ai/visit-summaries", json={"encounterId": at_a1})
     assert summary.json()["status"] == "succeeded", summary.text
     summary_id = summary.json()["result"]["id"]
+    claude_server.reply = json.dumps({"codes": [], "insufficientEvidence": True})
+    coded = client("md").post(f"{API}/ai/coding-suggestions", json={"encounterId": at_a1})
+    assert coded.json()["status"] == "succeeded", coded.text
+    coding_id = coded.json()["result"]["id"]
+    decision = f"{API}/ai/coding-suggestions/{coding_id}/codes/{coding_id}/decision"
     claude_server.reply = json.dumps({"patients": []})
     brief = client("md").post(f"{API}/ai/morning-briefs", json={"date": _today()})
     assert brief.json()["status"] == "succeeded", brief.text
@@ -93,6 +99,16 @@ def test_the_brief_differential_and_visit_summary_follow_the_facility_rules(
             shown=(at_a1,)),
         Row("getVisitSummary", "md-b", "GET", f"{API}/ai/visit-summaries/{summary_id}", 404,
             hidden=(at_a1,)),
+        Row("createCodingSuggestion", "md", "POST", f"{API}/ai/coding-suggestions", 404,
+            json={"encounterId": at_a2}, note="a visit at A2"),
+        Row("createCodingSuggestion", "md-b", "POST", f"{API}/ai/coding-suggestions", 404,
+            json={"encounterId": at_a1}, note="another clinic"),
+        Row("getCodingSuggestion", "md", "GET", f"{API}/ai/coding-suggestions/{coding_id}", 200,
+            shown=(at_a1,)),
+        Row("getCodingSuggestion", "md-b", "GET", f"{API}/ai/coding-suggestions/{coding_id}",
+            404, hidden=(at_a1,)),
+        Row("decideSuggestedCode", "md-b", "POST", decision, 404,
+            json={"decision": "accepted"}, note="another clinic's suggestion"),
         Row("getMorningBrief", "md", "GET", f"{API}/ai/morning-briefs/{brief_id}", 200),
         Row("getMorningBrief", "md-b", "GET", f"{API}/ai/morning-briefs/{brief_id}", 404),
         Row("createMorningBrief", "md-b", "POST", f"{API}/ai/morning-briefs", 202,
