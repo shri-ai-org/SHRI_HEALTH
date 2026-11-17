@@ -16,16 +16,18 @@
  */
 import type { Id } from './id';
 import type { PartnerMessageBenefitsItem } from './partnerMessageBenefitsItem';
+import type { PartnerMessageCategory } from './partnerMessageCategory';
 import type { PartnerMessageErrorsItem } from './partnerMessageErrorsItem';
 import type { PartnerMessageMessageType } from './partnerMessageMessageType';
 import type { PartnerMessagePlan } from './partnerMessagePlan';
 import type { PartnerMessageRejection } from './partnerMessageRejection';
+import type { PartnerMessageReport } from './partnerMessageReport';
 import type { PartnerMessageResult } from './partnerMessageResult';
 import type { PartnerMessageStatus } from './partnerMessageStatus';
 import type { Timestamp } from './timestamp';
 
 /**
- * A partner reply as the partner contracts define it (contracts/partners): the clearinghouse's 271 (`result`, `plan`, `benefits`, `errors`) or the pharmacy's RxStatus (`status`, `rejection`). Core checks this envelope; the owning module validates the whole message against its own partner schema.
+ * A partner reply as the partner contracts define it (contracts/partners): the clearinghouse's 271 (`result`, `plan`, `benefits`, `errors`), the pharmacy's RxStatus (`status`, `rejection`), or the lab or imaging center's LabOrderStatus (`status`, `fillerOrderNumber`, `rejection`) or LabResult (`fillerOrderNumber`, `category`, `report`). Core checks this envelope; the owning module validates the whole message against its own partner schema.
  */
 export interface PartnerMessage {
   /** The partner message type. */
@@ -60,8 +62,18 @@ export interface PartnerMessage {
      * @maxItems 20
      */
   errors?: PartnerMessageErrorsItem[];
-  /** RxStatus only: the pharmacy's answer. */
+  /** RxStatus: the pharmacy's answer (`accepted`, `rejected`). LabOrderStatus: the center's answer (`received`, `rejected`, `cancelled`). */
   status?: PartnerMessageStatus;
-  /** RxStatus only: why it was rejected (the pharmacy partner schema). */
+  /** RxStatus and LabOrderStatus only: why it was rejected (the pharmacy or lab partner schema). */
   rejection?: PartnerMessageRejection;
+  /**
+     * LabOrderStatus and LabResult only: the center's order number. Never a patient identifier.
+     * @maxLength 60
+     * @pattern ^[A-Za-z0-9._:-]{1,60}$
+     */
+  fillerOrderNumber?: string;
+  /** LabResult only: a lab or imaging report. */
+  category?: PartnerMessageCategory;
+  /** LabResult only: the report and its results (the lab partner schema). */
+  report?: PartnerMessageReport;
 }

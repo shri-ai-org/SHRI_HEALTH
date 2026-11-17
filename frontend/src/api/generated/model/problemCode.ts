@@ -37,6 +37,7 @@ export const ProblemCode = {
   'record-locked': 'record-locked',
   'booking-conflict': 'booking-conflict',
   'possible-duplicate': 'possible-duplicate',
+  'duplicate-order': 'duplicate-order',
   'patient-merged': 'patient-merged',
   'idempotency-request-in-progress': 'idempotency-request-in-progress',
   'feature-disabled': 'feature-disabled',

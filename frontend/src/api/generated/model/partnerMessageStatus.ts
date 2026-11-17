@@ -16,7 +16,7 @@
  */
 
 /**
- * RxStatus only: the pharmacy's answer.
+ * RxStatus: the pharmacy's answer (`accepted`, `rejected`). LabOrderStatus: the center's answer (`received`, `rejected`, `cancelled`).
  */
 export type PartnerMessageStatus = typeof PartnerMessageStatus[keyof typeof PartnerMessageStatus];
 
@@ -24,4 +24,6 @@ export type PartnerMessageStatus = typeof PartnerMessageStatus[keyof typeof Part
 export const PartnerMessageStatus = {
   accepted: 'accepted',
   rejected: 'rejected',
+  received: 'received',
+  cancelled: 'cancelled',
 } as const;

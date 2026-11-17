@@ -25,6 +25,7 @@ import type {
   ListEncounterPrescriptionsParams,
   ListMedicationsParams,
   ListPharmaciesParams,
+  ListRefillRequestsParams,
   Medication,
   MedicationCreate,
   MedicationList,
@@ -39,6 +40,10 @@ import type {
   PrescriptionPatch,
   Problem,
   RecordMedicationHeaders,
+  RefillRequest,
+  RefillRequestList,
+  RefillRequestResponse,
+  RespondToRefillRequestHeaders,
   SafetyAlert,
   SafetyCheckResult,
   SignAndSendPrescriptionHeaders,
@@ -1006,6 +1011,175 @@ return apiFetch<signAndSendPrescriptionResponse>(getSignAndSendPrescriptionUrl(p
     method: 'POST',
     headers: { ...headers, ...getHeaders(options?.headers) }
 
+  }
+);}
+
+
+export type listRefillRequestsResponse200 = {
+  data: RefillRequestList
+  status: 200
+}
+
+export type listRefillRequestsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listRefillRequestsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listRefillRequestsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listRefillRequestsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listRefillRequestsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listRefillRequestsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listRefillRequestsResponseSuccess = (listRefillRequestsResponse200) & {
+  headers: Headers;
+};
+export type listRefillRequestsResponseError = (listRefillRequestsResponse400 | listRefillRequestsResponse401 | listRefillRequestsResponse403 | listRefillRequestsResponse422 | listRefillRequestsResponse429 | listRefillRequestsResponse500) & {
+  headers: Headers;
+};
+
+export type listRefillRequestsResponse = (listRefillRequestsResponseSuccess | listRefillRequestsResponseError)
+
+export const getListRefillRequestsUrl = (params?: ListRefillRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/refill-requests?${stringifiedParams}` : `/refill-requests`
+}
+
+/**
+ * Patients' refill requests from the portal (inventory #128): open ones first, oldest first. Each is a `MedicationRequest` with intent `proposal` whose `priorPrescription` is the prescription to refill. For a restricted patient the user may not open (no break-glass grant, not on the care team; D37), the item carries `restricted: true` and leaves out the patient's summary, the drug, the directions and the note. Every patient returned is audited.
+ * @summary List refill requests
+ */
+export const listRefillRequests = async (params?: ListRefillRequestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listRefillRequestsResponse> => {
+
+  return apiFetch<listRefillRequestsResponse>(getListRefillRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type respondToRefillRequestResponse200 = {
+  data: RefillRequest
+  status: 200
+}
+
+export type respondToRefillRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type respondToRefillRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type respondToRefillRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type respondToRefillRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type respondToRefillRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type respondToRefillRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type respondToRefillRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type respondToRefillRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type respondToRefillRequestResponseSuccess = (respondToRefillRequestResponse200) & {
+  headers: Headers;
+};
+export type respondToRefillRequestResponseError = (respondToRefillRequestResponse400 | respondToRefillRequestResponse401 | respondToRefillRequestResponse403 | respondToRefillRequestResponse404 | respondToRefillRequestResponse409 | respondToRefillRequestResponse422 | respondToRefillRequestResponse429 | respondToRefillRequestResponse500) & {
+  headers: Headers;
+};
+
+export type respondToRefillRequestResponse = (respondToRefillRequestResponseSuccess | respondToRefillRequestResponseError)
+
+export const getRespondToRefillRequestUrl = (refillRequestId: Id,) => {
+
+
+
+
+  return `/refill-requests/${refillRequestId}/respond`
+}
+
+/**
+ * Answers a patient's refill request (inventory #129). **Approve** sets the request `completed` and creates a new **draft** prescription (intent `order`, `priorPrescription` set) with the same drug, directions, quantity, days' supply, refills and pharmacy, returned as `newPrescriptionId`. The prescriber then runs the safety check and sign-and-send on that draft as for any prescription, so the allergy and duplicate-medication alerts still apply (D99) and it goes to the pharmacy through the outbox (D25). **Decline** sets the request `cancelled` with the reason in `statusReason`, which the patient sees. Only MD and APP may do this in the MVP: a user who holds `refill-requests:respond` but has neither role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).
+ * @summary Approve or decline a refill request
+ */
+export const respondToRefillRequest = async (refillRequestId: Id,
+    refillRequestResponse: RefillRequestResponse,
+    headers: RespondToRefillRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<respondToRefillRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<respondToRefillRequestResponse>(getRespondToRefillRequestUrl(refillRequestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(refillRequestResponse)
   }
 );}
 

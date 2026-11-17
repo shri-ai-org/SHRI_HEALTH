@@ -20,6 +20,7 @@ enum:
   - record-locked
   - booking-conflict
   - possible-duplicate
+  - duplicate-order
   - patient-merged
   - idempotency-request-in-progress
   - feature-disabled

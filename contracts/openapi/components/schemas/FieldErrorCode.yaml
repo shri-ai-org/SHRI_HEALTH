@@ -18,3 +18,7 @@ x-extensible-enum:
   - not-editable
   - safety-check-stale
   - override-required
+  - duplicate-order
+  - not-active
+  - refill-already-requested
+  - not-refillable

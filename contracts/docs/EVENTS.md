@@ -114,7 +114,7 @@ data: {"specversion":"1.0","id":"4d6f…","type":"appointment.checked-in",…}
 | `prescription.signed` | prescription | `patientId` | Thulasi | — | Internal |
 | `prescription.transmission-updated` | prescription | `transmissionStatus` | Thulasi | Anand (inbox on failure), prescriber screen | Internal + browser |
 | `refill-request.received` | refill-request | `patientId` | Thulasi | Anand (inbox) | Internal |
-| `order.status-changed` | order | `fulfillmentStatus` | Thulasi | Clinician screens | Browser |
+| `order.status-changed` | order | `trackingStatus` | Thulasi | Clinician screens (the order chips) | Browser |
 | `result.received` | result | `orderId`, `patientId`, `abnormal`, `critical` | Thulasi | Anand (inbox, within 60 s, FRS FR-ORD-02); critical escalation | Internal + browser |
 | `result.acknowledged` | result | — | Thulasi | Escalation stops | Internal + browser |
 | `unmatched-result.received` | unmatched-result | — | Thulasi | Unmatched queue screen | Browser |

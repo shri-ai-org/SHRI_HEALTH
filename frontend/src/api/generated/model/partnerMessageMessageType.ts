@@ -24,4 +24,6 @@ export type PartnerMessageMessageType = typeof PartnerMessageMessageType[keyof t
 export const PartnerMessageMessageType = {
   NUMBER_271: '271',
   RxStatus: 'RxStatus',
+  LabOrderStatus: 'LabOrderStatus',
+  LabResult: 'LabResult',
 } as const;

@@ -1214,6 +1214,226 @@ paths:
         '500':
           $ref: ../components/responses/InternalError.yaml
           description: 500. `internal-error` (unexpected error).
+  /refill-requests:
+    get:
+      operationId: listRefillRequests
+      summary: List refill requests
+      description: 'Patients'' refill requests from the portal (inventory #128): open ones first, oldest first. Each is a
+        `MedicationRequest` with intent `proposal` whose `priorPrescription` is the prescription to refill. For a restricted
+        patient the user may not open (no break-glass grant, not on the care team; D37), the item carries `restricted: true`
+        and leaves out the patient''s summary, the drug, the directions and the note. Every patient returned is audited.'
+      tags:
+      - medications
+      x-owner: thulasi
+      x-permission: refill-requests:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: result
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      - name: status
+        in: query
+        required: false
+        description: Only requests with this status. Default `requested` (the open ones).
+        schema:
+          $ref: '#/components/schemas/RefillRequestStatus'
+      responses:
+        '200':
+          description: One page of refill requests.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefillRequestList'
+              examples:
+                page:
+                  summary: An open request and one for a restricted chart
+                  value:
+                    items:
+                    - id: 1f2a3b4c-5d6e-4f7a-8b9c-0d1e2f3a4b5c
+                      type: renewal
+                      status: requested
+                      patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      patient:
+                        id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        name:
+                          given:
+                          - Kaia401
+                          family: Lindgren118
+                        birthDate: '1968-04-12'
+                        mrn: TEST-000123
+                        restricted: false
+                        active: true
+                      prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                      display: Lisinopril 10 mg tablet
+                      dosageText: 1 tablet by mouth once daily
+                      requestedAt: '2026-11-21T14:05:00Z'
+                      note: Down to my last week of tablets.
+                      restricted: false
+                    - id: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+                      type: renewal
+                      status: requested
+                      patientId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+                      prescriptionId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+                      requestedAt: '2026-11-21T15:30:00Z'
+                      restricted: true
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `refill-requests:read`).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /refill-requests/{refillRequestId}/respond:
+    parameters:
+    - name: refillRequestId
+      in: path
+      required: true
+      description: Refill request ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: respondToRefillRequest
+      summary: Approve or decline a refill request
+      description: 'Answers a patient''s refill request (inventory #129). **Approve** sets the request `completed` and creates
+        a new **draft** prescription (intent `order`, `priorPrescription` set) with the same drug, directions, quantity, days''
+        supply, refills and pharmacy, returned as `newPrescriptionId`. The prescriber then runs the safety check and sign-and-send
+        on that draft as for any prescription, so the allergy and duplicate-medication alerts still apply (D99) and it goes
+        to the pharmacy through the outbox (D25). **Decline** sets the request `cancelled` with the reason in `statusReason`,
+        which the patient sees. Only MD and APP may do this in the MVP: a user who holds `refill-requests:respond` but has
+        neither role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
+      tags:
+      - medications
+      x-owner: thulasi
+      x-permission: refill-requests:respond
+      x-audit:
+        action: U
+        category: phi-write
+        patient: result
+      x-idempotency: required
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefillRequestResponse'
+            examples:
+              approve:
+                summary: Approve
+                value:
+                  decision: approve
+              decline:
+                summary: Decline
+                value:
+                  decision: decline
+                  reason: Please book a visit first; your blood pressure needs a recheck.
+      responses:
+        '200':
+          description: The refill request, answered.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefillRequest'
+              examples:
+                approved:
+                  summary: Approved, with the new draft prescription
+                  value:
+                    id: 1f2a3b4c-5d6e-4f7a-8b9c-0d1e2f3a4b5c
+                    type: renewal
+                    status: approved
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    patient:
+                      id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                      name:
+                        given:
+                        - Kaia401
+                        family: Lindgren118
+                      birthDate: '1968-04-12'
+                      mrn: TEST-000123
+                      restricted: false
+                      active: true
+                    prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                    display: Lisinopril 10 mg tablet
+                    dosageText: 1 tablet by mouth once daily
+                    requestedAt: '2026-11-21T14:05:00Z'
+                    note: Down to my last week of tablets.
+                    respondedAt: '2026-11-21T16:40:00Z'
+                    respondedBy:
+                      id: 6f7a8b9c-0d1e-4f2a-9b3c-4d5e6f7a8b9c
+                      displayName: Dr. Lowe58
+                    newPrescriptionId: 3e4f5a6b-7c8d-4e9f-9a0b-1c2d3e4f5a6b
+                    restricted: false
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `refill-requests:respond`, or the user has neither the MD
+            nor the APP role (D110; for the clinical advisors to confirm, Q21)); `break-glass-required` (the patient's chart
+            is restricted and the user holds no break-glass grant and is not on the care team (D37)); `csrf-check-failed`
+            (missing or wrong CSRF header or Origin).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such refill request in this clinic or the user's facilities).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `invalid-state-transition` (no longer `requested`; the problem carries `currentState`); `idempotency-request-in-progress`
+            (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid; `reason` is `required` to decline); `idempotency-key-reused`
+            (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     PharmacyDirectoryAddress:
@@ -1837,3 +2057,131 @@ components:
           description: Why.
           x-phi: clinical
           minLength: 1
+    RefillRequestStatus:
+      description: '`requested` (open; FHIR `active`), `approved` (a draft prescription was created; FHIR `completed`), `declined`
+        (FHIR `cancelled`, with the reason).'
+      type: string
+      enum:
+      - requested
+      - approved
+      - declined
+    RefillRequest:
+      description: 'A patient''s refill request as staff see it: a `MedicationRequest` with intent `proposal`, the patient
+        as `requester` and the prescription to refill as `priorPrescription`. For a restricted chart the user may not open
+        (D37), `restricted` is true and `patient`, `display`, `dosageText` and `note` are left out.'
+      type: object
+      required:
+      - id
+      - type
+      - status
+      - patientId
+      - prescriptionId
+      - requestedAt
+      - restricted
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Refill request ID.
+          x-phi: internal-id
+        type:
+          type: string
+          x-extensible-enum:
+          - renewal
+          maxLength: 32
+          description: '`renewal` (a patient''s refill request from the portal). The pharmacy''s change request (`change`)
+            may follow with the e-prescribing vendor (T35).'
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/RefillRequestStatus'
+          description: Status.
+          x-phi: clinical
+        patientId:
+          $ref: ../components/schemas/Id.yaml
+          description: Patient ID.
+          x-phi: internal-id
+        patient:
+          $ref: patients.yaml#/components/schemas/PatientSummary
+          description: The patient, minimum necessary. Absent when `restricted` is true.
+          x-phi: identifier
+        prescriptionId:
+          $ref: ../components/schemas/Id.yaml
+          description: The prescription to refill.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: The drug, in words. Absent when `restricted` is true.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: The prescription's directions. Absent when `restricted` is true.
+          x-phi: clinical
+        requestedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the patient asked.
+          x-phi: none
+        note:
+          type: string
+          maxLength: 500
+          description: The patient's note. Absent when `restricted` is true.
+          x-phi: clinical
+        respondedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was approved or declined.
+          x-phi: none
+        respondedBy:
+          $ref: encounters.yaml#/components/schemas/ClinicianRef
+          description: Who approved or declined it.
+          x-phi: none
+        declineReason:
+          type: string
+          maxLength: 500
+          description: Why it was declined; the patient sees it.
+          x-phi: clinical
+        newPrescriptionId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'Set on approval: the draft prescription to safety-check, sign and send.'
+          x-phi: internal-id
+        restricted:
+          type: boolean
+          description: True when the chart is restricted and the user may not open it (D37); the clinical fields are then
+            left out.
+          x-phi: none
+    RefillRequestList:
+      description: One page of refill requests, open ones first, oldest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RefillRequest'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    RefillRequestResponse:
+      description: Body to approve or decline a refill request. `reason` is required to decline.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - approve
+          - decline
+          description: '`approve` (creates a draft prescription) or `decline`.'
+          x-phi: clinical
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+          description: Why it is declined, in words for the patient. Required to decline.
+          x-phi: clinical

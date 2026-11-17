@@ -16,6 +16,6 @@
  */
 
 /**
- * RxStatus only: why it was rejected (the pharmacy partner schema).
+ * RxStatus and LabOrderStatus only: why it was rejected (the pharmacy or lab partner schema).
  */
 export type PartnerMessageRejection = { [key: string]: unknown };

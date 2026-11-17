@@ -2489,6 +2489,177 @@ paths:
         '503':
           $ref: ../components/responses/ServiceUnavailable.yaml
           description: '503. `service-unavailable` (the server can''t sign challenges right now, for example its key is unavailable).'
+  /portal/me/refill-requests:
+    get:
+      operationId: listPortalRefillRequests
+      summary: List my refill requests
+      description: The patient's refill requests, newest first, with their answers.
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security:
+      - portalSessionCookie: []
+      parameters:
+      - $ref: ../components/parameters/Limit.yaml
+      - $ref: ../components/parameters/Cursor.yaml
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalRefillRequestList'
+              examples:
+                page:
+                  summary: One open request and one approved
+                  value:
+                    items:
+                    - id: 1f2a3b4c-5d6e-4f7a-8b9c-0d1e2f3a4b5c
+                      prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                      display: Lisinopril 10 mg tablet
+                      dosageText: 1 tablet by mouth once daily
+                      status: requested
+                      requestedAt: '2026-11-21T14:05:00Z'
+                    - id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                      prescriptionId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                      display: Metformin 500 mg tablet
+                      dosageText: 1 tablet by mouth twice daily with meals
+                      status: approved
+                      requestedAt: '2026-10-02T13:00:00Z'
+                      respondedAt: '2026-10-02T18:10:00Z'
+                      newPrescriptionId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account
+            is not enrolled).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createPortalRefillRequest
+      summary: Ask for a refill
+      description: 'Asks the practice to refill one of the patient''s prescriptions (from `GET /portal/me/medications`). Stored
+        as a `MedicationRequest` with intent `proposal`, the patient as `requester` and the prescription as `priorPrescription`;
+        a prescriber answers it with `POST /refill-requests/{refillRequestId}/respond`. Only an active signed prescription
+        of the session''s patient, with no open request, and not Schedule II (no refills).'
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: portal-refill-requests:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: required
+      x-events:
+      - refill-request.received
+      x-storage: clinical
+      x-release: P1
+      security:
+      - portalSessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalRefillRequestCreate'
+            examples:
+              lisinopril:
+                summary: A refill of lisinopril
+                value:
+                  prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                  note: Down to my last week of tablets.
+      responses:
+        '201':
+          description: Created. The request, open.
+          headers:
+            Location:
+              $ref: ../components/headers/Location.yaml
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalRefillRequest'
+              examples:
+                requested:
+                  summary: Requested
+                  value:
+                    id: 1f2a3b4c-5d6e-4f7a-8b9c-0d1e2f3a4b5c
+                    prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
+                    display: Lisinopril 10 mg tablet
+                    dosageText: 1 tablet by mouth once daily
+                    status: requested
+                    requestedAt: '2026-11-21T14:05:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: '403. `permission-denied` (the session lacks `portal-refill-requests:create`: not a patient session,
+            or the account is not enrolled); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such prescription for the session's patient).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `invalid-state-transition` (the prescription can''t be refilled from the portal; `errors` names
+            `/prescriptionId` with `not-active` (not an active signed prescription), `refill-already-requested` (it already
+            has an open request) or `not-refillable` (Schedule II: no refills)); `idempotency-request-in-progress` (a request
+            with this Idempotency-Key is still running).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used
+            with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
 components:
   schemas:
     PortalSession:
@@ -3996,3 +4167,91 @@ components:
           maxLength: 64
           description: The server's HMAC over the challenge, in lowercase hex. Only the server can check it.
           x-phi: none
+    PortalRefillRequest:
+      description: A refill request, as the patient sees it.
+      type: object
+      required:
+      - id
+      - prescriptionId
+      - display
+      - status
+      - requestedAt
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Refill request ID.
+          x-phi: internal-id
+        prescriptionId:
+          $ref: ../components/schemas/Id.yaml
+          description: The prescription to refill.
+          x-phi: internal-id
+        display:
+          type: string
+          maxLength: 500
+          description: The medication, in words.
+          x-phi: clinical
+        dosageText:
+          type: string
+          maxLength: 500
+          description: How to take it.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+          - requested
+          - approved
+          - declined
+          description: '`requested` (waiting for the practice), `approved` (the practice is writing the new prescription),
+            `declined` (with the reason).'
+          x-phi: clinical
+        requestedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the patient asked.
+          x-phi: none
+        respondedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When the practice answered.
+          x-phi: none
+        declineReason:
+          type: string
+          maxLength: 500
+          description: Why it was declined.
+          x-phi: clinical
+        newPrescriptionId:
+          $ref: ../components/schemas/Id.yaml
+          description: 'Set on approval: the new prescription, which appears on the medication list once the prescriber signs
+            it.'
+          x-phi: internal-id
+    PortalRefillRequestList:
+      description: The patient's refill requests, newest first.
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalRefillRequest'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: ../components/schemas/Cursor.yaml
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalRefillRequestCreate:
+      description: Body to ask for a refill.
+      type: object
+      additionalProperties: false
+      required:
+      - prescriptionId
+      properties:
+        prescriptionId:
+          $ref: ../components/schemas/Id.yaml
+          description: The prescription to refill (an `id` with `source` `prescription` from `GET /portal/me/medications`).
+          x-phi: internal-id
+        note:
+          type: string
+          maxLength: 500
+          description: A note for the practice.
+          x-phi: clinical
