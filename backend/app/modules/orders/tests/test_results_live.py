@@ -167,16 +167,17 @@ def test_imaging_reports_have_their_text(client: Any, practice: Practice,
 
 
 def _image(practice: Practice, report: str, caption: str, *, purpose: str = "imaging",
-           state: str = "clean") -> str:
+           state: str = "clean", size: int = 64097) -> str:
     """A server-made imaging file (0023) on the report, as the demo seed attaches it."""
     file_id = str(uuid.uuid4())
     _sql(practice, """
         INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, content_type,
                size_bytes, sha256, purpose, state, scan_status, scanned_at, wrapped_data_key)
-        VALUES (:id, :t, 'clean', :k, 'image/jpeg', 64097, :h, :purpose, :state, :scan,
+        VALUES (:id, :t, 'clean', :k, 'image/jpeg', :size, :h, :purpose, :state, :scan,
                 CAST(:scanned AS timestamptz), :key)""",
          id=file_id, t=practice.clinic, k=f"{practice.clinic}/{file_id}", h="a" * 64,
-         purpose=purpose, state=state, scan="pending" if purpose == "imaging" else "clean",
+         size=size, purpose=purpose, state=state,
+         scan="pending" if purpose == "imaging" else "clean",
          scanned=None if purpose == "imaging" else "2026-11-01T00:00:00Z",   # an upload's scan
          key="vault:v1:test-wrapped-key" if state == "clean" else None)
     _sql(practice, """
@@ -206,6 +207,28 @@ def test_imaging_reports_list_their_illustrative_images(client: Any, practice: P
         "id": image, "caption": "Lumbar spine MRI, sagittal T2", "label": "Illustrative image",
         "contentType": "image/jpeg", "sizeBytes": 64097}]
     assert "images" not in by_id[plain]
+
+
+def test_an_image_over_the_limit_or_on_a_report_not_final_never_shows(
+        client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:
+    """Thulasi's review of #387: an image over the contract's 512 KiB is left out (never a 500
+    for the list), and a report that isn't final shows neither itself nor its image (D24)."""
+    patient, base = _base(practice)
+    final = _report(practice, patient, "RAD", "30679-5", "MR Lumbar spine",
+                    "2026-03-10T19:00:00Z", conclusion="Degenerative disc disease.")
+    small = _image(practice, final, "Lumbar spine MRI, sagittal T2")
+    _image(practice, final, "Too large", size=524289)
+    pending = _report(practice, patient, "RAD", "36643-5", "XR Chest 2 Views",
+                      "2026-09-15T17:20:00Z", status="preliminary",
+                      conclusion="Preliminary read.")
+    hidden = _image(practice, pending, "Chest X-ray, PA view")
+    _finish(practice)
+    found = client("md").get(f"{base}/imaging-reports")
+    assert found.status_code == 200, found.text
+    items = found.json()["items"]
+    assert [r["id"] for r in items] == [final]
+    assert [i["id"] for i in items[0]["images"]] == [small]
+    assert hidden not in found.text
 
 
 def test_reads_need_results_read_and_a_known_patient(client: Any, practice: Practice,

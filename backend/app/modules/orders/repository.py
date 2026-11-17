@@ -8,8 +8,8 @@ Lab results: DiagnosticReport category LAB (v2-0074) with its Observations throu
 diagnostic_report_result, in the lab's order. Imaging reports: DiagnosticReport category RAD: the
 impression is `conclusion`; the full text is the linked narrative Observations' valueString (for
 example LOINC 18782-3 findings), in order, then the impression. Its illustrative images (#386)
-are the report's presented forms whose file is a clean `imaging` file, at most three, in the
-order they were written; `images` is left out when it has none.
+are the report's presented forms whose file is a clean `imaging` file within the contract's
+512 KiB, at most three, in the order they were written; `images` is left out when it has none.
 """
 from __future__ import annotations
 
@@ -80,6 +80,7 @@ SELECT f.diagnostic_report_id, b.id, f.title, b.content_type, b.size_bytes
 FROM clinical.diagnostic_report_presented_form f
 JOIN admin.binary_object b ON b.id = f.binary_object_id
 WHERE f.diagnostic_report_id = ANY(:reports) AND b.purpose = 'imaging' AND b.state = 'clean'
+  AND b.size_bytes BETWEEN 1 AND 524288     -- the contract's limit; a larger file is left out
 ORDER BY f.diagnostic_report_id, f.created_at, f.id
 """)
 
@@ -131,7 +132,8 @@ class SqlResultsRepository:
             for row in (await db.execute(_IMAGES, {"reports": [r["id"] for r in reports]})
                         ).mappings():
                 images.setdefault(row["diagnostic_report_id"], []).append(
-                    schemas.ImagingReportImage(id=row["id"], caption=row["title"] or "Image",
+                    schemas.ImagingReportImage(id=row["id"],
+                                               caption=(row["title"] or "Image")[:200],
                                                content_type=row["content_type"],
                                                size_bytes=row["size_bytes"]))
         out = []
