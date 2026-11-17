@@ -59,6 +59,21 @@ UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.re
             "AND NOT (c.relrowsecurity AND c.relforcerowsecurity)")
 
 
+# Who may create objects in the schemas the writing SECURITY DEFINER functions name in their
+# search_path (clinical, admin, audit, public, pg_temp; 0027): only their owner, shri_migrator.
+# Any other service role, or PUBLIC, with CREATE there could shadow a table a trigger names
+# unqualified, so each (schema, role) pair counts, and PUBLIC counts as one.
+SCHEMA_CREATORS = (
+    "SELECT (SELECT count(*) FROM pg_namespace n CROSS JOIN pg_roles r "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND r.rolname LIKE 'shri\\_%' AND r.rolname <> 'shri_migrator' "
+    "AND has_schema_privilege(r.oid, n.oid, 'CREATE')) "
+    "+ (SELECT count(*) FROM pg_namespace n, "
+    "aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND a.grantee = 0 AND a.privilege_type = 'CREATE')")
+
+
 def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Check]:
     return [
         Check("migrations at head", "SELECT version_num FROM admin.alembic_version", head),
@@ -72,6 +87,8 @@ def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Ch
               "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'shri\\_%' "
               "AND (rolbypassrls OR rolsuper)",
               "0"),
+        Check("only shri_migrator may create in clinical, admin, audit and public",
+              SCHEMA_CREATORS, "0"),
         Check("demo patients loaded", "SELECT count(*) FROM clinical.patient", str(patients)),
     ]
 

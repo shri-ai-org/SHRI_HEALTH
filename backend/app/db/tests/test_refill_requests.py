@@ -129,8 +129,17 @@ async def test_requests_that_are_refused(database: Database, portal: Database,
         with pytest.raises(fs.ResourceNotFound):
             await _ask(portal, clinic, patient.id, prescription)
     for prescription in (controlled.id, unknown.id):              # CII; schedule unreadable
-        with pytest.raises(fs.RefillNotAllowed):
+        with pytest.raises(fs.RefillNotAllowed) as refused:
             await _ask(portal, clinic, patient.id, prescription)
+        assert refused.value.current_state == "not-refillable"
+    stopped = await _prescribed(database, clinic, patient, enc)
+    async with session(database, clinic) as s:
+        await s.execute(text("UPDATE clinical.medication_request SET status = 'stopped' "
+                             "WHERE id = :i"), {"i": stopped.id})
+        await s.commit()
+    with pytest.raises(fs.RefillNotAllowed) as refused:
+        await _ask(portal, clinic, patient.id, stopped.id)
+    assert refused.value.current_state == "not-active"
     with pytest.raises(fs.InvalidInput):                          # no free text
         await _ask(portal, clinic, patient.id, mine.id, note="please hurry")
     with pytest.raises(fs.ResourceNotFound):                      # another patient's session
@@ -174,16 +183,21 @@ async def test_a_request_is_never_a_medication(database: Database, portal: Datab
     assert rx.id in seen and asked.id not in seen               # /fhir never serves it
 
 
-async def test_the_clinician_approves_into_a_draft_renewal_or_declines_with_set_words(
+async def test_the_clinician_approves_with_a_draft_renewal_or_declines_with_set_words(
         database: Database, portal: Database, clinic: dict[str, Any]) -> None:
+    """Approving changes the request only; the caller (#415's service) writes the renewal
+    draft in the same transaction, and refill_renewal_id() finds it."""
     patient, enc = await _visit(database, clinic)
     rx = await _prescribed(database, clinic, patient, enc)
     asked = await _ask(portal, clinic, patient.id, rx.id)
     async with session(database, clinic) as s:
         approved = await STORE.respond_to_refill_request(s, asked.id, approve=True, reason=None,
                                                          if_version=asked.version)
+        draft = await STORE.create_prescription(s, _draft(patient, enc, clinic,
+                                                          prior_prescription_id=rx.id))
         renewal = await fs.refill_renewal_id(s, asked.id)
         await s.commit()
+    assert renewal == draft.id
     assert renewal is not None
     request, renewed = (await _row(database, clinic, asked.id),
                         await _row(database, clinic, renewal))

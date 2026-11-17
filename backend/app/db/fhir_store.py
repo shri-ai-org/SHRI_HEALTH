@@ -189,11 +189,13 @@ class CoverageOrderTaken(InvalidInput):
 
 
 class RefillNotAllowed(InvalidTransition):
-    """A refill request for a prescription that can't be refilled online (not active or signed,
-    a controlled substance, or one whose schedule can't be read; migration 0027): the API's 422."""
+    """A refill request the prescription doesn't allow (migration 0027): ``current_state`` is
+    ``not-active`` (not active, or not signed) or ``not-refillable`` (PSY, a controlled
+    substance, or one whose schedule can't be read): the API's ``409 invalid-state-transition``
+    with that code at ``/prescriptionId``."""
 
-    def __init__(self) -> None:
-        super().__init__("refill-not-allowed")
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
 
 
 class RefillAlreadyRequested(InvalidTransition):
@@ -1073,11 +1075,12 @@ class FhirStore(Protocol):
     async def respond_to_refill_request(self, db: AsyncSession, request_id: uuid.UUID, *,
                                         approve: bool, reason: str | None, if_version: int
                                         ) -> Written:
-        """The clinician's answer: approve (``completed``, and the renewal as a draft
-        prescription through ``create_prescription``, ``prior_prescription_id`` set; it is
-        safety-checked and signed as any prescription) or decline (``cancelled``, ``reason`` one
-        of ``REFILL_DECLINE_REASONS``). A Provenance by the current user; ``InvalidTransition``
-        unless the request is active."""
+        """The clinician's answer, the request only: approve (``completed``) or decline
+        (``cancelled``, ``reason`` one of ``REFILL_DECLINE_REASONS``), with a Provenance by the
+        current user; ``InvalidTransition`` unless the request is active. On approval the caller
+        writes the renewal draft in the same transaction, through ``create_prescription`` with
+        ``prior_prescription_id`` (#415's rules on what to copy), so it is safety-checked and
+        signed as any prescription; ``refill_renewal_id()`` reads it back."""
         ...
 
     # Notes: Composition (composition, composition_author, composition_section, attesters)
@@ -2380,8 +2383,10 @@ class SqlFhirStore:
                 getattr(exc.orig, "__cause__", None), "constraint_name", None)
             if detail.sqlstate == "P0002":
                 raise ResourceNotFound from None
-            if constraint == "refill_not_allowed":
-                raise RefillNotAllowed from None
+            if constraint == "refill_not_active":
+                raise RefillNotAllowed("not-active") from None
+            if constraint == "refill_not_refillable":
+                raise RefillNotAllowed("not-refillable") from None
             if constraint == "uq_medication_request_open_refill":
                 raise RefillAlreadyRequested from None
             raise
@@ -2401,10 +2406,6 @@ class SqlFhirStore:
         if approve:
             if reason is not None and reason.strip():
                 raise InvalidInput("an approval takes no reason", field="reason")
-            if mr.prior_prescription_id is None:
-                raise ResourceNotFound
-            prior = await _locked(db, MedicationRequest, mr.prior_prescription_id, None)
-            await self.create_prescription(db, _renewal(prior, await _dosage_text(db, prior.id)))
             mr.status = "completed"
         else:
             wording = REFILL_DECLINE_REASONS.get(reason or "")
@@ -2747,31 +2748,10 @@ def _apply_prescription(mr: MedicationRequest, data: PrescriptionIn | Prescripti
         mr.prior_prescription_id = data.prior_prescription_id
 
 
-def _renewal(prior: MedicationRequest, sig: str | None) -> PrescriptionIn:
-    """An approved refill's renewal: the prior prescription's drug, sig, quantity, supply,
-    refills, substitution and pharmacy, as a new draft that names the prior one."""
-    quantity = (DispenseQuantity(prior.dispense_request_quantity_value,
-                                 prior.dispense_request_quantity_unit)
-                if prior.dispense_request_quantity_value is not None
-                and prior.dispense_request_quantity_unit else None)
-    days = prior.dispense_request_expected_supply_duration_value
-    return PrescriptionIn(
-        patient_id=prior.subject_patient_id,
-        medication=Coded(prior.medication_codeable_concept_system,
-                         prior.medication_codeable_concept_code,
-                         prior.medication_codeable_concept_display,
-                         prior.medication_codeable_concept_text),
-        dosage_text=sig, quantity=quantity, days_supply=int(days) if days is not None else None,
-        refills=prior.dispense_request_number_of_repeats_allowed,
-        substitution_allowed=prior.substitution_allowed_boolean,
-        pharmacy_id=prior.dispense_request_performer_pharmacy_id,
-        prior_prescription_id=prior.id)
-
-
 async def refill_renewal_id(db: AsyncSession, request_id: uuid.UUID) -> uuid.UUID | None:
     """An approved refill request's renewal (the contract's ``newPrescriptionId``): the draft
-    ``respond_to_refill_request`` wrote in the approval's transaction, so it was created at the
-    request's last change and names the same prior prescription."""
+    written in the approval's transaction, so it was created at the request's last change and
+    names the same prior prescription."""
     found: uuid.UUID | None = (await db.execute(text("""
         SELECT r.id FROM clinical.medication_request q
           JOIN clinical.medication_request r

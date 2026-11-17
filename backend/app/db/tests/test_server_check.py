@@ -43,6 +43,20 @@ def test_a_clinic_table_without_row_security_and_a_superuser_fail(admin_engine: 
             "no service role bypasses row security"} <= failed
 
 
+def test_a_service_role_or_public_able_to_create_in_a_named_schema_fails(
+        admin_engine: Engine) -> None:
+    """0027's writing definer functions pin search_path to clinical, admin, audit, public: only
+    their owner may create there, never another service role or PUBLIC."""
+    name = "only shri_migrator may create in clinical, admin, audit and public"
+    for grant in ("GRANT CREATE ON SCHEMA admin TO shri_portal",
+                  "GRANT CREATE ON SCHEMA public TO PUBLIC"):
+        with admin_engine.connect() as conn, conn.begin() as tx:
+            conn.execute(text(grant))
+            failed = {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
+            tx.rollback()
+        assert name in failed, grant
+
+
 def test_a_query_that_fails_is_a_failed_check_not_a_crash(admin_engine: Engine) -> None:
     with admin_engine.connect() as conn:
         [(_, got)] = sc.run(conn, [sc.Check("missing", "SELECT x FROM no_such_table", "1")])

@@ -13,7 +13,9 @@ medication: every list and rule that reads medications reads intent `plan` and `
       signed, active, not labelled PSY, and not a controlled substance: its RxNorm concept must
       be loaded and have no dea_schedule, so a schedule that can't be read refuses (fail
       closed). Not the patient's or missing: P0002 (404). Refused: P0001 with constraint
-      refill_not_allowed (422). Already requested: the unique index below (409). It writes the
+      refill_not_active (not active or not signed) or refill_not_refillable (PSY, controlled,
+      schedule unreadable): the contract's 409 invalid-state-transition, not-active or
+      not-refillable. Already requested: the unique index below (409). It writes the
       request (draft, its sig, then active, as the dosage guard needs), its history version
       (recorded by the patient) and a Provenance with the patient as author.
       VOLATILE (it writes) SECURITY DEFINER, owner shri_migrator, search_path pinned to
@@ -90,8 +92,11 @@ BEGIN
   IF NOT FOUND OR v_tenant IS NULL OR v_patient IS NULL THEN
     RAISE EXCEPTION 'prescription not found' USING ERRCODE = 'P0002';
   END IF;
-  IF v_rx.status::text <> 'active' OR v_rx.ext_signed_at IS NULL
-     OR coalesce(v_rx.meta_security, ARRAY[]::varchar[]) && ARRAY['PSY']::varchar[]
+  IF v_rx.status::text <> 'active' OR v_rx.ext_signed_at IS NULL THEN
+    RAISE EXCEPTION 'this prescription is not active'
+      USING ERRCODE = 'P0001', CONSTRAINT = 'refill_not_active';
+  END IF;
+  IF coalesce(v_rx.meta_security, ARRAY[]::varchar[]) && ARRAY['PSY']::varchar[]
      OR v_rx.ext_dea_schedule IS NOT NULL
      OR v_rx.medication_codeable_concept_system IS DISTINCT FROM
         'http://www.nlm.nih.gov/research/umls/rxnorm'
@@ -106,7 +111,7 @@ BEGIN
                    AND c.code = v_rx.medication_codeable_concept_code
                    AND p.property = 'dea_schedule') THEN
     RAISE EXCEPTION 'this prescription cannot be refilled online'
-      USING ERRCODE = 'P0001', CONSTRAINT = 'refill_not_allowed';
+      USING ERRCODE = 'P0001', CONSTRAINT = 'refill_not_refillable';
   END IF;
   INSERT INTO clinical.medication_request (
       id, tenant_id, status, intent, category, subject_patient_id, requester_patient_id,
