@@ -5,9 +5,11 @@ reports that are final, amended, corrected or appended, and analytes that are fi
 corrected; never registered, partial, preliminary, cancelled or entered-in-error (D24).
 
 Lab results: DiagnosticReport category LAB (v2-0074) with its Observations through
-diagnostic_report_result, in the lab's order. Imaging reports: DiagnosticReport category RAD, text
-only: the impression is `conclusion`; the full text is the linked narrative Observations'
-valueString (for example LOINC 18782-3 findings), in order, then the impression.
+diagnostic_report_result, in the lab's order. Imaging reports: DiagnosticReport category RAD: the
+impression is `conclusion`; the full text is the linked narrative Observations' valueString (for
+example LOINC 18782-3 findings), in order, then the impression. Its illustrative images (#386)
+are the report's presented forms whose file is a clean `imaging` file, at most three, in the
+order they were written; `images` is left out when it has none.
 """
 from __future__ import annotations
 
@@ -73,6 +75,15 @@ class ResultsRepository(Protocol):
                               offset: int) -> list[schemas.ImagingReport]: ...
 
 
+_IMAGES = text("""
+SELECT f.diagnostic_report_id, b.id, f.title, b.content_type, b.size_bytes
+FROM clinical.diagnostic_report_presented_form f
+JOIN admin.binary_object b ON b.id = f.binary_object_id
+WHERE f.diagnostic_report_id = ANY(:reports) AND b.purpose = 'imaging' AND b.state = 'clean'
+ORDER BY f.diagnostic_report_id, f.created_at, f.id
+""")
+
+
 class SqlResultsRepository:
     async def _reports(self, db: AsyncSession, patient_id: UUID, category: str, limit: int,
                        offset: int) -> tuple[Sequence[Mapping[str, Any]],
@@ -115,6 +126,14 @@ class SqlResultsRepository:
     async def imaging_reports(self, db: AsyncSession, patient_id: UUID, *, limit: int,
                               offset: int) -> list[schemas.ImagingReport]:
         reports, observations = await self._reports(db, patient_id, "RAD", limit, offset)
+        images: dict[UUID, list[schemas.ImagingReportImage]] = {}
+        if reports:
+            for row in (await db.execute(_IMAGES, {"reports": [r["id"] for r in reports]})
+                        ).mappings():
+                images.setdefault(row["diagnostic_report_id"], []).append(
+                    schemas.ImagingReportImage(id=row["id"], caption=row["title"] or "Image",
+                                               content_type=row["content_type"],
+                                               size_bytes=row["size_bytes"]))
         out = []
         for r in reports:
             parts = [o["value_string"] for o in observations.get(r["id"], []) if o["value_string"]]
@@ -124,5 +143,5 @@ class SqlResultsRepository:
                 id=r["id"], patient_id=r["subject_patient_id"], encounter_id=r["encounter_id"],
                 code=_code(r), status=r["status"], studied_at=r["effective_date_time"],
                 issued_at=r["issued"], performer=r["performer"], impression=r["conclusion"],
-                text="\n\n".join(parts) or None))
+                text="\n\n".join(parts) or None, images=images.get(r["id"], [])[:3] or None))
         return out

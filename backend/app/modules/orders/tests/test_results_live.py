@@ -146,7 +146,7 @@ def test_lab_results_newest_first_with_their_analytes(client: Any, practice: Pra
     assert "nextCursor" not in rest.json()
 
 
-def test_imaging_reports_are_text_only(client: Any, practice: Practice,
+def test_imaging_reports_have_their_text(client: Any, practice: Practice,
                                        users: dict[str, CurrentUser]) -> None:
     patient, base = _base(practice)
     report = _report(practice, patient, "RAD", "36643-5", "XR Chest 2 Views",
@@ -164,6 +164,48 @@ def test_imaging_reports_are_text_only(client: Any, practice: Practice,
                             "Impression: No acute cardiopulmonary abnormality.")
     assert only["performer"] == "Example Radiology Group (synthetic)"
     assert only["studiedAt"].startswith("2026-09-15") and "observations" not in only
+
+
+def _image(practice: Practice, report: str, caption: str, *, purpose: str = "imaging",
+           state: str = "clean") -> str:
+    """A server-made imaging file (0023) on the report, as the demo seed attaches it."""
+    file_id = str(uuid.uuid4())
+    _sql(practice, """
+        INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, content_type,
+               size_bytes, sha256, purpose, state, scan_status, scanned_at, wrapped_data_key)
+        VALUES (:id, :t, 'clean', :k, 'image/jpeg', 64097, :h, :purpose, :state, :scan,
+                CAST(:scanned AS timestamptz), :key)""",
+         id=file_id, t=practice.clinic, k=f"{practice.clinic}/{file_id}", h="a" * 64,
+         purpose=purpose, state=state, scan="pending" if purpose == "imaging" else "clean",
+         scanned=None if purpose == "imaging" else "2026-11-01T00:00:00Z",   # an upload's scan
+         key="vault:v1:test-wrapped-key" if state == "clean" else None)
+    _sql(practice, """
+        INSERT INTO clinical.diagnostic_report_presented_form (id, tenant_id,
+               diagnostic_report_id, content_type, binary_object_id, title)
+        VALUES (:id, :t, :r, 'image/jpeg', :f, :caption)""",
+         id=str(uuid.uuid4()), t=practice.clinic, r=report, f=file_id, caption=caption)
+    return file_id
+
+
+def test_imaging_reports_list_their_illustrative_images(client: Any, practice: Practice,
+                                                        users: dict[str, CurrentUser]) -> None:
+    """#386, #393: a report's clean imaging files, with their caption and the fixed label; a
+    report without one has no images field; any other file on a report isn't one of them."""
+    patient, base = _base(practice)
+    with_image = _report(practice, patient, "RAD", "30679-5", "MR Lumbar spine",
+                         "2026-03-10T19:00:00Z", conclusion="Degenerative disc disease.")
+    image = _image(practice, with_image, "Lumbar spine MRI, sagittal T2")
+    _image(practice, with_image, "A scanned form", purpose="document")
+    plain = _report(practice, patient, "RAD", "36643-5", "XR Chest 2 Views",
+                    "2026-09-15T17:20:00Z", conclusion="Normal chest radiograph.")
+    _finish(practice)
+    found = client("md").get(f"{base}/imaging-reports")
+    assert found.status_code == 200, found.text
+    by_id = {r["id"]: r for r in found.json()["items"]}
+    assert by_id[with_image]["images"] == [{
+        "id": image, "caption": "Lumbar spine MRI, sagittal T2", "label": "Illustrative image",
+        "contentType": "image/jpeg", "sizeBytes": 64097}]
+    assert "images" not in by_id[plain]
 
 
 def test_reads_need_results_read_and_a_known_patient(client: Any, practice: Practice,
