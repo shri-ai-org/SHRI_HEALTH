@@ -43,7 +43,9 @@ export const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_
  * their contracts and services land; nothing is deleted.
  */
 export const SAMPLE_ONLY_PATHS = [
-  '/test-results',
+  // The list reads the API (listPortalLabResults, #398); a single sample result's detail page has
+  // no counterpart there, so only its route stays hidden.
+  '/test-results/:resultId',
   '/messages',
   // The medication list reads the API (listPortalMedications, #389); refill requests have no
   // contract yet, so their confirmation page stays hidden.
