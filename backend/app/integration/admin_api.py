@@ -43,7 +43,7 @@ Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$"
 
 
 def _utc(at: dt.datetime) -> str:
-    """The contract's Timestamp: UTC with `Z`, at most millisecond precision (API_STANDARDS §6.1)."""
+    """The contract's Timestamp: UTC with `Z`, milliseconds at most (API_STANDARDS §6.1)."""
     return at.astimezone(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
