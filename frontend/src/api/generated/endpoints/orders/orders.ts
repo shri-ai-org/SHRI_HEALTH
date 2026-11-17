@@ -179,7 +179,7 @@ export const getListImagingReportsUrl = (patientId: Id,
 }
 
 /**
- * A patient's imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the radiologist's impression and the full report as text. Text only: no images or image links. Only final, amended, corrected and appended reports are shown; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).
+ * A patient's imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the radiologist's impression and the full report as text, and up to three illustrative images (`images`). The images are illustrative, not diagnostic, and labelled so on screen; each is read through `createDownloadUrl` (file purpose `imaging`, D105). Only final, amended, corrected and appended reports are shown, with their images; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).
  * @summary List a patient's imaging reports
  */
 export const listImagingReports = async (patientId: Id,
