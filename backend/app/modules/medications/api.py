@@ -11,6 +11,9 @@ dependency, so a caller without it gets 401 or 403 before anything else runs.
 - ``checkPrescriptionSafety``, ``overrideAlert``: the fixed rules (D99) and their overrides.
 - ``signAndSendPrescription`` (If-Match and the required Idempotency-Key, which core's tenant_db
   claims): the signature and the NewRx in the outbox, in one transaction.
+- ``listRefillRequests``, ``respondToRefillRequest`` (#400; built by Thulasi): the patients'
+  refill requests from the portal, and the prescriber's answer (refill_service.py). An approval
+  writes a draft, which the safety check and sign-and-send above then take.
 
 Drafting, editing, the safety check, overrides, signing and sending, and marking a draft wrong
 are for MD and APP only (D110; for the clinical advisors to confirm, Q21): the service refuses
@@ -19,14 +22,15 @@ any other role with 403 permission-denied before it reads or writes anything.
 Every patient route runs the restricted-chart check (D37) before it shows or changes anything,
 and names the patient for core's audit where x-audit takes it from the result or the body. The
 repository, the chart check, the audit hook and the partner (outbox and events) are dependencies
-the tests replace. Not built: discontinue, reconciliation, cancel, change, refills and outside
-history (after the demo; not in this contract yet, or Q13).
+the tests replace. Not built: discontinue, reconciliation, cancel, change and outside history
+(after the demo; not in this contract yet, or Q13), and the pharmacy's own refill and change
+requests (T35).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
@@ -36,12 +40,16 @@ from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
 
+from ..patients import service as patients
+from ..patients.repository import SqlPatientRepository
 from . import (
     partner_bridge,  # noqa: F401  (registers with core's partner registries)
+    refill_service,
     schemas,
     service,
 )
 from .partner import Partner, partner
+from .refill_repository import RefillReads, RefillStore, SqlRefillReads, SqlRefillStore
 from .repository import MedicationRepository, PrescriptionRow, SqlMedicationRepository
 
 router = APIRouter(tags=["medications"])
@@ -240,6 +248,62 @@ async def sign_and_send_prescription(
     audit(request, [row.patient_id])
     await db.commit()  # signed, Provenance, on the list and NewRx queued: together or not at all
     return _prescription(response, row)
+
+
+# ------------------------------------------------------------------------ refill requests
+def refill_reads() -> RefillReads:
+    return SqlRefillReads()
+
+
+def refill_store() -> RefillStore:
+    return SqlRefillStore()
+
+
+def chart_view() -> refill_service.ChartView:
+    """FastAPI dependency: core's chart access, read without refusing or auditing (D37)."""
+    return core_access.chart_access
+
+
+def patient_summaries() -> refill_service.Summaries:
+    """FastAPI dependency: the patients' minimum-necessary summaries (D54), by ID."""
+    async def find(db: AsyncSession, patient_ids: list[UUID]) -> dict[UUID, Any]:
+        found = await patients.summaries(db, SqlPatientRepository(), patient_ids)
+        return {s.id: s for s in found}
+    return find
+
+
+Reads = Annotated[RefillReads, Depends(refill_reads)]
+Store = Annotated[RefillStore, Depends(refill_store)]
+View = Annotated[refill_service.ChartView, Depends(chart_view)]
+Summaries = Annotated[refill_service.Summaries, Depends(patient_summaries)]
+
+
+@router.get("/refill-requests", operation_id="listRefillRequests",
+            response_model=schemas.RefillRequestList, response_model_exclude_none=True)
+async def list_refill_requests(
+    user: Annotated[CurrentUser, Depends(require("refill-requests:read"))], request: Request,
+    db: DB, reads: Reads, view: View, summaries: Summaries, audit: Audit,
+    status: schemas.RefillStatus = "requested", limit: Limit = 25, cursor: Cursor = None,
+) -> schemas.RefillRequestList:
+    found, patient_ids = await refill_service.list_requests(
+        db, reads, view, summaries, user, status=status, limit=limit, cursor=cursor)
+    audit(request, patient_ids)  # x-audit patient "result": every patient returned
+    return found
+
+
+@router.post("/refill-requests/{refillRequestId}/respond", operation_id="respondToRefillRequest",
+             response_model=schemas.RefillRequest, response_model_exclude_none=True)
+async def respond_to_refill_request(
+    user: Annotated[CurrentUser, Depends(require("refill-requests:respond"))],
+    refill_request_id: Annotated[UUID, Path(alias="refillRequestId")],
+    body: schemas.RefillRequestResponse, request: Request, db: DB, reads: Reads, store: Store,
+    repo: Repo, check: Check, summaries: Summaries, audit: Audit,
+) -> schemas.RefillRequest:
+    answered = await refill_service.respond(db, reads, repo, store, check, summaries, user,
+                                            refill_request_id, body)
+    audit(request, [answered.patient_id])
+    await db.commit()  # the answer and the approved draft: together or not at all
+    return answered
 
 
 # The patient portal's own medication list (portal_api.py), on this module's router.
