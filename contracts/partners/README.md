@@ -36,4 +36,19 @@ The NewRx carries our prescription ID as `correlationId`, when it was signed, th
 
 **NCPDP SCRIPT is the vendor's job.** The shapes name the SCRIPT elements they stand for; mapping them to and from NCPDP SCRIPT 2017071 is done by the vendor's adapter once the vendor is chosen (Q12). Controlled substances need EPCS (Q19), which these shapes don't cover.
 
-**Changing a shape:** a compatible change (a new optional field) keeps `schemaVersion`; anything else is a new major version, agreed with Thulasi first, because the simulated payer or pharmacy and the receiver change with it.
+## Lab and imaging: orders, acknowledgements and results
+
+| File | Message | Produced by | Consumed by |
+|---|---|---|---|
+| [lab/lab-order.schema.json](lab/lab-order.schema.json) | A signed lab or imaging order (`orderControl` `NW`), or its cancel (`CA`), our ORM^O01 | The lab adapter in the outbox worker (Thulasi), from `build_lab_order()` in the orders module, for the outbox message `lab` / `ORM^O01` that signing or cancelling queues (D25) | The simulated lab and imaging center for the demo (Thulasi); later the lab vendor (Q14) |
+| [lab/lab-order-status.schema.json](lab/lab-order-status.schema.json) | The center's acknowledgement: `received` (with its filler order number), `rejected` with a reason, or `cancelled` | The simulated center; later the vendor | The `/hooks/lab` receiver (Thulasi), which files it against the order |
+| [lab/lab-result.schema.json](lab/lab-result.schema.json) | The result for one order, our ORU^R01: a report with its results, each a UCUM quantity or a narrative | The simulated center; later the vendor | The `/hooks/lab` receiver, which files a `DiagnosticReport` and its `Observation`s against the order |
+| [lab/examples/](lab/examples/) | Orders for an HbA1c and a chest X-ray, and a cancel; replies: received, rejected; results: the HbA1c (a value) and the chest X-ray (a narrative with a conclusion) | Recorded synthetic messages | The orders module's tests |
+
+The order carries our order ID as `correlationId`, when it was signed, the ordering clinician's NPI and name, the patient's legal name, date of birth and administrative sex (for the reference ranges), the center, the test (LOINC, name and the center's own code), the priority, up to four of the visit's ICD-10-CM codes for medical necessity, and the note to the center. Nothing else about the patient: no address, phone, insurance or MRN. A cancel carries only the `correlationId`, the reason and, once the center has acknowledged the order, its filler order number. Values and reference ranges are decimal strings, never floating-point numbers.
+
+**The order's way:** signing queues `ORM^O01` (tracking status `ordered`); the adapter records `sent`; the acknowledgement moves it to `received` (or `error` on `rejected`); the result files the report and moves it to `resulted`. A result for an unknown or cancelled order is refused (`409` to the hook) and filed nowhere. A reply is filed once per `responseId`; a `corrected` report amends the earlier one.
+
+**HL7 v2 is the lab vendor's job.** The shapes name the HL7 v2 segments and fields they stand for (MSH, PID, ORC, OBR, OBX, MSA); mapping them to HL7 v2 over MLLP (D4) is done by the lab vendor's adapter once the lab is chosen (Q14). Until then the simulated center speaks these JSON shapes directly.
+
+**Changing a shape:** a compatible change (a new optional field) keeps `schemaVersion`; anything else is a new major version, agreed with Thulasi first, because the simulated payer, pharmacy or lab and the receiver change with it.

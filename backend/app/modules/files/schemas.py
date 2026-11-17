@@ -17,7 +17,7 @@ from pydantic.alias_generators import to_camel
 
 FilePurpose = Literal["insurance-card", "identity", "receipt", "encounter-audio",
                       "after-visit-summary", "document", "fax", "ccda", "export",
-                      "onboarding-import"]
+                      "onboarding-import", "imaging"]
 
 
 class Closed(BaseModel):

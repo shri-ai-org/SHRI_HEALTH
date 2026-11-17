@@ -539,7 +539,7 @@ export default ({ page, expect, toastSays, send, sleep, auditRows, stubSpeech })
           await page.evaluate(`window.__jitsi.emit('participantLeft', { id: 'doctor-1' }); true`)
           await page.until(`!!document.querySelector('[data-after-call]')`, 2000, 'the call has ended')
           const after = await page.evaluate(`document.querySelector('[data-after-call]').textContent`)
-          expect(after.includes('Visit finished') && /lasted less than a minute\. Your camera and microphone are off\./.test(after), `finished, and how long it lasted: ${after}`)
+          expect(after.includes('Completed') && /lasted less than a minute\. Your camera and microphone are off\./.test(after), `finished, and how long it lasted: ${after}`)
           expect(await page.evaluate(`!!document.querySelector('[data-rx-waiting]') && !document.querySelector('[data-call-card="ended"]')?.getBoundingClientRect().height`), 'waiting for the prescription; no empty video card left behind')
           await page.until(`window.__jitsi.audioOff && window.__jitsi.videoOff`, 2000, 'camera and microphone off')
           // The doctor's portal comes in to bring the prescription: still after the call.

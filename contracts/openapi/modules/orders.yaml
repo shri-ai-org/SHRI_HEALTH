@@ -120,9 +120,10 @@ paths:
       operationId: listImagingReports
       summary: List a patient's imaging reports
       description: 'A patient''s imaging reports (FHIR `DiagnosticReport`, category `RAD`), newest first by study time: the
-        radiologist''s impression and the full report as text. Text only: no images or image links. Only final, amended, corrected
-        and appended reports are shown; never preliminary, cancelled or entered-in-error (D24). Restricted charts need a break-glass
-        grant or care-team membership (D37).'
+        radiologist''s impression and the full report as text, and up to three illustrative images (`images`). The images
+        are illustrative, not diagnostic, and labelled so on screen; each is read through `createDownloadUrl` (file purpose
+        `imaging`, D105). Only final, amended, corrected and appended reports are shown, with their images; never preliminary,
+        cancelled or entered-in-error (D24). Restricted charts need a break-glass grant or care-team membership (D37).'
       tags:
       - orders
       x-owner: thulasi
@@ -351,7 +352,7 @@ components:
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
     ImagingReport:
-      description: An imaging report (FHIR `DiagnosticReport`, category `RAD`), text only.
+      description: An imaging report (FHIR `DiagnosticReport`, category `RAD`), with its text and any illustrative images.
       type: object
       additionalProperties: false
       required:
@@ -403,6 +404,54 @@ components:
           maxLength: 20000
           description: The full report as plain text (technique, findings, impression).
           x-phi: clinical
+        images:
+          type: array
+          maxItems: 3
+          description: Illustrative images attached to the report (#386), never diagnostic. Absent when the report has none.
+          x-phi: clinical
+          items:
+            $ref: '#/components/schemas/ImagingReportImage'
+    ImagingReportImage:
+      description: An illustrative image on an imaging report, read through `createDownloadUrl` with its file ID (purpose
+        `imaging`).
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - caption
+      - label
+      - contentType
+      - sizeBytes
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: The file's ID, for `createDownloadUrl`.
+          x-phi: internal-id
+        caption:
+          type: string
+          maxLength: 200
+          description: What the image shows, for example "Lumbar spine MRI, sagittal T2".
+          x-phi: clinical
+        label:
+          type: string
+          enum:
+          - Illustrative image
+          description: The label the screen shows on the image, always `Illustrative image`.
+          x-phi: none
+        contentType:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          description: The image's media type.
+          x-phi: none
+        sizeBytes:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 524288
+          description: The image's size in bytes, at most 512 KiB.
+          x-phi: none
     ImagingReportList:
       description: A patient's imaging reports, newest first.
       type: object

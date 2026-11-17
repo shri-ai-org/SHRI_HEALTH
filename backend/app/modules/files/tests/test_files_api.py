@@ -126,15 +126,14 @@ def test_upload_needs_files_create(as_user: Client, world: World, name: str) -> 
 
 
 def test_the_upload_rules_refuse_every_server_made_purpose() -> None:
-    """Behind the request schema too: receipt, after-visit-summary and imaging are never
-    uploaded, so an imaging file (never scanned, 0023) can't arrive through an upload."""
-    for purpose in storage.GENERATED_PURPOSES:
-        body = schemas.UploadUrlRequest.model_construct(
-            purpose=purpose,  # type: ignore[arg-type]  # imaging isn't a contract value
-            content_type="image/jpeg", size_bytes=10, sha256="0" * 64)
+    """Receipt, after-visit-summary and imaging are never uploaded, so an imaging file (never
+    scanned, 0023) can't arrive through an upload."""
+    for purpose in ("receipt", "after-visit-summary", "imaging"):
+        body = schemas.UploadUrlRequest(
+            purpose=purpose, content_type="image/jpeg", size_bytes=10, sha256="0" * 64)
         assert service.upload_rule_errors(body) == [
             {"in": "body", "pointer": "/purpose", "code": "not-allowed-value"}], purpose
-    assert "imaging" in storage.GENERATED_PURPOSES
+    assert storage.GENERATED_PURPOSES == {"receipt", "after-visit-summary", "imaging"}
 
 
 @pytest.mark.parametrize(("overrides", "errors"), [
@@ -145,6 +144,7 @@ def test_the_upload_rules_refuse_every_server_made_purpose() -> None:
      [("/contentType", "not-allowed-value"), ("/sizeBytes", "out-of-range")]),
     ({"purpose": "receipt"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "after-visit-summary"}, [("/purpose", "not-allowed-value")]),
+    ({"purpose": "imaging"}, [("/purpose", "not-allowed-value")]),   # never scanned (0023)
     ({"purpose": "document"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "encounter-audio"}, [("/purpose", "not-allowed-value")]),
 ])
@@ -158,7 +158,6 @@ def test_type_size_and_purpose_rules(as_user: Client, world: World, overrides: d
 @pytest.mark.parametrize("overrides", [
     {"fileName": "card.jpg"},  # client file names are never accepted
     {"sha256": "ABC"}, {"sizeBytes": 0}, {"purpose": "selfie"},
-    {"purpose": "imaging"},    # server-made and never scanned (0023): no upload may name it
 ])
 def test_malformed_bodies(as_user: Client, world: World, overrides: dict[str, Any]) -> None:
     _problem(_ask(as_user("fd"), **overrides), 422, "validation-failed")

@@ -1,0 +1,38 @@
+{
+  "messageType": "LabOrder",
+  "schemaVersion": "1.0",
+  "orderControl": "NW",
+  "correlationId": "8d9e0f1a-2b3c-4d4e-8f5a-6b7c8d9e0f1a",
+  "createdAt": "2026-11-20T15:34:02Z",
+  "signedAt": "2026-11-20T15:34:00Z",
+  "orderingProvider": {
+    "npi": "1234567893",
+    "name": {
+      "family": "Lindqvist58",
+      "given": [
+        "Avery401"
+      ]
+    }
+  },
+  "patient": {
+    "name": {
+      "family": "Lindgren118",
+      "given": [
+        "Kaia401"
+      ]
+    },
+    "birthDate": "1990-03-14",
+    "sex": "female"
+  },
+  "performer": {
+    "code": "SIM-RAD",
+    "name": "Example Radiology Group (synthetic)"
+  },
+  "category": "imaging",
+  "test": {
+    "loinc": "36643-5",
+    "name": "XR Chest 2 Views",
+    "performerTestCode": "SIM-CXR2"
+  },
+  "priority": "routine"
+}

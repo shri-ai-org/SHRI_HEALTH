@@ -16,11 +16,12 @@
  */
 import type { CodeableConcept } from './codeableConcept';
 import type { Id } from './id';
+import type { ImagingReportImage } from './imagingReportImage';
 import type { ReportStatus } from './reportStatus';
 import type { Timestamp } from './timestamp';
 
 /**
- * An imaging report (FHIR `DiagnosticReport`, category `RAD`), text only.
+ * An imaging report (FHIR `DiagnosticReport`, category `RAD`), with its text and any illustrative images.
  */
 export interface ImagingReport {
   /** The report's ID. */
@@ -52,4 +53,9 @@ export interface ImagingReport {
      * @maxLength 20000
      */
   text?: string;
+  /**
+     * Illustrative images attached to the report (#386), never diagnostic. Absent when the report has none.
+     * @maxItems 3
+     */
+  images?: ImagingReportImage[];
 }

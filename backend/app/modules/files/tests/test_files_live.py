@@ -470,8 +470,8 @@ def test_an_imaging_report_image_is_read_with_its_report(
     # A report that isn't final doesn't attach it: its maker only, anyone else 404.
     assert client("md").get(
         f"/api/v1/files/{images['preliminary']}/download-url").status_code == 404
-    # No upload under the imaging purpose: it is never scanned (not a FilePurpose an upload
-    # may name, and refused by the upload rules as server-made).
+    # No upload under the imaging purpose: it is never scanned (refused by the upload rules as
+    # server-made, files.yaml).
     asked = client("md").post("/api/v1/files/upload-url", json={
         "purpose": "imaging", "contentType": "image/jpeg", "sizeBytes": len(JPEG),
         "sha256": hashlib.sha256(JPEG).hexdigest()})

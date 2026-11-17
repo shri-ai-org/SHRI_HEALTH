@@ -343,8 +343,11 @@ def test_the_images_are_stored_encrypted_on_their_reports_once_and_hidden_on_fhi
     assert _load(files) == 0                             # a second run writes nothing
     with admin_engine.connect() as c:
         assert c.execute(query).all() == rows
-        assert c.execute(text("SELECT count(*) FROM admin.binary_object "
-                              "WHERE purpose = 'imaging'")).scalar_one() == 2
+        assert c.execute(text(                          # the seed's reports' files only
+            "SELECT count(*) FROM admin.binary_object b JOIN "
+            "clinical.diagnostic_report_presented_form f ON f.binary_object_id = b.id "
+            "WHERE b.purpose = 'imaging' AND f.diagnostic_report_id::text LIKE '5eed0040-%'"
+        )).scalar_one() == 2
     assert sum(key[1] in {r.storage_key for r in rows} for key in memory.objects) == 2
     with admin_engine.begin() as c:                      # Linda's chart restricted (D22)
         c.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))
@@ -401,7 +404,8 @@ def test_record_report_takes_clean_imaging_files_on_an_imaging_report_only(
     with admin_engine.connect() as c:
         image, report = c.execute(text(
             "SELECT f.binary_object_id, r.id FROM clinical.diagnostic_report_presented_form f "
-            "JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id LIMIT 1")).one()
+            "JOIN clinical.diagnostic_report r ON r.id = f.diagnostic_report_id "
+            "WHERE r.id::text LIKE '5eed0040-%' LIMIT 1")).one()
         base = c.execute(text(
             "SELECT r.subject_patient_id, r.encounter_id, b.service_request_id, r.issued "
             "FROM clinical.diagnostic_report r JOIN clinical.diagnostic_report_based_on b "

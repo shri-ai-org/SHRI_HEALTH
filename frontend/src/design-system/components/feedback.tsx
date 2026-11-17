@@ -99,6 +99,18 @@ export function EmptyState({ title, description, action }: { title: string; desc
   )
 }
 
+/**
+ * A feature that isn't built yet, in place of a hidden, empty or broken area. It reads nothing,
+ * shows no numbers and offers no action: only what the feature will do, in plain words.
+ */
+export function WorkInProgress({ description }: { description: string }) {
+  return (
+    <section aria-label="Work in progress">
+      <EmptyState title="This feature is work in progress" description={description} />
+    </section>
+  )
+}
+
 export interface ErrorStateProps {
   title: string
   description?: string

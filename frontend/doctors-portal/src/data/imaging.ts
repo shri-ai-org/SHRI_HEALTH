@@ -2,7 +2,7 @@
  * M-15 · the imaging worklist — every study on the record, with or without
  * pixels behind it.
  *
- * A head CT here is backed by a real, de-identified CQ500 series
+ * A head CT here is backed, in sample mode only, by an imported series
  * (`ncct.generated.ts`, imported by `scripts/ncct-import.mjs`), so the viewer
  * shows the actual slices and the AI flag is derived from that series' own
  * ground-truth labels. The other modalities — X-ray, ultrasound, MRI, echo,
