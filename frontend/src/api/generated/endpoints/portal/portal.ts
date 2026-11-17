@@ -20,6 +20,7 @@ import type {
   BotChallenge,
   ConflictResponse,
   CreatePortalMessageHeaders,
+  CreatePortalRefillRequestHeaders,
   DownloadPortalFileContentParams,
   EnrollInPortalHeaders,
   EnrollmentRequest,
@@ -38,6 +39,7 @@ import type {
   ListPortalMedicationsParams,
   ListPortalMessageThreadsParams,
   ListPortalProblemsParams,
+  ListPortalRefillRequestsParams,
   ListPortalVisitSummariesParams,
   ListPortalVitalsParams,
   NotFoundResponse,
@@ -63,6 +65,9 @@ import type {
   PortalProblem,
   PortalProblemList,
   PortalProfile,
+  PortalRefillRequest,
+  PortalRefillRequestCreate,
+  PortalRefillRequestList,
   PortalRescheduleRequest,
   PortalSession,
   PortalSlotList,
@@ -1958,6 +1963,174 @@ export const listPortalMedications = async (params?: ListPortalMedicationsParams
     method: 'GET'
 
 
+  }
+);}
+
+
+export type listPortalRefillRequestsResponse200 = {
+  data: PortalRefillRequestList
+  status: 200
+}
+
+export type listPortalRefillRequestsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPortalRefillRequestsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPortalRefillRequestsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPortalRefillRequestsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPortalRefillRequestsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPortalRefillRequestsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPortalRefillRequestsResponseSuccess = (listPortalRefillRequestsResponse200) & {
+  headers: Headers;
+};
+export type listPortalRefillRequestsResponseError = (listPortalRefillRequestsResponse400 | listPortalRefillRequestsResponse401 | listPortalRefillRequestsResponse403 | listPortalRefillRequestsResponse422 | listPortalRefillRequestsResponse429 | listPortalRefillRequestsResponse500) & {
+  headers: Headers;
+};
+
+export type listPortalRefillRequestsResponse = (listPortalRefillRequestsResponseSuccess | listPortalRefillRequestsResponseError)
+
+export const getListPortalRefillRequestsUrl = (params?: ListPortalRefillRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/portal/me/refill-requests?${stringifiedParams}` : `/portal/me/refill-requests`
+}
+
+/**
+ * The patient's refill requests, newest first, with their answers.
+ * @summary List my refill requests
+ */
+export const listPortalRefillRequests = async (params?: ListPortalRefillRequestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPortalRefillRequestsResponse> => {
+
+  return apiFetch<listPortalRefillRequestsResponse>(getListPortalRefillRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createPortalRefillRequestResponse201 = {
+  data: PortalRefillRequest
+  status: 201
+}
+
+export type createPortalRefillRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createPortalRefillRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createPortalRefillRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createPortalRefillRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createPortalRefillRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createPortalRefillRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createPortalRefillRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createPortalRefillRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createPortalRefillRequestResponseSuccess = (createPortalRefillRequestResponse201) & {
+  headers: Headers;
+};
+export type createPortalRefillRequestResponseError = (createPortalRefillRequestResponse400 | createPortalRefillRequestResponse401 | createPortalRefillRequestResponse403 | createPortalRefillRequestResponse404 | createPortalRefillRequestResponse409 | createPortalRefillRequestResponse422 | createPortalRefillRequestResponse429 | createPortalRefillRequestResponse500) & {
+  headers: Headers;
+};
+
+export type createPortalRefillRequestResponse = (createPortalRefillRequestResponseSuccess | createPortalRefillRequestResponseError)
+
+export const getCreatePortalRefillRequestUrl = () => {
+
+
+
+
+  return `/portal/me/refill-requests`
+}
+
+/**
+ * Asks the practice to refill one of the patient's prescriptions (from `GET /portal/me/medications`). Stored as a `MedicationRequest` with intent `proposal`, the patient as `requester` and the prescription as `priorPrescription`; a prescriber answers it with `POST /refill-requests/{refillRequestId}/respond`. Only an active signed prescription of the session's patient, with no open request, and not Schedule II (no refills).
+ * @summary Ask for a refill
+ */
+export const createPortalRefillRequest = async (portalRefillRequestCreate: PortalRefillRequestCreate,
+    headers: CreatePortalRefillRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createPortalRefillRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createPortalRefillRequestResponse>(getCreatePortalRefillRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalRefillRequestCreate)
   }
 );}
 

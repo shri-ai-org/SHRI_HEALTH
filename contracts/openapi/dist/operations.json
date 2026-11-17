@@ -199,6 +199,17 @@
    "path": "/api/v1/operations/{operationId}/cancel",
    "permission": "authenticated"
   },
+  "cancelOrder": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/orders/{orderId}/cancel",
+   "permission": "orders:cancel"
+  },
   "cancelPortalAppointment": {
    "audit": {
     "action": "E",
@@ -521,6 +532,17 @@
    "path": "/api/v1/note-templates",
    "permission": "practice-setup:create"
   },
+  "createOrder": {
+   "audit": {
+    "action": "C",
+    "category": "phi-write",
+    "patient": "body:/patientId"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/orders",
+   "permission": "orders:create"
+  },
   "createPortalInvitation": {
    "audit": {
     "action": "C",
@@ -543,6 +565,18 @@
    "method": "POST",
    "path": "/api/v1/portal/me/messages",
    "permission": "portal-messages:create"
+  },
+  "createPortalRefillRequest": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/portal/me/refill-requests",
+   "permission": "portal-refill-requests:create"
   },
   "createPracticePayer": {
    "audit": {
@@ -584,6 +618,17 @@
    "method": "POST",
    "path": "/api/v1/provider-schedules",
    "permission": "provider-schedules:create"
+  },
+  "createReferral": {
+   "audit": {
+    "action": "C",
+    "category": "sign",
+    "patient": "body:/patientId"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/referrals",
+   "permission": "orders:sign-and-send"
   },
   "createTranscription": {
    "audit": {
@@ -1031,6 +1076,17 @@
    "method": "GET",
    "path": "/api/v1/operations/{operationId}",
    "permission": "authenticated"
+  },
+  "getOrder": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/orders/{orderId}",
+   "permission": "orders:read"
   },
   "getPatient": {
    "audit": {
@@ -1634,6 +1690,27 @@
    "path": "/api/v1/notes/{noteId}/versions",
    "permission": "notes:read"
   },
+  "listOrderableTests": {
+   "audit": {
+    "action": "R",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/lab-compendium",
+   "permission": "lab-compendium:read"
+  },
+  "listOrders": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/orders",
+   "permission": "orders:read"
+  },
   "listPatientAppointments": {
    "audit": {
     "action": "R",
@@ -1837,6 +1914,18 @@
    "path": "/api/v1/portal/me/problems",
    "permission": "portal-records:read"
   },
+  "listPortalRefillRequests": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/refill-requests",
+   "permission": "portal-records:read"
+  },
   "listPortalVisitSummaries": {
    "audit": {
     "action": "R",
@@ -1911,6 +2000,28 @@
    "method": "GET",
    "path": "/api/v1/providers",
    "permission": "practice-setup:read"
+  },
+  "listReferrals": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/referrals",
+   "permission": "orders:read"
+  },
+  "listRefillRequests": {
+   "audit": {
+    "action": "R",
+    "category": "phi-read",
+    "patient": "result"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/refill-requests",
+   "permission": "refill-requests:read"
   },
   "listRelatedPersons": {
    "audit": {
@@ -2061,6 +2172,17 @@
    "path": "/api/v1/notes/{noteId}/entered-in-error",
    "permission": "notes:entered-in-error"
   },
+  "markOrderEnteredInError": {
+   "audit": {
+    "action": "E",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/orders/{orderId}/entered-in-error",
+   "permission": "orders:entered-in-error"
+  },
   "markPrescriptionEnteredInError": {
    "audit": {
     "action": "E",
@@ -2158,6 +2280,17 @@
    "idempotency": null,
    "method": "POST",
    "path": "/hooks/keycloak/backchannel-logout",
+   "permission": "partner-signed"
+  },
+  "receiveLabMessage": {
+   "audit": {
+    "action": "C",
+    "actor": "partner",
+    "category": "phi-write"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/hooks/lab",
    "permission": "partner-signed"
   },
   "receivePharmacyMessage": {
@@ -2369,6 +2502,17 @@
    "path": "/api/v1/patients/{patientId}/portal-account/reset-factors",
    "permission": "portal-accounts:reset-factors"
   },
+  "respondToRefillRequest": {
+   "audit": {
+    "action": "U",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/refill-requests/{refillRequestId}/respond",
+   "permission": "refill-requests:respond"
+  },
   "restrictPatient": {
    "audit": {
     "action": "E",
@@ -2444,6 +2588,17 @@
    "method": "PUT",
    "path": "/api/v1/patients/{patientId}/preferred-pharmacy",
    "permission": "patients:update"
+  },
+  "signAndSendOrder": {
+   "audit": {
+    "action": "E",
+    "category": "sign",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/orders/{orderId}/sign-and-send",
+   "permission": "orders:sign-and-send"
   },
   "signAndSendPrescription": {
    "audit": {
@@ -2772,6 +2927,17 @@
    "method": "PATCH",
    "path": "/api/v1/provider-schedules/{providerScheduleId}",
    "permission": "provider-schedules:update"
+  },
+  "updateReferralStatus": {
+   "audit": {
+    "action": "U",
+    "category": "phi-write",
+    "patient": "result"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/referrals/{referralId}/status",
+   "permission": "orders:sign-and-send"
   },
   "updateRelatedPerson": {
    "audit": {
