@@ -432,7 +432,7 @@ function InVisit({
               <Icon icon={CheckCircle2} size={24} />
             </span>
             <div className="min-w-[200px] flex-1">
-              <h2 className="text-[20px] font-semibold">Visit finished</h2>
+              <h2 className="text-[20px] font-semibold">Completed</h2>
               <p className="mt-[2px] text-[14px] text-sh-text-2" data-call-length="">
                 Your call with {doctor} lasted {lasted(span?.to && span.from ? span.to - span.from : 0)}. Your camera and microphone are off.
               </p>
