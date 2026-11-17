@@ -269,5 +269,5 @@ def test_without_a_proper_session_secret_portal_downloads_are_503(secret: str | 
 def test_the_app_has_a_portal_token_keeper_apart_from_the_staff_one() -> None:
     app = FastAPI()
     register(app, Settings(environment="test", session_secret=SecretStr(SECRET)))
-    assert isinstance(portal_download_tokens(_request(app)), PortalDownloadTokens)
-    assert portal_download_tokens(_request(app)) is not download_tokens(_request(app))
+    assert type(portal_download_tokens(_request(app))) is PortalDownloadTokens
+    assert type(download_tokens(_request(app))) is DownloadTokens
