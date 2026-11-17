@@ -36,6 +36,12 @@ export async function readyOrWip(page: Page, name: string, ready: Locator): Prom
   await screenOk(page, name)
 }
 
+/** The headers an unsafe API call needs, as the screens send them: the session's CSRF token and an
+ *  allowed Origin (core refuses a write without both; Playwright's request context sends no Origin). */
+export async function unsafe(page: Page): Promise<Record<string, string>> {
+  return { 'X-CSRF-Token': await csrf(page), Origin: new URL(page.url()).origin }
+}
+
 /** The signed-in session's CSRF token, for the API reads that are POSTs (patient search, D13). */
 export async function csrf(page: Page): Promise<string> {
   const res = await page.request.get(`${API}/auth/session`)
@@ -46,7 +52,7 @@ export async function csrf(page: Page): Promise<string> {
 /** Linda Thompson's patient ID, by the typed search the desk uses (D117). */
 export async function lindaId(page: Page): Promise<string> {
   const res = await page.request.post(`${API}/patients/search`, {
-    headers: { 'X-CSRF-Token': await csrf(page) },
+    headers: await unsafe(page),
     data: { criteria: { query: 'Thompson Linda' }, limit: 10 },
   })
   expect(res.status(), await res.text()).toBe(200)
@@ -62,4 +68,44 @@ export async function todaysVisit(page: Page, patientId: string): Promise<{ id: 
   expect(res.status(), await res.text()).toBe(200)
   const items = ((await res.json()) as { items: { id: string; status: string; encounterId?: string; patient: { id: string } }[] }).items
   return items.find((a) => a.patient.id === patientId)
+}
+
+/** The patient's open visit today (checked in by step 2), from the patient's own encounters. */
+export async function openEncounter(page: Page, patientId: string): Promise<string | undefined> {
+  const res = await page.request.get(`${API}/patients/${patientId}/encounters?limit=25`)
+  if (res.status() !== 200) return undefined
+  const items = ((await res.json()) as { items: { id: string; status: string }[] }).items
+  return items.find((e) => !['finished', 'cancelled', 'entered-in-error'].includes(e.status))?.id
+}
+
+/** The runner has no microphone: the browser's speech recognition hears `words` instead, the
+ *  same stand-in e2e/doctorAi.e2e.ts uses. Call before the page loads. */
+export async function speaking(page: Page, words: string): Promise<void> {
+  await page.addInitScript((said: string) => {
+    class StandInRecognition {
+      lang = 'en-US'
+      continuous = true
+      interimResults = true
+      maxAlternatives = 1
+      onresult: ((e: unknown) => void) | null = null
+      onerror: ((e: unknown) => void) | null = null
+      onend: (() => void) | null = null
+      start() {
+        setTimeout(() => {
+          const result = Object.assign([{ transcript: said, confidence: 0.92 }], { isFinal: true })
+          this.onresult?.({ resultIndex: 0, results: [result] })
+        }, 150)
+      }
+      stop() {
+        setTimeout(() => this.onend?.(), 10)
+      }
+      abort() {}
+    }
+    const g = globalThis as unknown as {
+      navigator: { mediaDevices: { getUserMedia: () => Promise<unknown> } }
+      AudioContext: new () => { createMediaStreamDestination: () => { stream: unknown } }
+    }
+    Object.assign(globalThis, { SpeechRecognition: StandInRecognition, webkitSpeechRecognition: StandInRecognition })
+    g.navigator.mediaDevices.getUserMedia = async () => new g.AudioContext().createMediaStreamDestination().stream
+  }, words)
 }

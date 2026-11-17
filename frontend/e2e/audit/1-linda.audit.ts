@@ -2,14 +2,16 @@ import { randomUUID } from 'node:crypto'
 
 import { expect, test } from '@playwright/test'
 
-import { API, as, csrf, lindaId, readyOrWip, screenOk, todaysVisit } from './audit'
+import { API, as, lindaId, readyOrWip, screenOk, todaysVisit, unsafe } from './audit'
 
 // Sena's demo flow for Linda Thompson (the 16 Nov plan on #85; D119), on the stack the demo-audit
 // job builds like the demo server. A step whose screen isn't merged yet is skipped with the reason,
 // so the job runs now and each step turns on as its screen lands (remove its `test.skip`).
 // Synthetic data only.
 
-test.describe.configure({ mode: 'serial' })
+// Not serial: one failing step must not hide the rest of the audit. One worker runs the file
+// in order, so the IDs found by the earlier steps carry over.
+test.describe.configure({ mode: 'default' })
 
 let patientId = ''
 let appointmentId = ''
@@ -18,7 +20,8 @@ let encounterId = ''
 test('1. The front desk finds Linda from a few typed letters', async ({ page }) => {
   await as(page, 'frontdesk', '/patients/search')
   patientId = await lindaId(page)
-  const search = page.getByRole('searchbox').or(page.getByPlaceholder(/search/i)).first()
+  // The header's typed search (run 2: a combobox named "Search patients").
+  const search = page.getByRole('combobox', { name: 'Search patients' }).first()
   await search.fill('Thomp')
   await expect.soft(page.getByText(/Thompson,? Linda|Linda Thompson/).first(), 'Linda is listed').toBeVisible({ timeout: 15_000 })
   await screenOk(page, '01-search')
@@ -43,7 +46,7 @@ test("2. Check-in from today's outpatients", async ({ page }) => {
   // The audit checks the screen, then checks in through the API so the later steps have a visit.
   await expect.soft(row.getByRole('button', { name: /Check in/i }), 'Check in is offered').toBeVisible()
   const res = await page.request.post(`${API}/appointments/${appointmentId}/check-in`, {
-    headers: { 'Idempotency-Key': randomUUID(), 'X-CSRF-Token': await csrf(page) },
+    headers: { 'Idempotency-Key': randomUUID(), ...(await unsafe(page)) },
     data: { selfPay: true },
   })
   expect(res.status(), await res.text()).toBe(200)
