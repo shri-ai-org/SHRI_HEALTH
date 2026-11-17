@@ -144,6 +144,9 @@ class AIRepository(Protocol):
     async def suggestion_views(self, db: AsyncSession, ids: Iterable[UUID]
                                ) -> dict[UUID, AiSuggestion]: ...
 
+    async def siblings(self, db: AsyncSession, suggestion_id: UUID, target_resource_type: str
+                       ) -> list[SuggestionHead]: ...
+
     async def generation(self, db: AsyncSession, suggestion_id: UUID
                          ) -> tuple[AiGeneratedBy, datetime] | None: ...
 
@@ -271,10 +274,15 @@ class SqlAIRepository:
                               {"id": suggestion_id})).mappings().first()
         if r is None:
             return None
-        return SuggestionHead(
-            id=r["id"], feature=str(r["feature"]), target_resource_type=r["target_resource_type"],
-            target_id=r["target_id"], patient_id=r["patient_id"], encounter_id=r["encounter_id"],
-            content=dict(r["content"]), decision=str(r["decision"]), requested_by=r["user_id"])
+        return _head(r)
+
+    async def siblings(self, db: AsyncSession, suggestion_id: UUID, target_resource_type: str
+                       ) -> list[SuggestionHead]:
+        """The suggestions of one target type made by the same request as the given one (a
+        coding suggestion's codes), in their ``sequence`` order."""
+        rows = (await db.execute(_SIBLINGS, {"id": suggestion_id,
+                                             "type": target_resource_type})).mappings().all()
+        return [_head(r) for r in rows]
 
     async def suggestion_views(self, db: AsyncSession, ids: Iterable[UUID]
                                ) -> dict[UUID, AiSuggestion]:
@@ -344,6 +352,15 @@ JOIN admin.ai_request r ON r.id = s.ai_request_id
 WHERE s.id = :id
 """
 _SUGGESTION = text(_SUGGESTION_SQL)
+_SIBLINGS = text("""
+SELECT s.id, s.feature, s.target_resource_type, s.target_id, s.patient_id, s.encounter_id,
+       s.content, s.decision, r.user_id
+FROM admin.ai_suggestion s
+JOIN admin.ai_request r ON r.id = s.ai_request_id
+WHERE s.ai_request_id = (SELECT ai_request_id FROM admin.ai_suggestion WHERE id = :id)
+  AND s.target_resource_type = :type
+ORDER BY CAST(s.content ->> 'sequence' AS integer), s.id
+""")
 _SUGGESTION_LOCKED = text(_SUGGESTION_SQL + " FOR UPDATE OF s")
 _SUGGESTION_VIEWS = text("""
 SELECT s.id, s.feature, s.target_resource_type, s.target_id, s.patient_id, s.encounter_id,
@@ -375,6 +392,13 @@ WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE '
   AND model_name IS NOT NULL
 GROUP BY model_name
 """)
+
+
+def _head(r: Any) -> SuggestionHead:
+    return SuggestionHead(
+        id=r["id"], feature=str(r["feature"]), target_resource_type=r["target_resource_type"],
+        target_id=r["target_id"], patient_id=r["patient_id"], encounter_id=r["encounter_id"],
+        content=dict(r["content"]), decision=str(r["decision"]), requested_by=r["user_id"])
 
 
 def _view(r: Any) -> AiSuggestion:
