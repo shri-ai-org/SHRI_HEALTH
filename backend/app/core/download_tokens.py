@@ -13,9 +13,10 @@ can't be probed.
 
 A token is `<payload><signature>`, base64url only, as the contract's pattern requires
 (`^[A-Za-z0-9_-]{32,512}$`, files.yaml): the payload names its audience, the file,
-user, clinic, expiry and a random nonce; the signature, always the last 43 characters, is HMAC-SHA256 with a key derived
-from SESSION_SECRET (its own label, so it is never a CSRF token or the reverse; SESSION_SECRET
-itself comes from OpenBao outside development). It is a bearer secret: never log it.
+user, clinic, expiry and a random nonce; the signature, always the last 43 characters, is
+HMAC-SHA256 with a key derived from SESSION_SECRET (its own label, so it is never a CSRF token
+or the reverse; SESSION_SECRET itself comes from OpenBao outside development). It is a bearer
+secret: never log it.
 The query string of the content route is kept out of the access logs (access_log.py, nginx).
 
 **Accepted once** is recorded in this process, as for the bot check (public_form.BotCheck): the
