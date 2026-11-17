@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.deps import DEV_USERS, CurrentUser, current_user, tenant_db
 from app.main import create_app
+from app.modules.scheduling.tests.portal_live import portal_app, portal_chart  # noqa: F401
 
 from .. import api, partner
 from .fakes import (
