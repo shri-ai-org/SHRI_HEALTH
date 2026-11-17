@@ -64,6 +64,7 @@ import { Card, ConfidenceMark, Diamond, Pill, PillTag } from '../ui/primitives'
 import { VoiceField } from '../ui/VoiceField'
 
 import { EscalateDialog } from './EscalateDialog'
+import { ApiImageStudy } from './viewer/ApiImageStudy'
 import { SeriesStrip } from './viewer/SeriesStrip'
 import { StudyPanel } from './viewer/StudyPanel'
 import { Workstation } from './viewer/Workstation'
@@ -76,6 +77,8 @@ export function StudyViewerPage() {
   // "?frame=n" — the overview's Report viewer opens the study at the image it was showing.
   const [params] = useSearchParams()
   const frame = Number(params.get('frame')) || undefined
+  // SHRI_HEALTH: with the API, a report's illustrative images (#386), opened from the Imaging reports tab.
+  if (REAL_API) return <ApiImageStudy patientId={params.get('patient') ?? ''} reportId={id ?? ''} />
   const record = maybeImagingStudy(id ?? '')
   const series = record ? ncctFor(record) : undefined
   const image = record ? imageFor(record) : undefined

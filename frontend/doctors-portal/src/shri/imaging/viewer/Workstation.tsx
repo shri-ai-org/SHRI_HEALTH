@@ -67,6 +67,8 @@ const KEYS: [string, string][] = [
 ]
 
 const MODE_KEY: Record<string, Mode> = { l: 'length', g: 'angle', e: 'ellipse', a: 'arrow', t: 'text', f: 'pen', x: 'erase', w: 'wl', p: 'pan' }
+/** The modes that only look, for a viewer without marks (`marks={false}`). */
+const LOOK_MODES = new Set<Mode>(['pointer', 'pan', 'wl'])
 
 export function Workstation({
   series,
@@ -76,6 +78,7 @@ export function Workstation({
   slice: controlled,
   onSlice,
   tools = true,
+  marks = true,
   className,
 }: {
   series: SeriesView
@@ -87,6 +90,11 @@ export function Workstation({
   onSlice?: (n: number) => void
   /** The reading tools; off for a second, look-only pane. */
   tools?: boolean
+  /**
+   * The marking tools (length, angle, ROI, arrow, text, pen, key images, snapshot). Off where marks
+   * must not be kept: they are stored in this browser with the study (state/imaging.ts).
+   */
+  marks?: boolean
   className?: string
 }) {
   const me = useCurrentStaff()
@@ -302,8 +310,8 @@ export function Workstation({
     let handled = true
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') step(1)
     else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') step(-1)
-    else if (mod && k === 'z') undo()
-    else if (mod && k === 'y') redo()
+    else if (mod && k === 'z' && marks) undo()
+    else if (mod && k === 'y' && marks) redo()
     else if (mod) handled = false
     else if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))
     else if (e.key === '-') setZoom((z) => Math.max(MIN_ZOOM, z / 1.25))
@@ -313,7 +321,7 @@ export function Workstation({
     else if (k === 'h') setFlip(([h, v]) => [!h, v])
     else if (k === 'v') setFlip(([h, v]) => [h, !v])
     else if (k === 'i') setInvert((v) => !v)
-    else if (k === 'k') markKey()
+    else if (k === 'k' && marks) markKey()
     else if (e.key === ' ' && series.frames > 1) {
       if (reduced) step(1)
       else setPlaying((p) => !p)
@@ -322,7 +330,7 @@ export function Workstation({
       setMode('pointer')
       setDraft(null)
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && selected) remove(selected)
-    else if (MODE_KEY[k]) setMode(MODE_KEY[k])
+    else if (MODE_KEY[k] && (marks || LOOK_MODES.has(MODE_KEY[k]))) setMode(MODE_KEY[k])
     else handled = false
     if (handled) e.preventDefault()
   }
@@ -389,6 +397,7 @@ export function Workstation({
             <Tool icon={FlipVertical2} label="Flip vertically" keyHint="V" on={flip[1]} onClick={() => setFlip(([h, v]) => [h, !v])} />
             <Tool icon={SunMedium} label="Invert" keyHint="I" on={invert} onClick={() => setInvert((v) => !v)} />
           </ToolGroup>
+          {marks && (
           <ToolGroup>
             <Tool icon={Ruler} label="Length" keyHint="L" on={mode === 'length'} onClick={() => setMode('length')} />
             <Tool icon={AngleIcon} label="Angle — three clicks" keyHint="G" on={mode === 'angle'} onClick={() => setMode('angle')} />
@@ -398,11 +407,16 @@ export function Workstation({
             <Tool icon={PenLine} label="Pen" keyHint="F" on={mode === 'pen'} onClick={() => setMode('pen')} />
             <Tool icon={Eraser} label="Eraser — click a mark to delete it" keyHint="X" on={mode === 'erase'} onClick={() => setMode('erase')} />
           </ToolGroup>
+          )}
           <ToolGroup>
-            <Tool icon={Undo2} label="Undo" keyHint="Ctrl+Z" disabled={history.undo.length === 0} onClick={undo} />
-            <Tool icon={Redo2} label="Redo" keyHint="Ctrl+Y" disabled={history.redo.length === 0} onClick={redo} />
-            <Tool icon={Star} label={isKey ? 'Unmark key image' : 'Mark as key image'} keyHint="K" on={isKey} onClick={markKey} />
-            <Tool icon={Camera} label="Save a snapshot with the marks" onClick={snapshot} />
+            {marks && (
+              <>
+                <Tool icon={Undo2} label="Undo" keyHint="Ctrl+Z" disabled={history.undo.length === 0} onClick={undo} />
+                <Tool icon={Redo2} label="Redo" keyHint="Ctrl+Y" disabled={history.redo.length === 0} onClick={redo} />
+                <Tool icon={Star} label={isKey ? 'Unmark key image' : 'Mark as key image'} keyHint="K" on={isKey} onClick={markKey} />
+                <Tool icon={Camera} label="Save a snapshot with the marks" onClick={snapshot} />
+              </>
+            )}
             <span className="relative">
               <Tool icon={Keyboard} label="Keyboard shortcuts" on={keysOpen} onClick={() => setKeysOpen((v) => !v)} />
               {keysOpen && (

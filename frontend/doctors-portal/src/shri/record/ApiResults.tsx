@@ -8,11 +8,11 @@
  *                     collected, the lab, and its analytes in a table (value with unit or the
  *                     lab's text, reference range, the flag in a word), then the lab's conclusion.
  *   Imaging reports — each report, newest first: the study, when it was done, the radiology group,
- *                     the impression, and the full report. Text only: there are no images behind
- *                     these reports, so there is no viewer and no image area.
+ *                     the impression, and the full report; a report with illustrative images
+ *                     (#386) has "View image", which opens them in the study viewer (S-15-04).
  */
 
-import { FlaskConical, ScanLine, ScrollText } from 'lucide-react'
+import { FlaskConical, Image as ImageIcon, ScanLine, ScrollText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import type { Patient } from '@/data/kit'
@@ -20,9 +20,10 @@ import type { Patient } from '@/data/kit'
 import { formatClinicDateTime } from '../../../shri-health/format'
 import { usePatientImagingReports, usePatientLabResults, type ImagingReportRow, type LabAnalyte, type LabReport } from '../../../shri-health/results'
 import { cn } from '../lib/cn'
+import { canView, viewerPath } from '../logic/imagingImages'
 import { recordPath } from '../logic/record'
 import { EmptyState } from '../ui/EmptyState'
-import { Card, Chip, CountBubble, Icon } from '../ui/primitives'
+import { Card, Chip, CountBubble, Icon, Pill } from '../ui/primitives'
 import { RangeBar } from '../ui/RangeBar'
 import { StatTile } from '../ui/StatTile'
 
@@ -207,7 +208,7 @@ export function ApiReports({ patient: p }: { patient: Patient }) {
       ) : (
         <ul className="flex flex-col" aria-label="Imaging reports">
           {imaging.items.map((r, i) => (
-            <ImagingLine key={r.id} report={r} first={i === 0} />
+            <ImagingLine key={r.id} patient={p} report={r} first={i === 0} />
           ))}
         </ul>
       )}
@@ -215,7 +216,8 @@ export function ApiReports({ patient: p }: { patient: Patient }) {
   )
 }
 
-function ImagingLine({ report: r, first }: { report: ImagingReportRow; first: boolean }) {
+function ImagingLine({ patient: p, report: r, first }: { patient: Patient; report: ImagingReportRow; first: boolean }) {
+  const navigate = useNavigate()
   return (
     <li className={first ? 'pb-[16px]' : 'border-t border-sh-line py-[16px]'} aria-label={r.name}>
       <div className="flex items-start gap-[12px]">
@@ -242,6 +244,17 @@ function ImagingLine({ report: r, first }: { report: ImagingReportRow; first: bo
             <div className="mt-[10px]">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sh-text-2">Full report</p>
               <p className="mt-[4px] whitespace-pre-line text-[13px]/[1.55] text-sh-text-2">{r.text}</p>
+            </div>
+          )}
+          {/* SHRI_HEALTH: a report with illustrative images opens them in the study viewer (#386). */}
+          {canView(r) && (
+            <div className="mt-[12px] flex flex-wrap items-center gap-[10px]">
+              <Pill variant="primary" size="md" icon={ImageIcon} onClick={() => navigate(viewerPath(p.id, r.id))}>
+                View image
+              </Pill>
+              <span className="text-[12px] text-sh-text-3">
+                {r.images.length === 1 ? 'Illustrative image' : `${r.images.length} illustrative images`}, not diagnostic
+              </span>
             </div>
           )}
         </div>
