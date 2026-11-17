@@ -402,6 +402,12 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     never the reason, the clinician or the content. Show the `hold_active` rows as held. 0011's
     `admin.portal_held_items()` (type, ID and date of every active hold) stays unchanged until
     the portal's visit-summary read moves off it, and is dropped after the demo.
+  - **A file to download (migration 0025):** `SELECT * FROM admin.portal_file(:file_id)` gives
+    one file's storage fields (`id, bucket, storage_key, wrapped_data_key, size_bytes, sha256,
+    content_type, purpose, document_reference_id`) only for a clean `after-visit-summary` file
+    on a current, non-draft, non-PSY document of the session patient with no active hold;
+    otherwise no row, the same 404 either way. shri_portal has no privilege on
+    `admin.binary_object` itself.
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
