@@ -266,9 +266,11 @@ def is_known_permission(permission: str) -> bool:
 # Role PAT, the patient through the portal only (D84, SECURITY_MODEL §4.1; T45). Not a column
 # of the staff matrix and never a staff permission: portal routes check these with
 # deps.require_patient(), staff routes with require(), and neither accepts the other's session.
+# portal-messages:create (writing to and replying to the care team) and portal-records:export
+# (the patient's own record as PDF or FHIR R4) came with the portal batch's contract (#398).
 PATIENT_PERMISSIONS: frozenset[str] = _expand(
     "portal-profile:read|request-change", "portal-appointments:read|create|cancel|reschedule",
-    "portal-booking:read", "portal-records:read",
+    "portal-booking:read", "portal-records:read|export", "portal-messages:create",
 )
 
 

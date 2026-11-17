@@ -24,6 +24,14 @@ def test_the_content_routes_query_is_dropped() -> None:
     assert TOKEN not in message and "/api/v1/files/0b1c/content?…" in message
 
 
+def test_the_portal_content_routes_query_is_dropped() -> None:
+    """The patient portal's download link (#398, #330) carries its token the same way."""
+    record = _record(f"/api/v1/portal/me/files/0b1c/content?token={TOKEN}")
+    assert DropSecretQueries().filter(record)
+    message = record.getMessage()
+    assert TOKEN not in message and "/api/v1/portal/me/files/0b1c/content?…" in message
+
+
 def test_the_sign_in_callbacks_code_and_state_are_dropped() -> None:
     code, state = secrets.token_urlsafe(32), secrets.token_urlsafe(16)
     for route in ("/api/v1/auth/callback", "/api/v1/portal/auth/callback"):

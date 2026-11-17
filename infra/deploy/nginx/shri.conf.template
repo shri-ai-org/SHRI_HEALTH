@@ -80,7 +80,8 @@ server {
         proxy_read_timeout 1h;
     }
 
-    location ~ ^/api/v1/files/[^/]+/content$ {
+    # Decrypting downloads (D105), staff and patient portal (#398).
+    location ~ ^/api/v1/(portal/me/)?files/[^/]+/content$ {
         error_log /dev/stderr crit;  # error lines quote the request line, token included
         proxy_pass http://api:8000;
     }

@@ -1,6 +1,7 @@
 """uvicorn's access log names paths only, never query strings (T53, D105, D13).
 
-Some query strings are credentials: a download link's token (`/files/{fileId}/content?token=…`)
+Some query strings are credentials: a download link's token (`/files/{fileId}/content?token=…`
+and the portal's `/portal/me/files/{fileId}/content?token=…`)
 and the sign-in callbacks' Keycloak `code` and `state` (`/auth/callback`,
 `/portal/auth/callback`). Others may carry search terms. So every logged path shows `?…` in
 place of its query, as nginx logs `$uri` only (infra/nginx/nginx.conf,
