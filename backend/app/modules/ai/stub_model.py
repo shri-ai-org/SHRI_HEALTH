@@ -2,8 +2,8 @@
 decide its sections, sign; summarize a chart) runs on a laptop without an API key. A note draft
 is the same fictional draft, in the real output shape, for whatever sections the template has:
 the dictation and the chart context are ignored, and the text says so. A chart summary repeats
-each chart line it was given as one statement citing that line. Never available in production
-(config.py)."""
+each chart line it was given as one statement citing that line. ICD-10 coding suggests I10,
+citing the first line. Never available in production (config.py)."""
 
 from __future__ import annotations
 
@@ -74,6 +74,13 @@ class StubModel:
     async def complete(self, messages: Sequence[Mapping[str, str]], *, max_tokens: int,
                        schema: Mapping[str, Any] | None = None) -> ModelReply:
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+        if schema is not None and "codes" in schema.get("required", ()):     # ICD-10 coding
+            user = "\n".join(m["content"] for m in messages if m["role"] == "user")
+            first = _LINE.search(user)
+            return ModelReply(content=json.dumps({
+                "codes": [{"code": "I10", "rationale": f"{NOTICE} Sample code.",
+                           "likelihood": "low", "sources": [first["handle"]]}] if first else [],
+                "insufficientEvidence": first is None}), model=MODEL, latency_ms=0)
         if schema is not None and "insufficientEvidence" in schema.get("required", ()):
             user = "\n".join(m["content"] for m in messages if m["role"] == "user")
             first = _LINE.search(user)                                      # chart Q&A

@@ -138,6 +138,17 @@ class FakeAIRepository:
     async def suggestion_views(self, db: AsyncSession, ids: Any) -> dict[UUID, AiSuggestion]:
         return {}
 
+    async def siblings(self, db: AsyncSession, suggestion_id: UUID, target_resource_type: str
+                       ) -> list[SuggestionHead]:
+        rec = self.suggestions.get(suggestion_id)
+        if rec is None:
+            return []
+        found = [await self.suggestion(db, i) for i, other in self.suggestions.items()
+                 if other.request_id == rec.request_id
+                 and other.target_resource_type == target_resource_type]
+        return sorted((h for h in found if h is not None),
+                      key=lambda h: int(h.content.get("sequence", 0)))
+
     async def settings(self, db: AsyncSession, *, lock: bool = False) -> SettingsState:
         return SettingsState(self.clinic_on, NOW, {
             f: FeatureState(f, True, None, NOW) for f in self.features_on})

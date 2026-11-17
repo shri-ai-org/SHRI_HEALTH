@@ -18,7 +18,7 @@ and the note template (practice setup's repository, Anand's).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -32,11 +32,17 @@ from app.core import access as core_access
 from app.core import audit as core_audit
 from app.core.deps import CurrentUser, require, tenant_db
 from app.core.long_running import accepted
+from app.db.fhir_store import SqlFhirStore
+from app.db.models import systems
+from app.modules.encounters import diagnoses_service as encounter_diagnoses
 from app.modules.encounters import notes_service
 from app.modules.encounters import service as encounters_service
 from app.modules.encounters.ai_drafts import EncounterNoteDrafts
+from app.modules.encounters.diagnoses_repository import SqlDiagnosisRepository
+from app.modules.encounters.diagnoses_schemas import DiagnosisCreate
 from app.modules.encounters.notes_repository import SqlNoteRepository
 from app.modules.encounters.repository import EncounterHead, SqlEncounterRepository
+from app.modules.encounters.schemas import Coding
 from app.modules.encounters.service import readable
 from app.modules.files.crypto import FileCrypto, file_crypto
 from app.modules.files.storage import FileStore, file_store
@@ -53,6 +59,7 @@ from app.modules.scheduling.reference import reference as scheduling_reference
 from . import chart_answers as answers
 from . import chart_context as chart_lines
 from . import chart_summaries as summaries
+from . import coding_suggestions as coding
 from . import differentials as ddx
 from . import drafts as rules
 from . import morning_briefs as briefs
@@ -71,6 +78,8 @@ from .schemas import (
     ChartQuestionCreate,
     ChartSummary,
     ChartSummaryCreate,
+    CodingSuggestion,
+    CodingSuggestionCreate,
     Differential,
     DifferentialCreate,
     MorningBrief,
@@ -78,6 +87,8 @@ from .schemas import (
     NoteDraftCreate,
     PageType,
     SourceRef,
+    SuggestedCode,
+    SuggestedCodeDecision,
     SuggestedQuestionList,
     TemplateSection,
     Transcription,
@@ -398,6 +409,52 @@ DayReader = Annotated[briefs.DayReader, Depends(day_reader)]
 DifferentialReader = Annotated[ddx.VisitReader, Depends(differential_reader)]
 
 
+def coding_reader(visit: DifferentialReader) -> coding.CodingReader:
+    """The visit as a differential reads it (as the clinician, D37), and the ICD-10-CM codes
+    already on it, read after the visit's own checks."""
+    async def read(db: AsyncSession, user: CurrentUser, encounter_id: UUID
+                   ) -> coding.CodingVisit:
+        found = await visit(db, user, encounter_id)
+        live = await SqlDiagnosisRepository().live(db, encounter_id)
+        return coding.CodingVisit(found, frozenset(
+            d.code for d in live if d.system == systems.ICD10CM and d.code))
+
+    return read
+
+
+def code_lookup() -> coding.CodeLookup:
+    """An ICD-10-CM code in the loaded table, through the encounters' own lookup (the one
+    addEncounterDiagnosis checks): active codes only, with their name and billable flag."""
+    async def lookup(db: AsyncSession, code: str) -> coding.Concept | None:
+        found = await SqlDiagnosisRepository().icd10cm(db, code)
+        return coding.Concept(found.code, found.display, found.billable) if found else None
+
+    return lookup
+
+
+def diagnosis_adder(check: Annotated[rules.ChartCheck, Depends(chart_check)]
+                    ) -> coding.AddDiagnosis:
+    """An accepted code becomes a visit diagnosis through the encounters' diagnosis service:
+    addEncounterDiagnosis' rules and refusals, its Provenance, and its one commit, which also
+    carries the code's link to the new diagnosis (``link``)."""
+    async def add(db: AsyncSession, user: CurrentUser, encounter_id: UUID, code: str,
+                  display: str, name_patient: Any,
+                  link: Callable[[UUID], Awaitable[None]]) -> UUID:
+        added = await encounter_diagnoses.add(
+            db, SqlEncounterRepository(), SqlDiagnosisRepository(), SqlFhirStore(), check, user,
+            encounter_id, DiagnosisCreate(code=Coding(system=systems.ICD10CM, code=code,
+                                                      display=display)), name_patient,
+            before_commit=link)
+        return added.value.id
+
+    return add
+
+
+CodingVisitReader = Annotated[coding.CodingReader, Depends(coding_reader)]
+CodeLookup = Annotated[coding.CodeLookup, Depends(code_lookup)]
+AddDiagnosis = Annotated[coding.AddDiagnosis, Depends(diagnosis_adder)]
+
+
 def _named(request: Request, audit: Any) -> rules.NamePatient:
     def name(patient_id: UUID) -> None:
         audit(request, [patient_id])
@@ -557,6 +614,45 @@ async def get_visit_summary(
     found = await visits_ai.get(db, repo, check, user, summary_id)
     _audit(request, audit, [found.patient_id])
     return found
+
+
+@router.post("/ai/coding-suggestions", operation_id="createCodingSuggestion", status_code=202,
+             responses={202: {"description": "The operation (core's Operation)."}})
+async def create_coding_suggestion(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:create"))],
+    body: CodingSuggestionCreate, request: Request, db: DB, repo: Repo, ai_model: Model,
+    audit: Audit, visit: CodingVisitReader, lookup: CodeLookup,
+) -> JSONResponse:
+    """Only codes in the loaded ICD-10-CM table are kept; nothing is added to the visit."""
+    operation = await coding.create(db, repo, ai_model, visit, lookup, user, body,
+                                    lambda ids: _audit(request, audit, ids))
+    return accepted(operation)
+
+
+@router.get("/ai/coding-suggestions/{codingSuggestionId}", operation_id="getCodingSuggestion",
+            response_model=CodingSuggestion, response_model_exclude_none=True)
+async def get_coding_suggestion(
+    user: Annotated[CurrentUser, Depends(require("chart-summaries:read"))],
+    set_id: Annotated[UUID, Path(alias="codingSuggestionId")], request: Request, db: DB,
+    repo: Repo, check: Check, audit: Audit,
+) -> CodingSuggestion:
+    found = await coding.get(db, repo, check, user, set_id)
+    _audit(request, audit, [found.patient_id])
+    return found
+
+
+@router.post("/ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision",
+             operation_id="decideSuggestedCode", response_model=SuggestedCode,
+             response_model_exclude_none=True)
+async def decide_suggested_code(
+    user: Annotated[CurrentUser, Depends(require("ai-suggestions:decision"))],
+    set_id: Annotated[UUID, Path(alias="codingSuggestionId")],
+    code_id: Annotated[UUID, Path(alias="suggestedCodeId")], body: SuggestedCodeDecision,
+    request: Request, db: DB, repo: Repo, check: Check, audit: Audit, add: AddDiagnosis,
+) -> SuggestedCode:
+    """``accepted`` adds the code as a visit diagnosis in the same transaction."""
+    return await coding.decide(db, repo, check, add, user, set_id, code_id, body,
+                               _named(request, audit))
 
 
 @router.post("/ai/suggestions/{suggestionId}/decision", operation_id="decideAiSuggestion",
