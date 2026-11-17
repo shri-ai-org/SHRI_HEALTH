@@ -4,7 +4,7 @@ import { doctorsPort } from '../playwright.config'
 
 // Item 6 of the demo plan (#386): an imaging report with illustrative images has "View image" on
 // the record's Imaging reports tab, which opens the study viewer with the image (read through the
-// one-time download route and shown from a blob: URL), labelled "Illustrative image" with its
+// one-time download link to our own API, D105), labelled "Illustrative image" with its
 // caption, the report beside it, and no marking tools or notice about them. The doctors' portal as the development
 // physician (md), on the seeded history patients. Skips until some report has images (Anand's #387).
 
@@ -52,7 +52,7 @@ test('View image opens the illustrative image beside the report, read through th
 
   const img = page.getByRole('img', { name: `Illustrative image: ${report.images![0].caption}` })
   await expect(img).toBeVisible({ timeout: 30_000 })
-  await expect(img).toHaveAttribute('src', /^blob:/)
+  await expect(img).toHaveAttribute('src', /^\/api\/v1\/files\/[0-9a-f-]+\/content\?token=/)
   // The marking tools are hidden for the demo, with no notice about them (Vimal).
   await expect(page.getByText(/Markings/)).toHaveCount(0)
   await expect(page.getByRole('toolbar', { name: 'Reading tools' }).getByRole('button', { name: /Length|Arrow|Pen/ })).toHaveCount(0)

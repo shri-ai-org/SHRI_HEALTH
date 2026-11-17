@@ -4,8 +4,8 @@
  * the sample screen lays out an image study. Opened from the record's Imaging reports tab
  * ("View image") at /radiology/study/<report>/view?patient=<patient>, both opaque IDs (D13).
  *
- * Each image is read through a fresh one-time link (logic/imagingImages.ts, D105) and shown from a
- * blob: URL, labelled "Illustrative image" with its caption: never diagnostic. The display tools
+ * Each image is shown from a fresh one-time link (logic/imagingImages.ts, D105), labelled
+ * "Illustrative image" with its caption: never diagnostic. The display tools
  * only (pan, window/level, zoom, fit and reset, rotate, flip, invert): the marking tools are hidden
  * for the demo (Vimal), because marks are kept in this browser. If an image can't be read, the screen says so and reads again; it never
  * shows another picture. Every time is the clinic's (D40).
@@ -51,19 +51,13 @@ function ReportImages({ patient: p, report: r }: { patient: ReturnType<typeof pa
 
   useEffect(() => {
     let live = true
-    let made: LoadedImage[] = []
     setLoad({ state: 'loading' })
     loadImages(r.images).then(
-      (loaded) => {
-        made = loaded
-        if (live) setLoad({ state: 'ready', loaded })
-        else loaded.forEach((l) => URL.revokeObjectURL(l.src))
-      },
+      (loaded) => live && setLoad({ state: 'ready', loaded }),
       () => live && setLoad({ state: 'error' }),
     )
     return () => {
       live = false
-      made.forEach((l) => URL.revokeObjectURL(l.src))
     }
   }, [r.images, attempt])
 
@@ -82,7 +76,7 @@ function ReportImages({ patient: p, report: r }: { patient: ReturnType<typeof pa
         <div className="min-w-0">
           {load.state === 'ready' ? (
             <>
-              <Workstation series={illustrativeSeries(r.id, r.name, load.loaded)} studyId={`illustrative:${r.id}`} slice={slice} onSlice={setSlice} marks={false} />
+              <Workstation series={illustrativeSeries(r.id, r.name, load.loaded)} studyId={`illustrative:${r.id}`} slice={slice} onSlice={setSlice} marks={false} onImageError={() => setLoad({ state: 'error' })} />
               <p className="mt-[10px] text-[13px] text-sh-text-2">
                 <span className="font-semibold text-sh-text">{ILLUSTRATIVE}</span> · {load.loaded[slice - 1]?.image.caption}
               </p>

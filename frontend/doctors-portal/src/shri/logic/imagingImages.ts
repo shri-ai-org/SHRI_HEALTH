@@ -1,11 +1,11 @@
 // SHRI_HEALTH: the illustrative images on an imaging report (#386, #393), for the record's Imaging
 // reports tab ("View image") and the study viewer (S-15-04, src/shri/imaging/viewer/ApiImageStudy.tsx).
 // Each image is read the D105 way: createDownloadUrl gives a one-time link (about a minute) to our
-// own API's /files/{fileId}/content; its token goes to downloadFileContent, which streams the file,
-// and the screen shows it as a blob: URL. Nothing is cached or kept: a failed or expired read says so
-// and asks again. Never a sample picture.
+// own API's /files/{fileId}/content, and the viewer shows the image from that link, as the front
+// desk's insurance-card photos do (the API client returns JSON bodies only). Nothing is cached or
+// kept: a failed or expired link says so and asks again with fresh links. Never a sample picture.
 
-import { createDownloadUrl, downloadFileContent } from '../../../../src/api/generated/endpoints/files/files'
+import { createDownloadUrl } from '../../../../src/api/generated/endpoints/files/files'
 import type { ImagingReportImage } from '../../../../src/api/generated/model'
 
 import type { SeriesView } from './series'
@@ -23,31 +23,22 @@ export function viewerPath(patientId: string, reportId: string): string {
   return `/radiology/study/${encodeURIComponent(reportId)}/view?patient=${encodeURIComponent(patientId)}`
 }
 
-/** The token on a download link: our own API's /files/{fileId}/content?token=… (D105). */
-export function tokenOf(link: string): string {
-  const token = new URL(link, 'http://same-origin.invalid').searchParams.get('token')
-  if (!token) throw new Error('The download link has no token')
-  return token
-}
-
 export interface LoadedImage {
   image: ImagingReportImage
-  /** A blob: URL for the image's bytes; revoke it when the viewer closes. */
+  /** The image's one-time link (about a minute); asked for again on Try again. */
   src: string
 }
 
-/** One image's bytes as a blob: URL, through a fresh one-time link. */
-export async function loadImage(image: ImagingReportImage, toUrl: (blob: Blob) => string = (b) => URL.createObjectURL(b)): Promise<LoadedImage> {
+/** One image's fresh one-time link. */
+export async function loadImage(image: ImagingReportImage): Promise<LoadedImage> {
   const link = await createDownloadUrl(image.id)
   if (link.status !== 200) throw new Error("The image's link could not be made")
-  const content = await downloadFileContent(image.id, { token: tokenOf(link.data.url) })
-  if (content.status !== 200) throw new Error('The image could not be read')
-  return { image, src: toUrl(content.data) }
+  return { image, src: link.data.url }
 }
 
-/** Every image on the report, read together: one failure fails the set, so the screen asks again. */
-export function loadImages(images: ImagingReportImage[], toUrl?: (blob: Blob) => string): Promise<LoadedImage[]> {
-  return Promise.all(images.map((image) => loadImage(image, toUrl)))
+/** Every image's link, asked for together: one failure fails the set, so the screen asks again. */
+export function loadImages(images: ImagingReportImage[]): Promise<LoadedImage[]> {
+  return Promise.all(images.map((image) => loadImage(image)))
 }
 
 /** The report's images as one series for the existing Workstation: one frame per image. */

@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createDownloadUrl, downloadFileContent } from '../../../../src/api/generated/endpoints/files/files'
+import { createDownloadUrl } from '../../../../src/api/generated/endpoints/files/files'
 import type { ImagingReportImage } from '../../../../src/api/generated/model'
-import { canView, ILLUSTRATIVE, illustrativeSeries, loadImages, tokenOf, viewerPath } from './imagingImages'
+import { canView, ILLUSTRATIVE, illustrativeSeries, loadImages, viewerPath } from './imagingImages'
 
-vi.mock('../../../../src/api/generated/endpoints/files/files', () => ({ createDownloadUrl: vi.fn(), downloadFileContent: vi.fn() }))
+vi.mock('../../../../src/api/generated/endpoints/files/files', () => ({ createDownloadUrl: vi.fn() }))
 
-// Tiny in-memory data only: a 1x1 pixel built here, never an image file and never a medical image.
-const PIXEL = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: 'image/png' })
+// Synthetic file IDs and links only; no image file and never a medical image.
 const TOKEN = 'a'.repeat(40)
 const image = (n: number): ImagingReportImage => ({
   id: `f0000000-0000-4000-8000-00000000000${n}`,
@@ -24,7 +23,6 @@ const link = (fileId: string) => ({
 
 beforeEach(() => {
   vi.mocked(createDownloadUrl).mockReset()
-  vi.mocked(downloadFileContent).mockReset()
 })
 
 describe('the Imaging reports row', () => {
@@ -44,36 +42,30 @@ describe('the Imaging reports row', () => {
 })
 
 describe('reading the images (D105)', () => {
-  it('reads each image through a fresh link, its token, and shows it from a blob: URL', async () => {
+  it('shows each image from a fresh one-time link to our own API', async () => {
     vi.mocked(createDownloadUrl).mockImplementation((id) => Promise.resolve(link(id)) as never)
-    vi.mocked(downloadFileContent).mockResolvedValue({ status: 200, data: PIXEL, headers: new Headers() } as never)
-    const toUrl = vi.fn(() => 'blob:test-1')
-    const loaded = await loadImages([image(1)], toUrl)
-    expect(downloadFileContent).toHaveBeenCalledWith(image(1).id, { token: TOKEN })
-    expect(toUrl).toHaveBeenCalledWith(PIXEL)
-    expect(loaded).toEqual([{ image: image(1), src: 'blob:test-1' }])
+    const loaded = await loadImages([image(1), image(2)])
+    expect(createDownloadUrl).toHaveBeenCalledTimes(2)
+    expect(loaded).toEqual([
+      { image: image(1), src: `/api/v1/files/${image(1).id}/content?token=${TOKEN}` },
+      { image: image(2), src: `/api/v1/files/${image(2).id}/content?token=${TOKEN}` },
+    ])
   })
 
-  it("fails the set when an image can't be read, so the screen says so and asks again", async () => {
-    vi.mocked(createDownloadUrl).mockImplementation((id) => Promise.resolve(link(id)) as never)
-    vi.mocked(downloadFileContent).mockRejectedValueOnce(new Error('404: the link expired'))
-    await expect(loadImages([image(1), image(2)], () => 'blob:x')).rejects.toThrow()
-  })
-
-  it('fails when the link has no token', () => {
-    expect(() => tokenOf('/api/v1/files/f/content')).toThrow()
-    expect(tokenOf(`/api/v1/files/f/content?token=${TOKEN}`)).toBe(TOKEN)
+  it("fails the set when a link can't be made, so the screen says so and asks again", async () => {
+    vi.mocked(createDownloadUrl).mockImplementationOnce((id) => Promise.resolve(link(id)) as never).mockRejectedValueOnce(new Error('403'))
+    await expect(loadImages([image(1), image(2)])).rejects.toThrow()
   })
 })
 
 describe('the viewer series', () => {
   it('is one frame per image, labelled illustrative, with each caption', () => {
     const s = illustrativeSeries('r1', 'MRI lumbar spine', [
-      { image: image(1), src: 'blob:1' },
-      { image: image(2), src: 'blob:2' },
+      { image: image(1), src: '/link/1' },
+      { image: image(2), src: '/link/2' },
     ])
     expect(s.frames).toBe(2)
-    expect(s.path(2)).toBe('blob:2')
+    expect(s.path(2)).toBe('/link/2')
     expect(s.alt(1)).toBe(`${ILLUSTRATIVE}: Synthetic test image 1`)
     expect(s.topRight).toEqual([ILLUSTRATIVE])
     expect(s.frameNote?.(2)).toBe('Synthetic test image 2')

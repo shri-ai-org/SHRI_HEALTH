@@ -79,6 +79,7 @@ export function Workstation({
   onSlice,
   tools = true,
   marks = true,
+  onImageError,
   className,
 }: {
   series: SeriesView
@@ -95,6 +96,8 @@ export function Workstation({
    * must not be kept: they are stored in this browser with the study (state/imaging.ts).
    */
   marks?: boolean
+  /** The image failed to load (an expired or used one-time link): the screen offers Try again. */
+  onImageError?: () => void
   className?: string
 }) {
   const me = useCurrentStaff()
@@ -459,6 +462,7 @@ export function Workstation({
             alt={series.alt(slice)}
             draggable={false}
             onLoad={(e) => setSize([e.currentTarget.naturalWidth || 512, e.currentTarget.naturalHeight || 512])}
+            onError={onImageError}
             className="absolute inset-0 size-full select-none object-contain"
             style={{ filter }}
           />
