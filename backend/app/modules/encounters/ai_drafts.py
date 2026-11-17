@@ -17,6 +17,13 @@ section's suggestion is decided.
 **A decision on a section** (``section_for_decision``): the AI module's decideAiSuggestion asks
 for the section's current text, after the same checks as editing the note: readable (D37), the
 note's author only (``403``), and the note still a draft (``409 record-locked`` once signed).
+
+**An accepted visit summary** (``place_visit_summary``): the AI module's decideVisitSummary puts
+the accepted or edited text at the top of the note's first section, above what it holds, in the
+decision's transaction (nothing commits here), after the same checks as editing the note: a note
+of the summary's visit (``422`` otherwise), readable (D37), the note's author only (``403``), and
+still a draft (``409 record-locked`` once signed). Written through Anand's note helper as a new
+version of the note, which is marked AI-assisted.
 """
 
 from __future__ import annotations
@@ -29,16 +36,19 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
-from app.core.errors import Conflict, Forbidden, NotFound
+from app.core.errors import Conflict, Forbidden, NotFound, ValidationFailed, field_error
 from app.core.events import publish
 from app.db.fhir_store import (
     Coded,
     FhirStore,
     InvalidTransition,
+    NoteChanges,
     NoteIn,
     ResourceNotFound,
     SectionIn,
+    SectionText,
     SqlFhirStore,
+    StaleVersion,
 )
 from app.db.models import systems
 from app.modules.ai.schemas import AIDraftIn, DraftWritten
@@ -50,6 +60,8 @@ from .service import readable, signed_notes_only
 
 #: A draft is made only while the visit is open and not yet finished (createNoteDraft).
 DRAFTABLE = ("arrived", "triaged", "in-progress")
+#: A note section's text limit (NotePatch's ``sections[].text``).
+SECTION_MAX = 50000
 ChartCheck = Callable[[AsyncSession, CurrentUser, UUID], Awaitable[object]]
 
 
@@ -140,3 +152,45 @@ class EncounterNoteDrafts:
         return SectionForDecision(note_id=locked.id, patient_id=locked.patient_id,
                                   encounter_id=locked.encounter_id,
                                   code=row["code_code"] or "", text=found.text)
+
+    async def place_visit_summary(self, db: AsyncSession, check: ChartCheck, user: CurrentUser,
+                                  encounter_id: UUID, note_id: UUID, text: str) -> UUID:
+        """The accepted or edited visit summary at the top of the note's first section, in the
+        caller's transaction; returns the note's ID."""
+        note = await self.notes.head(db, note_id)
+        if note is None or note.encounter_id != encounter_id or (
+                note.status == "preliminary" and signed_notes_only(user)):
+            raise ValidationFailed(code="business-rule-violation", errors=[
+                field_error("body", "/noteId", "invalid-reference")])
+        await readable(db, self.repo, check, user, encounter_id)
+        practitioner = await self.notes.user_practitioner(db, user.id)
+        if practitioner is None or practitioner != note.author_id:
+            raise Forbidden("Only the note's author puts a visit summary in it",
+                            code="permission-denied")
+        locked = await self.notes.head(db, note_id, lock=True)
+        if locked is None:
+            raise NotFound()
+        if locked.status in ("final", "amended"):
+            raise Conflict("The note is signed: changes go in an addendum", code="record-locked")
+        if locked.status != "preliminary":
+            raise _state(locked.status)
+        sections = await self.notes.sections(db, locked)
+        if not sections:
+            raise ValidationFailed(code="business-rule-violation", errors=[
+                field_error("body", "/noteId", "invalid-reference")])
+        first = min(sections, key=lambda s: s.sequence)
+        placed = f"{text}\n\n{first.text}" if first.text.strip() else text
+        if len(placed) > SECTION_MAX:
+            raise ValidationFailed(code="business-rule-violation", errors=[
+                field_error("body", "/text", "too-long")])
+        try:
+            await self.store.update_note(db, note_id, NoteChanges(
+                sections=(SectionText(id=first.id, text=placed),)), if_version=locked.version)
+        except StaleVersion as stale:   # the row is locked: only a bug gets here
+            raise Conflict(code="invalid-state-transition",
+                           currentState=locked.status) from stale
+        except InvalidTransition as done:
+            raise Conflict("The note is signed: changes go in an addendum",
+                           code="record-locked") from done
+        await repository.mark_ai_assisted(db, note_id)
+        return note_id

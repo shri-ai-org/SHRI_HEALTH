@@ -40,6 +40,7 @@ import type {
   CreateVisitSummaryHeaders,
   DecideAiSuggestionHeaders,
   DecideSuggestedCodeHeaders,
+  DecideVisitSummaryHeaders,
   Differential,
   DifferentialCreate,
   ForbiddenResponse,
@@ -63,7 +64,8 @@ import type {
   UnauthorizedResponse,
   UnprocessableContentResponse,
   VisitSummary,
-  VisitSummaryCreate
+  VisitSummaryCreate,
+  VisitSummaryDecision
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -1188,7 +1190,7 @@ export const getCreateVisitSummaryUrl = () => {
 }
 
 /**
- * A short AI summary of one visit, shown at the top of the consultation note (D119): a few statements, each citing the records it rests on. Returns `202` and an operation of kind `ai.visit-summary`; its result is the summary (`GET /ai/visit-summaries/{visitSummaryId}`). The model sees the visit (reason for visit, its diagnoses so far, the vital signs taken at it and its notes' sections) and the chart (recent visits, allergies, medications, problems, lab results), read within the caller's own request through each module's service with the caller's permissions and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet is never a source**: the summary rests on what the clinician wrote or accepted. Every statement cites at least one record; one that cites none is dropped. It is **never part of the note or the chart**: nothing is written to the visit. Labelled as AI output (`aiGenerated`). Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.
+ * A short AI summary of one visit, shown at the top of the consultation note (D119): a few statements, each citing the records it rests on. Returns `202` and an operation of kind `ai.visit-summary`; its result is the summary (`GET /ai/visit-summaries/{visitSummaryId}`). The model sees the visit (reason for visit, its diagnoses so far, the vital signs taken at it and its notes' sections) and the chart (recent visits, allergies, medications, problems, lab results), read within the caller's own request through each module's service with the caller's permissions and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet is never a source**: the summary rests on what the clinician wrote or accepted. Every statement cites at least one record; one that cites none is dropped. **Nothing is written to the note or the chart** unless its requester accepts or edits it (`POST /ai/visit-summaries/{visitSummaryId}/decision`). Labelled as AI output (`aiGenerated`). Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.
  * @summary Summarize a visit for its clinician
  */
 export const createVisitSummary = async (visitSummaryCreate: VisitSummaryCreate,
@@ -1271,7 +1273,7 @@ export const getGetVisitSummaryUrl = (visitSummaryId: Id,) => {
 }
 
 /**
- * The result of `POST /ai/visit-summaries` (D119): the statements in order, each with the records it rests on, and `insufficientEvidence` when the visit holds too little to summarize. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.
+ * The result of `POST /ai/visit-summaries` (D119): the statements in order, each with the records it rests on, and `insufficientEvidence` when the visit holds too little to summarize, with its decision (`pending` until decided) and, once accepted or edited, the note it went into. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.
  * @summary Get a visit summary
  */
 export const getVisitSummary = async (visitSummaryId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getVisitSummaryResponse> => {
@@ -1282,6 +1284,100 @@ export const getVisitSummary = async (visitSummaryId: Id, options?: Parameters<t
     method: 'GET'
 
 
+  }
+);}
+
+
+export type decideVisitSummaryResponse200 = {
+  data: VisitSummary
+  status: 200
+}
+
+export type decideVisitSummaryResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type decideVisitSummaryResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type decideVisitSummaryResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type decideVisitSummaryResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type decideVisitSummaryResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type decideVisitSummaryResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type decideVisitSummaryResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type decideVisitSummaryResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type decideVisitSummaryResponseSuccess = (decideVisitSummaryResponse200) & {
+  headers: Headers;
+};
+export type decideVisitSummaryResponseError = (decideVisitSummaryResponse400 | decideVisitSummaryResponse401 | decideVisitSummaryResponse403 | decideVisitSummaryResponse404 | decideVisitSummaryResponse409 | decideVisitSummaryResponse422 | decideVisitSummaryResponse429 | decideVisitSummaryResponse500) & {
+  headers: Headers;
+};
+
+export type decideVisitSummaryResponse = (decideVisitSummaryResponseSuccess | decideVisitSummaryResponseError)
+
+export const getDecideVisitSummaryUrl = (visitSummaryId: Id,) => {
+
+
+
+
+  return `/ai/visit-summaries/${visitSummaryId}/decision`
+}
+
+/**
+ * Records the requester's one decision on their visit summary (D70, D119), once (the database refuses a second decision). **`accepted` and `edited` are the clinician's action that puts the summary in the note**: in one transaction with the decision, the text (for `accepted`, the statements in order; for `edited`, the clinician's own `text`) is written at the top of the first section of the visit's draft note named by `noteId`, above what that section already holds, as a new version of the note, through the encounters' note rules (the note's author only, while it is a draft), and the note is marked AI-assisted. Nothing from a visit summary enters a note without this call, so it is never signed unless the clinician accepted or edited it. If that first section holds an AI draft not yet decided, the summary counts as the author's change when that section is decided. `rejected` needs a `reason` and changes nothing on the note. Only the user who asked for the summary decides. After `accepted` or `edited`, read the note again (`GET /notes/{noteId}`): its version and first section changed. Not gated by the AI switches: a pending summary can be decided after AI is turned off.
+ * @summary Accept, edit or reject a visit summary
+ */
+export const decideVisitSummary = async (visitSummaryId: Id,
+    visitSummaryDecision: VisitSummaryDecision,
+    headers?: DecideVisitSummaryHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<decideVisitSummaryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<decideVisitSummaryResponse>(getDecideVisitSummaryUrl(visitSummaryId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(visitSummaryDecision)
   }
 );}
 

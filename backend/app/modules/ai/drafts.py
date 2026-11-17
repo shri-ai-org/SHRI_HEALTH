@@ -234,7 +234,8 @@ async def decide(db: AsyncSession, repo: AIRepository, drafts: Drafts, check: Ch
     _decision_body(body)
     found = await repo.suggestion(db, suggestion_id)
     # Only a note section or a chart summary is decided here (the contract's targetType); the
-    # other AI outputs (an answer, a brief, a differential, a visit summary) are never decided.
+    # other AI outputs (an answer, a brief, a differential) are never decided; a visit summary
+    # has its own decision (visit_summaries.decide, decideVisitSummary).
     if found is None or found.patient_id is None \
             or found.target_resource_type not in (NOTE_SECTION, CHART_SUMMARY):
         raise NotFound()

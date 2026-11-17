@@ -12,7 +12,16 @@ clinician wrote or accepted, never on an unreviewed draft. Every record is one n
 
 **What comes back.** Up to five short statements about this visit, each citing the lines it
 rests on; a statement citing none of them is dropped. ``insufficientEvidence`` when nothing is
-left. Nothing is written to the note, the visit or the chart.
+left. Nothing is written to the note, the visit or the chart by making it.
+
+**The decision** (decideVisitSummary, D70; Vimal on #85, 17 Nov): its requester's one accept,
+edit or reject, recorded once (the database refuses a second). ``accepted`` (the statements, in
+order, as one paragraph) or ``edited`` (the clinician's own text) goes at the top of the first
+section of the draft note named in ``noteId``, through the encounters' seam
+(encounters/ai_drafts.py ``place_visit_summary``: a note of this visit, its author only, still a
+draft), and the suggestion's target becomes that note, all in one transaction with the decision.
+``rejected`` needs a reason and writes nothing. So a visit summary is in a signed note only when
+the clinician accepted or edited it. Not gated by the AI switches.
 
 **Where it is kept.** One ``ai_suggestion`` (target type visit summary, feature
 ``chart-summary``) whose ID is the summary's; readable by its requester only, after the chart
@@ -22,22 +31,28 @@ check. Nothing of it is logged.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
-from app.core.errors import NotFound
+from app.core.errors import Conflict, NotFound, ValidationFailed, field_error
 from app.core.long_running import Operation
-from app.db.models.enums import AIConfidence, AIFeature, AIRequestStatus
+from app.db.models.enums import AIConfidence, AIDecision, AIFeature, AIRequestStatus
 
 from . import calls
 from .differentials import ChartCheck, VisitChart, VisitReader, lines_of
 from .output import DROP, prune
-from .repository import AIRepository, SuggestionRecord
-from .schemas import AiSourceLink, ChartAnswerStatement, VisitSummary, VisitSummaryCreate
+from .repository import AIRepository, SuggestionHead, SuggestionRecord
+from .schemas import (
+    AiSourceLink,
+    ChartAnswerStatement,
+    VisitSummary,
+    VisitSummaryCreate,
+    VisitSummaryDecision,
+)
 from .service import OutputRejected, ensure_enabled
 from .summary import ChartLine
 
@@ -47,6 +62,9 @@ PROMPT_CODE = "visit-summary"
 MAX_STATEMENTS = 5
 MAX_OUTPUT_TOKENS = 2000
 _HANDLE = re.compile(r"^S[0-9]{1,4}$")
+#: The encounters' seam that puts the accepted text in the note (encounters/ai_drafts.py
+#: ``place_visit_summary``): (db, user, encounter, note, text) -> the note's ID; never commits.
+PlaceSummary = Callable[[AsyncSession, CurrentUser, UUID, UUID, str], Awaitable[UUID]]
 
 VISIT_SUMMARY_SCHEMA: dict[str, Any] = {
     "type": "object", "additionalProperties": False,
@@ -153,23 +171,110 @@ async def create(db: AsyncSession, repo: AIRepository, model: Any, read: VisitRe
         lambda: summarize(db, repo, model, body.encounter_id, found))
 
 
-async def get(db: AsyncSession, repo: AIRepository, check: ChartCheck, user: CurrentUser,
-              summary_id: UUID) -> VisitSummary:
-    """getVisitSummary: its requester only (404 for anyone else), after the chart check."""
+async def _own(db: AsyncSession, repo: AIRepository, check: ChartCheck, user: CurrentUser,
+               summary_id: UUID) -> SuggestionHead:
+    """The user's own visit summary (404 for anyone else's), after the chart check (D37)."""
     found = await repo.suggestion(db, summary_id)
     if found is None or found.target_resource_type != VISIT_SUMMARY \
             or found.patient_id is None or found.encounter_id is None \
             or found.requested_by != user.id:
         raise NotFound()
     await check(db, user, found.patient_id)
-    made = await repo.generation(db, summary_id)
-    if made is None:
+    return found
+
+
+#: The contract's decisions; anything else (an expired suggestion) shows as never decided.
+_DECISIONS: dict[str, Literal["pending", "accepted", "edited", "rejected"]] = {
+    "pending": "pending", "accepted": "accepted", "edited": "edited", "rejected": "rejected"}
+
+
+async def _view(db: AsyncSession, repo: AIRepository, found: SuggestionHead) -> VisitSummary:
+    made = await repo.generation(db, found.id)
+    if made is None or found.patient_id is None or found.encounter_id is None:
         raise NotFound()
+    decided = await repo.decision_record(db, found.id) \
+        if found.decision != AIDecision.PENDING.value else None
+    placed = found.decision in (AIDecision.ACCEPTED.value, AIDecision.EDITED.value)
     return VisitSummary(
-        id=summary_id, patient_id=found.patient_id, encounter_id=found.encounter_id,
+        id=found.id, patient_id=found.patient_id, encounter_id=found.encounter_id,
         statements=[ChartAnswerStatement(
             sequence=s["sequence"], text=s["text"],
             sources=[AiSourceLink.model_validate(link) for link in s["sources"]])
             for s in found.content.get("statements", [])],
         insufficient_evidence=bool(found.content.get("insufficientEvidence", True)),
+        decision=_DECISIONS.get(found.decision, "pending"),
+        decided_at=decided.decided_at if decided else None,
+        decided_by=decided.decided_by if decided else None,
+        rejection_reason=decided.rejection_reason if decided else None,
+        edited_text=(decided.edited_content or {}).get("text") if decided else None,
+        note_id=found.target_id if placed else None,
         ai_generated=True, generated_by=made[0], created_at=made[1])
+
+
+async def get(db: AsyncSession, repo: AIRepository, check: ChartCheck, user: CurrentUser,
+              summary_id: UUID) -> VisitSummary:
+    """getVisitSummary: its requester only (404 for anyone else), after the chart check, with
+    its decision."""
+    return await _view(db, repo, await _own(db, repo, check, user, summary_id))
+
+
+def summary_text(content: dict[str, Any]) -> str:
+    """What ``accepted`` puts in the note: the statements in order, as one paragraph."""
+    return " ".join(str(s.get("text", "")).strip() for s in content.get("statements", [])
+                    if str(s.get("text", "")).strip())
+
+
+def _decision_body(body: VisitSummaryDecision) -> None:
+    """decideVisitSummary's 422 validation-failed: each field only with its decision."""
+    placing, edited, rejected = (body.decision in ("accepted", "edited"),
+                                 body.decision == "edited", body.decision == "rejected")
+    errors = []
+    if placing and body.note_id is None:
+        errors.append(field_error("body", "/noteId", "required"))
+    if not placing and body.note_id is not None:
+        errors.append(field_error("body", "/noteId", "not-allowed-value"))
+    if edited and not (body.text or "").strip():
+        errors.append(field_error("body", "/text", "required"))
+    if not edited and body.text is not None:
+        errors.append(field_error("body", "/text", "not-allowed-value"))
+    if rejected and not (body.reason or "").strip():
+        errors.append(field_error("body", "/reason", "required"))
+    if not rejected and body.reason is not None:
+        errors.append(field_error("body", "/reason", "not-allowed-value"))
+    if errors:
+        raise ValidationFailed(errors=errors)
+
+
+async def decide(db: AsyncSession, repo: AIRepository, check: ChartCheck, place: PlaceSummary,
+                 user: CurrentUser, summary_id: UUID, body: VisitSummaryDecision,
+                 name_patient: Callable[[UUID], None]) -> VisitSummary:
+    """decideVisitSummary: the body (422), the requester's own summary (404, 403 D37), still
+    pending (409), then for ``accepted`` or ``edited`` the text in the note (422, 403, 409
+    record-locked), the decision and the note's link, committed together. The permission is the
+    route's ``require``."""
+    _decision_body(body)
+    found = await _own(db, repo, check, user, summary_id)
+    locked = await repo.suggestion(db, summary_id, lock=True)
+    if locked is None or found.encounter_id is None or found.patient_id is None:
+        raise NotFound()
+    if locked.decision != AIDecision.PENDING.value:
+        raise Conflict(code="invalid-state-transition", currentState=locked.decision)
+    edited: dict[str, Any] | None = None
+    if body.note_id is not None:   # accepted or edited (_decision_body)
+        text = (body.text or "").strip() if body.decision == "edited" \
+            else summary_text(locked.content)
+        if not text:   # an accepted summary with no statements: nothing to put in the note
+            raise ValidationFailed(code="business-rule-violation", errors=[
+                field_error("body", "/decision", "not-allowed-value")])
+        note_id = await place(db, user, found.encounter_id, body.note_id, text)
+        await repo.set_suggestion_target(db, summary_id, note_id)
+        if body.decision == "edited":
+            edited = {"text": text}
+    await repo.decide(db, summary_id, AIDecision(body.decision), edited_content=edited,
+                      rejection_reason=body.reason.strip() if body.reason else None)
+    name_patient(found.patient_id)
+    await db.commit()
+    decided = await repo.suggestion(db, summary_id)
+    if decided is None:
+        raise NotFound()
+    return await _view(db, repo, decided)

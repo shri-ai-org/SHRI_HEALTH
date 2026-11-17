@@ -17,6 +17,7 @@ from app.modules.ai.budget import Usage
 from app.modules.ai.model_client import ModelError, ModelReply
 from app.modules.ai.prompts import NOTE_DRAFT_V1
 from app.modules.ai.repository import (
+    DecisionRecord,
     FeatureState,
     RequestRecord,
     SettingsState,
@@ -73,6 +74,7 @@ class FakeAIRepository:
     suggestions: dict[UUID, SuggestionRecord] = field(default_factory=dict)
     targets: dict[UUID, UUID] = field(default_factory=dict)
     decisions: dict[UUID, AIDecision] = field(default_factory=dict)
+    decided: dict[UUID, DecisionRecord] = field(default_factory=dict)
     #: Who asked for each suggestion (its request's user); None when not set.
     requested_by: dict[UUID, UUID] = field(default_factory=dict)
     reads: int = 0
@@ -123,6 +125,7 @@ class FakeAIRepository:
                      edited_content: dict[str, Any] | None = None,
                      rejection_reason: str | None = None) -> None:
         self.decisions[suggestion_id] = decision
+        self.decided[suggestion_id] = DecisionRecord(NOW, None, rejection_reason, edited_content)
 
     async def suggestion(self, db: AsyncSession, suggestion_id: UUID, *, lock: bool = False
                          ) -> SuggestionHead | None:
@@ -169,6 +172,10 @@ class FakeAIRepository:
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]:
         return list(self.usage)
+
+    async def decision_record(self, db: AsyncSession, suggestion_id: UUID
+                              ) -> DecisionRecord | None:
+        return self.decided.get(suggestion_id)
 
 
 @dataclass

@@ -1522,10 +1522,10 @@ paths:
         lab results), read within the caller''s own request through each module''s service with the caller''s permissions
         and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet
         is never a source**: the summary rests on what the clinician wrote or accepted. Every statement cites at least one
-        record; one that cites none is dropped. It is **never part of the note or the chart**: nothing is written to the visit.
-        Labelled as AI output (`aiGenerated`). Readable by its requester only; nothing of it is logged. Governed by the `chart-summary`
-        switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable`
-        or `ai-output-rejected`.'
+        record; one that cites none is dropped. **Nothing is written to the note or the chart** unless its requester accepts
+        or edits it (`POST /ai/visit-summaries/{visitSummaryId}/decision`). Labelled as AI output (`aiGenerated`). Readable
+        by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled`
+        while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.'
       tags:
       - ai
       x-owner: vimal
@@ -1620,9 +1620,10 @@ paths:
       operationId: getVisitSummary
       summary: Get a visit summary
       description: 'The result of `POST /ai/visit-summaries` (D119): the statements in order, each with the records it rests
-        on, and `insufficientEvidence` when the visit holds too little to summarize. Labelled as AI output (`aiGenerated`).
-        Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still
-        readable when AI is switched off.'
+        on, and `insufficientEvidence` when the visit holds too little to summarize, with its decision (`pending` until decided)
+        and, once accepted or edited, the note it went into. Labelled as AI output (`aiGenerated`). Readable by **its requester
+        only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched
+        off.'
       tags:
       - ai
       x-owner: vimal
@@ -1692,6 +1693,141 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /ai/visit-summaries/{visitSummaryId}/decision:
+    parameters:
+    - name: visitSummaryId
+      in: path
+      required: true
+      description: Visit summary ID.
+      schema:
+        $ref: ../components/schemas/Id.yaml
+    post:
+      operationId: decideVisitSummary
+      summary: Accept, edit or reject a visit summary
+      description: 'Records the requester''s one decision on their visit summary (D70, D119), once (the database refuses a
+        second decision). **`accepted` and `edited` are the clinician''s action that puts the summary in the note**: in one
+        transaction with the decision, the text (for `accepted`, the statements in order; for `edited`, the clinician''s own
+        `text`) is written at the top of the first section of the visit''s draft note named by `noteId`, above what that section
+        already holds, as a new version of the note, through the encounters'' note rules (the note''s author only, while it
+        is a draft), and the note is marked AI-assisted. Nothing from a visit summary enters a note without this call, so
+        it is never signed unless the clinician accepted or edited it. If that first section holds an AI draft not yet decided,
+        the summary counts as the author''s change when that section is decided. `rejected` needs a `reason` and changes nothing
+        on the note. Only the user who asked for the summary decides. After `accepted` or `edited`, read the note again (`GET
+        /notes/{noteId}`): its version and first section changed. Not gated by the AI switches: a pending summary can be decided
+        after AI is turned off.'
+      tags:
+      - ai
+      x-owner: vimal
+      x-permission: ai-suggestions:decision
+      x-audit:
+        action: E
+        category: ai
+        patient: result
+      x-idempotency: supported
+      x-storage: clinical
+      x-release: P0
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKeyOptional.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitSummaryDecision'
+            examples:
+              accepted:
+                summary: Accept into the note
+                value:
+                  decision: accepted
+                  noteId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+              edited:
+                summary: Edit, then put in the note
+                value:
+                  decision: edited
+                  noteId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+                  text: Seen for a cough of three days, without fever. Takes lisinopril 10 mg daily.
+              rejected:
+                summary: Reject
+                value:
+                  decision: rejected
+                  reason: The summary leaves out the examination findings.
+      responses:
+        '200':
+          description: The visit summary with its decision; for `accepted` and `edited`, the note it went into.
+          headers:
+            X-Request-ID: *id001
+            Cache-Control: *id002
+            RateLimit: *id003
+            RateLimit-Policy: *id004
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisitSummary'
+              examples:
+                edited:
+                  summary: Edited and put in the note
+                  value:
+                    id: 8b9c0d1e-2f3a-4b4c-9d5e-7f8a9b0c1d2e
+                    patientId: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                    encounterId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                    statements:
+                    - sequence: 1
+                      text: Seen for a cough of three days, without fever.
+                      sources:
+                      - resourceType: Encounter
+                        resourceId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+                        label: Reason for visit
+                    insufficientEvidence: false
+                    aiGenerated: true
+                    generatedBy:
+                      modelName: claude-sonnet-5-5
+                      promptCode: visit-summary
+                      promptVersion: 1
+                      pipelineVersion: gateway/2
+                    createdAt: '2026-11-20T15:20:06Z'
+                    decision: edited
+                    decidedAt: '2026-11-20T15:24:00Z'
+                    decidedBy:
+                      id: 2f3a4b5c-6d7e-4f8a-9b9c-1d2e3f4a5b6c
+                      displayName: Kaia401 Lindgren118, MD
+                    editedText: Seen for a cough of three days, without fever. Takes lisinopril 10 mg daily.
+                    noteId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `permission-denied` (the role lacks `ai-suggestions:decision`, or the user is not the author of
+            the note named in `noteId`); `csrf-check-failed` (missing or wrong CSRF header or Origin); `break-glass-required`
+            (the patient's chart is restricted and the user holds no break-glass grant and is not on the care team (D37)).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (no such visit summary in this clinic, or another user's visit summary).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: '409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running); `invalid-state-transition`
+            (the summary is already decided, or the note is entered in error; the problem carries `currentState`); `record-locked`
+            (the note is signed (D8): the summary can no longer go in it).'
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (a body field or a parameter is invalid; `noteId` is required for `accepted`
+            and `edited` and not allowed for `rejected`; `text` is required for `edited` and not allowed otherwise; `reason`
+            is required for `rejected` and not allowed otherwise); `business-rule-violation` (`noteId` is not a note of the
+            summary's visit (field code `invalid-reference`); `accepted` on a summary with no statements (`not-allowed-value`);
+            the note's first section would pass 50,000 characters (`too-long`)); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
         '429':
           $ref: ../components/responses/TooManyRequests.yaml
           description: 429. `rate-limited` (too many requests).
@@ -3087,8 +3223,9 @@ components:
           description: The visit.
           x-phi: internal-id
     VisitSummary:
-      description: An AI summary of a visit, shown at the top of the consultation note (D119). Read-only, never part of the
-        note or the chart; readable by its requester only.
+      description: An AI summary of a visit, shown at the top of the consultation note (D119), with its requester's one decision.
+        Never part of the note or the chart unless its requester accepts or edits it (`decision`, `noteId`); readable by its
+        requester only.
       type: object
       required:
       - id
@@ -3136,6 +3273,72 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was made.
           x-phi: none
+        decision:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - edited
+          - rejected
+          description: 'The requester''s decision (`POST /ai/visit-summaries/{visitSummaryId}/decision`): `pending` until
+            decided; `accepted` or `edited` once the text is in the note (`noteId`); `rejected` changes nothing.'
+          x-phi: none
+        decidedAt:
+          $ref: ../components/schemas/Timestamp.yaml
+          description: When it was decided. Absent while `pending`.
+          x-phi: none
+        decidedBy:
+          $ref: "#/components/schemas/ClinicianRef"
+          description: Who decided. Absent while `pending`.
+          x-phi: none
+        rejectionReason:
+          type: string
+          maxLength: 500
+          description: Why it was rejected. Only for `rejected`.
+          x-phi: clinical
+        editedText:
+          type: string
+          maxLength: 4000
+          description: The clinician's version that went into the note. Only for `edited`.
+          x-phi: clinical
+        noteId:
+          $ref: ../components/schemas/Id.yaml
+          description: The draft note the text went into (its first section). Only for `accepted` and `edited`.
+          x-phi: internal-id
+    VisitSummaryDecision:
+      description: Body to decide a visit summary (D70, D119). `accepted` and `edited` put the text at the top of the named
+        draft note's first section; `rejected` changes nothing on the note.
+      type: object
+      additionalProperties: false
+      required:
+      - decision
+      properties:
+        decision:
+          type: string
+          enum:
+          - accepted
+          - edited
+          - rejected
+          description: '`accepted` puts the statements in the note as they are; `edited` puts the clinician''s `text` instead;
+            `rejected` changes nothing.'
+          x-phi: none
+        noteId:
+          $ref: ../components/schemas/Id.yaml
+          description: The visit's draft note, by its author, that receives the text. Required for `accepted` and `edited`;
+            not allowed for `rejected`.
+          x-phi: internal-id
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The clinician's version of the summary. Required for `edited`; not allowed otherwise.
+          x-phi: clinical
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why it was rejected. Required for `rejected`; not allowed otherwise.
+          x-phi: clinical
     CodingSuggestionCreate:
       description: The visit to suggest ICD-10-CM codes for.
       type: object

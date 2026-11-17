@@ -16,11 +16,13 @@
  */
 import type { AiGeneratedBy } from './aiGeneratedBy';
 import type { ChartAnswerStatement } from './chartAnswerStatement';
+import type { ClinicianRef } from './clinicianRef';
 import type { Id } from './id';
 import type { Timestamp } from './timestamp';
+import type { VisitSummaryDecisionProperty } from './visitSummaryDecisionProperty';
 
 /**
- * An AI summary of a visit, shown at the top of the consultation note (D119). Read-only, never part of the note or the chart; readable by its requester only.
+ * An AI summary of a visit, shown at the top of the consultation note (D119), with its requester's one decision. Never part of the note or the chart unless its requester accepts or edits it (`decision`, `noteId`); readable by its requester only.
  */
 export interface VisitSummary {
   /** Visit summary ID. */
@@ -42,4 +44,22 @@ export interface VisitSummary {
   generatedBy: AiGeneratedBy;
   /** When it was made. */
   createdAt: Timestamp;
+  /** The requester's decision (`POST /ai/visit-summaries/{visitSummaryId}/decision`): `pending` until decided; `accepted` or `edited` once the text is in the note (`noteId`); `rejected` changes nothing. */
+  decision?: VisitSummaryDecisionProperty;
+  /** When it was decided. Absent while `pending`. */
+  decidedAt?: Timestamp;
+  /** Who decided. Absent while `pending`. */
+  decidedBy?: ClinicianRef;
+  /**
+     * Why it was rejected. Only for `rejected`.
+     * @maxLength 500
+     */
+  rejectionReason?: string;
+  /**
+     * The clinician's version that went into the note. Only for `edited`.
+     * @maxLength 4000
+     */
+  editedText?: string;
+  /** The draft note the text went into (its first section). Only for `accepted` and `edited`. */
+  noteId?: Id;
 }

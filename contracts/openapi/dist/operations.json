@@ -639,6 +639,17 @@
    "path": "/api/v1/ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision",
    "permission": "ai-suggestions:decision"
   },
+  "decideVisitSummary": {
+   "audit": {
+    "action": "E",
+    "category": "ai",
+    "patient": "result"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/ai/visit-summaries/{visitSummaryId}/decision",
+   "permission": "ai-suggestions:decision"
+  },
   "declineFollowUpRequest": {
    "audit": {
     "action": "E",

@@ -348,6 +348,8 @@ paths:
     $ref: 'modules/ai.yaml#/paths/~1ai~1visit-summaries'
   /ai/visit-summaries/{visitSummaryId}:
     $ref: 'modules/ai.yaml#/paths/~1ai~1visit-summaries~1{visitSummaryId}'
+  /ai/visit-summaries/{visitSummaryId}/decision:
+    $ref: 'modules/ai.yaml#/paths/~1ai~1visit-summaries~1{visitSummaryId}~1decision'
   /ai/coding-suggestions:
     $ref: 'modules/ai.yaml#/paths/~1ai~1coding-suggestions'
   /ai/coding-suggestions/{codingSuggestionId}:
