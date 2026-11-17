@@ -36,9 +36,9 @@ import {
   updatePrescription,
 } from '../../src/api/generated/endpoints/medications/medications'
 import { listNoteTemplates } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
-import { createNoteDraft, decideAiSuggestion } from '../../src/api/generated/endpoints/ai/ai'
+import { createNoteDraft, decideAiSuggestion, decideVisitSummary as decideVisitSummaryApi } from '../../src/api/generated/endpoints/ai/ai'
 import { getPatient } from '../../src/api/generated/endpoints/patients/patients'
-import type { AiSuggestionDecision, Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Operation, Prescription, PrescriptionList, PrescriptionTransmission, SafetyAlert, SafetyCheckResult } from '../../src/api/generated/model'
+import type { AiSuggestionDecision, Encounter, EncounterDiagnosis, Note, NoteList, NoteTemplateList, Operation, Prescription, PrescriptionList, PrescriptionTransmission, SafetyAlert, SafetyCheckResult, VisitSummary } from '../../src/api/generated/model'
 import { problemCopy } from '../../src/design-system/problem/problem'
 
 import { rxNormProduct } from './formulary'
@@ -47,6 +47,7 @@ import { read } from './resource'
 import { finished } from './aiChart'
 import { WAITING_STATUSES, pollStatus } from './rxStatusPoll'
 import { AiFeatureDown } from './aiStatus'
+import { decideSummaryInOrder, type SummaryChoice } from '../src/shri/logic/aiNoteBlocks'
 
 import type { RxLineEdit as ScreenRxLineEdit } from '@/store/clinical'
 
@@ -148,6 +149,12 @@ interface NoteState {
   applyScribeDraft: (encounterId: string, keys: string[], drafts?: Partial<Record<string, string>>) => string[]
   /** "Draft with AI" (AI-01): the dictated text to createNoteDraft; resolves with the drafted section keys. */
   draftWithAi: (encounterId: string, transcript: string) => Promise<string[]>
+  /**
+   * The AI visit summary's decision (#406), in the note's queue so no save sends an old ETag:
+   * accepted or edited saves the note first and reads it again after; rejected only decides
+   * (src/shri/logic/aiNoteBlocks.ts). A 412 reloads the saved note, as a save does.
+   */
+  decideVisitSummary: (encounterId: string, visitSummaryId: string, choice: SummaryChoice, idempotencyKey: string) => Promise<VisitSummary>
   /** The note's ICD-10 code (on screen; M8: kept across a reload through the visit's diagnoses). */
   setNoteCode: (encounterId: string, code: string | undefined, label?: string) => void
   saveDraft: (encounterId: string, how?: 'manual' | 'auto') => void
@@ -855,6 +862,27 @@ export const useClinical = create<NoteState>()((set, get) => {
 
     // The local scribe's routing is the sample's; with the API, drafting is draftWithAi.
     applyScribeDraft: () => [],
+
+    decideVisitSummary: (encounterId, visitSummaryId, choice, idempotencyKey) => {
+      let decided: VisitSummary | undefined
+      return enqueue(encounterId, async () => {
+        decided = await decideSummaryInOrder(choice, {
+          savePending: async () => {
+            await flush(encounterId)
+            await ensureNote(encounterId)
+            return get().server[encounterId].noteId!
+          },
+          decide: async (body) => (await decideVisitSummaryApi(visitSummaryId, body, { 'Idempotency-Key': idempotencyKey })).data as VisitSummary,
+          rereadNote: () => reload(encounterId),
+        })
+      }).then(
+        () => decided!,
+        async (error: unknown) => {
+          if (error instanceof ApiError && error.status === 412) await reload(encounterId).catch(() => undefined)
+          throw error
+        },
+      )
+    },
 
     draftWithAi: async (encounterId, transcript) => {
       if (get().note(encounterId).status !== 'draft') return []
