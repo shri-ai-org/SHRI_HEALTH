@@ -2,7 +2,9 @@ import { CheckCircle2, Search } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Alert, Badge, Button, Field, formatPhone, problemCopy, Select, TextInput, type BadgeTone } from '../../../design-system'
 import { usePortalApi } from '../api/portalApi'
+import type { PortalMedication } from '../../../api/generated/model'
 import type { Pharmacy, Prescription } from '../api/types'
+import { REAL_API } from '../features'
 import { toProblem, useResource } from '../api/useResource'
 import { Link, useRouter } from '../router'
 import { AsyncPanel, Card, DefinitionList, ErrorSummary, formatInstantShort, formatShortDate, matches, PageHeader, Pager, SearchBox, usePaged } from '../ui'
@@ -15,8 +17,78 @@ const STATUS: Record<Prescription['requestStatus'], { label: string; tone: Badge
   denied: { label: 'Denied', tone: 'critical' },
 }
 
-/** The old PRESCRIPTIONS page: tick rows, choose a pharmacy, write a message, send the request. */
+/**
+ * The old PRESCRIPTIONS page: tick rows, choose a pharmacy, write a message, send the request. With
+ * the real API, the patient's own medication list (listPortalMedications, #389) instead: refills
+ * have no contract yet, so there is no refill step.
+ */
 export function PrescriptionsPage() {
+  return REAL_API ? <MedicationsPage /> : <SamplePrescriptionsPage />
+}
+
+const MED_STATUS: Record<PortalMedication['status'], { label: string; tone: BadgeTone }> = {
+  active: { label: 'Active', tone: 'success' },
+  completed: { label: 'Completed', tone: 'neutral' },
+  stopped: { label: 'Stopped', tone: 'neutral' },
+}
+const MED_SOURCE: Record<PortalMedication['source'], string> = {
+  prescription: 'Prescribed by your clinic',
+  reported: 'Reported by you',
+}
+const TRANSMISSION: Record<NonNullable<PortalMedication['transmissionStatus']>, string> = {
+  queued: 'Waiting to be sent to the pharmacy',
+  sent: 'Sent to the pharmacy',
+  accepted: 'Received by the pharmacy',
+  rejected: 'Not accepted by the pharmacy. Contact your clinic.',
+  error: "Couldn't be sent to the pharmacy. Contact your clinic.",
+}
+
+/** The patient's medications, active first as the API gives them. Read only. */
+export function MedicationsPage() {
+  const api = usePortalApi()
+  const tz = useClinicTimeZone()
+  const meds = useResource(() => api.listMedications(), [])
+  return (
+    <>
+      <PageHeader title="Prescriptions" description="To request a refill, contact your clinic." back={{ to: '/', label: 'Home' }} />
+      <AsyncPanel resource={meds} label="your medications">
+        {(list) =>
+          list.length === 0 ? (
+            <Card>
+              <p className="py-6 text-center text-sm text-ink-muted">No medications on your record yet.</p>
+            </Card>
+          ) : (
+            <ul aria-label="Your medications" className="divide-y divide-border-soft overflow-hidden rounded-2xl border border-(--accent-line) bg-surface-1 shadow-card">
+              {list.map((m) => (
+                <li key={m.id} className="px-4 py-3.5 sm:px-5">
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <h2 className="text-base font-semibold text-ink">{m.display}</h2>
+                    <Badge tone={MED_STATUS[m.status].tone}>{MED_STATUS[m.status].label}</Badge>
+                  </div>
+                  {m.dosageText ? <p className="mt-1 text-sm text-ink">{m.dosageText}</p> : null}
+                  <p className="mt-1.5 text-sm text-ink-muted">
+                    {m.source === 'prescription' && m.prescriberDisplayName && m.prescribedAt
+                      ? `Prescribed by ${m.prescriberDisplayName} on ${formatInstantShort(m.prescribedAt, tz)}`
+                      : MED_SOURCE[m.source]}
+                  </p>
+                  {m.pharmacyName || m.transmissionStatus ? (
+                    <p className="mt-1 text-sm text-ink-muted">
+                      {m.pharmacyName ? `Pharmacy: ${m.pharmacyName}` : null}
+                      {m.pharmacyName && m.transmissionStatus ? ' · ' : null}
+                      {m.transmissionStatus ? TRANSMISSION[m.transmissionStatus] : null}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </AsyncPanel>
+    </>
+  )
+}
+
+function SamplePrescriptionsPage() {
   const api = usePortalApi()
   const data = useResource(() => Promise.all([api.listPrescriptions(), api.getReferenceLists()]), [])
   return (
