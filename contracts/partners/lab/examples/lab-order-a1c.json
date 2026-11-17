@@ -1,0 +1,42 @@
+{
+  "messageType": "LabOrder",
+  "schemaVersion": "1.0",
+  "orderControl": "NW",
+  "correlationId": "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f",
+  "createdAt": "2026-11-20T15:31:04Z",
+  "signedAt": "2026-11-20T15:31:00Z",
+  "orderingProvider": {
+    "npi": "1234567893",
+    "name": {
+      "family": "Lindqvist58",
+      "given": [
+        "Avery401"
+      ]
+    }
+  },
+  "patient": {
+    "name": {
+      "family": "Lindgren118",
+      "given": [
+        "Kaia401"
+      ]
+    },
+    "birthDate": "1990-03-14",
+    "sex": "female"
+  },
+  "performer": {
+    "code": "SIM-LAB",
+    "name": "Example Reference Laboratory (synthetic)"
+  },
+  "category": "laboratory",
+  "test": {
+    "loinc": "4548-4",
+    "name": "Hemoglobin A1c",
+    "performerTestCode": "SIM-A1C"
+  },
+  "priority": "routine",
+  "diagnosisCodes": [
+    "E11.9"
+  ],
+  "noteToPerformer": "Synthetic test order."
+}

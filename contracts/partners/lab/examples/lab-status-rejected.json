@@ -1,0 +1,12 @@
+{
+  "messageType": "LabOrderStatus",
+  "schemaVersion": "1.0",
+  "correlationId": "8d9e0f1a-2b3c-4d4e-8f5a-6b7c8d9e0f1a",
+  "responseId": "SIM-RAD-000117",
+  "respondedAt": "2026-11-20T15:34:07Z",
+  "status": "rejected",
+  "rejection": {
+    "code": "AR",
+    "message": "Test not offered at this site (synthetic)."
+  }
+}
