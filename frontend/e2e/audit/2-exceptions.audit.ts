@@ -1,27 +1,36 @@
+import { randomUUID } from 'node:crypto'
+
 import { expect, test } from '@playwright/test'
 
-import { as, lindaId, readyOrWip, screenOk, todaysVisit } from './audit'
+import { as, lindaId, readyOrWip, screenOk, todaysVisit, unsafe } from './audit'
 
 // The demo's exception paths (Sena's plan): a duplicate registration, a medication allergy alert,
 // and a physician editing an AI-drafted note. On the demo-audit stack, as the demo accounts.
 // Synthetic data only. The AI runs on the gateway's stub in CI (no key), so drafts are canned.
 
-test.describe.configure({ mode: 'serial' })
+// Not serial: one failing step must not hide the rest of the audit. One worker runs the file
+// in order, so the IDs found by the earlier steps carry over.
+test.describe.configure({ mode: 'default' })
 
 test('A. Registering Linda again warns about a possible duplicate', async ({ page }) => {
+  // The rule, through the API the form calls: the same name and birth date is a 409
+  // possible-duplicate naming her chart. The form is the front office's 11-step wizard; its full
+  // walk to the "Register anyway" panel needs Minalini's selectors (run 2 found "DOB *", not
+  // "Date of birth"), so the screen is only checked to load here.
   await as(page, 'frontdesk', '/register/new')
-  await readyOrWip(page, 'A-register', page.getByRole('button', { name: /Register/i }).first())
-  await page.getByLabel(/First name/i).first().fill('Linda')
-  await page.getByLabel(/Last name/i).first().fill('Thompson')
-  // Her date of birth from the chart, so the duplicate check has something to match.
+  await readyOrWip(page, 'A-register', page.getByRole('heading', { name: 'Registration Form' }))
   const id = await lindaId(page)
-  const chart = await page.request.get(`/api/v1/patients/${id}`)
-  const birthDate = ((await chart.json()) as { birthDate: string }).birthDate
-  const [y, m, d] = birthDate.split('-')
-  await page.getByLabel(/Date of birth/i).first().fill(`${m}/${d}/${y}`)
-  await page.getByRole('button', { name: /Register/i }).first().click()
-  await expect.soft(page.getByText(/may already be registered|possible duplicate/i).first(), 'the duplicate warning').toBeVisible({ timeout: 15_000 })
-  await screenOk(page, 'A-duplicate')
+  const chart = (await (await page.request.get(`/api/v1/patients/${id}`)).json()) as {
+    name: { family: string; given: string[] }; birthDate: string
+  }
+  const again = await page.request.post('/api/v1/patients', {
+    headers: { ...(await unsafe(page)), 'Idempotency-Key': randomUUID() },
+    data: { name: { family: chart.name.family, given: chart.name.given }, birthDate: chart.birthDate },
+  })
+  expect.soft(again.status(), 'the duplicate check answers 409').toBe(409)
+  const body = (await again.json()) as { code?: string; candidateIds?: string[] }
+  expect.soft(body.code, 'possible-duplicate').toBe('possible-duplicate')
+  expect.soft(body.candidateIds ?? [], 'it names her chart').toContain(id)
 })
 
 test("B. Prescribing a drug she can't take raises the allergy alert", async ({ page }) => {

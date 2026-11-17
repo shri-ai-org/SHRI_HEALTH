@@ -9,7 +9,9 @@ import { API, as, lindaId, readyOrWip, screenOk, todaysVisit, unsafe } from './a
 // so the job runs now and each step turns on as its screen lands (remove its `test.skip`).
 // Synthetic data only.
 
-test.describe.configure({ mode: 'serial' })
+// Not serial: one failing step must not hide the rest of the audit. One worker runs the file
+// in order, so the IDs found by the earlier steps carry over.
+test.describe.configure({ mode: 'default' })
 
 let patientId = ''
 let appointmentId = ''
@@ -18,7 +20,8 @@ let encounterId = ''
 test('1. The front desk finds Linda from a few typed letters', async ({ page }) => {
   await as(page, 'frontdesk', '/patients/search')
   patientId = await lindaId(page)
-  const search = page.getByRole('searchbox').or(page.getByPlaceholder(/search/i)).first()
+  // The header's typed search (run 2: a combobox named "Search patients").
+  const search = page.getByRole('combobox', { name: 'Search patients' }).first()
   await search.fill('Thomp')
   await expect.soft(page.getByText(/Thompson,? Linda|Linda Thompson/).first(), 'Linda is listed').toBeVisible({ timeout: 15_000 })
   await screenOk(page, '01-search')
