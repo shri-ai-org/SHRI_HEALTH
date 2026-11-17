@@ -33,6 +33,7 @@ import { useShri } from '../state/store'
 import { Pill, PillTag } from '../ui/primitives'
 
 import { ApiReportCard, ApiResultsCard } from './ApiResults'
+import { GlanceCard } from './GlanceCard'
 import { InsightsCard } from './InsightsCard'
 import { PatientReportCard } from './PatientReportCard'
 import { RecordFrame } from './RecordFrame'
@@ -111,6 +112,8 @@ function Hub({ patient: p }: { patient: Patient }) {
   const series = useTrendSeries(p)
   return (
     <>
+      {/* SHRI_HEALTH: with the API, the chart at a glance first (item 4, #85). */}
+      {REAL_API && <GlanceCard patient={p} />}
       {/* The first screen: the scan, the vitals and the AI's flags, and how the results fall — none of them below the fold. */}
       <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-[5fr_4fr_4fr]">
         {/* SHRI_HEALTH: with the API, the latest imaging report's impression as text (no images behind it). */}
