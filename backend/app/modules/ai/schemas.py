@@ -409,3 +409,18 @@ class Differential(Out):
     ai_generated: Literal[True] = True
     generated_by: AiGeneratedBy
     created_at: datetime
+
+
+class VisitSummaryCreate(Closed):
+    encounter_id: UUID
+
+
+class VisitSummary(Out):
+    id: UUID
+    patient_id: UUID
+    encounter_id: UUID
+    statements: list[ChartAnswerStatement]
+    insufficient_evidence: bool
+    ai_generated: Literal[True] = True
+    generated_by: AiGeneratedBy
+    created_at: datetime
