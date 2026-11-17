@@ -709,7 +709,7 @@ export const getCancelOrderUrl = (orderId: Id,) => {
 }
 
 /**
- * Cancels a signed order with a reason (inventory #139): FHIR status `revoked`, tracking `cancelled`. Allowed until the lab or imaging center reports `received`; after that, `409`. An order already sent also queues a cancel to the center through the outbox (`ORM^O01`, order control `CA`; D25). A draft is marked entered-in-error instead.
+ * Cancels a signed order with a reason (inventory #139): FHIR status `revoked`, tracking `cancelled`. Allowed while the order is `ordered`, `sent` or `received`; refused with `409` once it is `resulted` or already cancelled (T34's cut-off is specimen collection, which isn't tracked separately, so the result is the cut-off; Thulasi on #400). An order already sent also queues a cancel to the center through the outbox (`ORM^O01`, order control `CA`, with the center's `fillerOrderNumber` once it has acknowledged; D25). A draft is marked entered-in-error instead.
  * @summary Cancel a signed order
  */
 export const cancelOrder = async (orderId: Id,

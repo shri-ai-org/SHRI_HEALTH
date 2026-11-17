@@ -730,8 +730,10 @@ paths:
       operationId: cancelOrder
       summary: Cancel a signed order
       description: 'Cancels a signed order with a reason (inventory #139): FHIR status `revoked`, tracking `cancelled`. Allowed
-        until the lab or imaging center reports `received`; after that, `409`. An order already sent also queues a cancel
-        to the center through the outbox (`ORM^O01`, order control `CA`; D25). A draft is marked entered-in-error instead.'
+        while the order is `ordered`, `sent` or `received`; refused with `409` once it is `resulted` or already cancelled
+        (T34''s cut-off is specimen collection, which isn''t tracked separately, so the result is the cut-off; Thulasi on
+        #400). An order already sent also queues a cancel to the center through the outbox (`ORM^O01`, order control `CA`,
+        with the center''s `fillerOrderNumber` once it has acknowledged; D25). A draft is marked entered-in-error instead.'
       tags:
       - orders
       x-owner: thulasi
@@ -823,9 +825,9 @@ paths:
           description: 404. `not-found` (no such order in this clinic or the user's facilities).
         '409':
           $ref: ../components/responses/Conflict.yaml
-          description: '409. `invalid-state-transition` (a draft, which is marked entered-in-error instead; already cancelled
-            or completed; or the center has reported `received`; the problem carries `currentState`); `idempotency-request-in-progress`
-            (a request with this Idempotency-Key is still running).'
+          description: '409. `invalid-state-transition` (a draft, which is marked entered-in-error instead; already cancelled,
+            or resulted (FHIR `completed`); the problem carries `currentState`); `idempotency-request-in-progress` (a request
+            with this Idempotency-Key is still running).'
         '412':
           $ref: ../components/responses/PreconditionFailed.yaml
           description: 412. `precondition-failed` (the record changed since it was read; the response carries the current
