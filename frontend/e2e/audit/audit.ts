@@ -77,3 +77,35 @@ export async function openEncounter(page: Page, patientId: string): Promise<stri
   const items = ((await res.json()) as { items: { id: string; status: string }[] }).items
   return items.find((e) => !['finished', 'cancelled', 'entered-in-error'].includes(e.status))?.id
 }
+
+/** The runner has no microphone: the browser's speech recognition hears `words` instead, the
+ *  same stand-in e2e/doctorAi.e2e.ts uses. Call before the page loads. */
+export async function speaking(page: Page, words: string): Promise<void> {
+  await page.addInitScript((said: string) => {
+    class StandInRecognition {
+      lang = 'en-US'
+      continuous = true
+      interimResults = true
+      maxAlternatives = 1
+      onresult: ((e: unknown) => void) | null = null
+      onerror: ((e: unknown) => void) | null = null
+      onend: (() => void) | null = null
+      start() {
+        setTimeout(() => {
+          const result = Object.assign([{ transcript: said, confidence: 0.92 }], { isFinal: true })
+          this.onresult?.({ resultIndex: 0, results: [result] })
+        }, 150)
+      }
+      stop() {
+        setTimeout(() => this.onend?.(), 10)
+      }
+      abort() {}
+    }
+    const g = globalThis as unknown as {
+      navigator: { mediaDevices: { getUserMedia: () => Promise<unknown> } }
+      AudioContext: new () => { createMediaStreamDestination: () => { stream: unknown } }
+    }
+    Object.assign(globalThis, { SpeechRecognition: StandInRecognition, webkitSpeechRecognition: StandInRecognition })
+    g.navigator.mediaDevices.getUserMedia = async () => new g.AudioContext().createMediaStreamDestination().stream
+  }, words)
+}
