@@ -6,8 +6,8 @@
  *
  * Each image is read through a fresh one-time link (logic/imagingImages.ts, D105) and shown from a
  * blob: URL, labelled "Illustrative image" with its caption: never diagnostic. The display tools
- * only (pan, window/level, zoom, fit and reset, rotate, flip, invert): no marks, because marks are
- * kept in this browser. If an image can't be read, the screen says so and reads again; it never
+ * only (pan, window/level, zoom, fit and reset, rotate, flip, invert): the marking tools are hidden
+ * for the demo (Vimal), because marks are kept in this browser. If an image can't be read, the screen says so and reads again; it never
  * shows another picture. Every time is the clinic's (D40).
  */
 
@@ -86,7 +86,6 @@ function ReportImages({ patient: p, report: r }: { patient: ReturnType<typeof pa
               <p className="mt-[10px] text-[13px] text-sh-text-2">
                 <span className="font-semibold text-sh-text">{ILLUSTRATIVE}</span> · {load.loaded[slice - 1]?.image.caption}
               </p>
-              <p className="mt-[4px] text-[12px] text-sh-text-3">Markings are not saved in this demo.</p>
             </>
           ) : load.state === 'error' ? (
             <Card>
