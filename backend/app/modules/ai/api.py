@@ -18,7 +18,7 @@ and the note template (practice setup's repository, Anand's).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -435,13 +435,16 @@ def code_lookup() -> coding.CodeLookup:
 def diagnosis_adder(check: Annotated[rules.ChartCheck, Depends(chart_check)]
                     ) -> coding.AddDiagnosis:
     """An accepted code becomes a visit diagnosis through the encounters' diagnosis service:
-    addEncounterDiagnosis' rules and refusals, its Provenance, and its commit."""
+    addEncounterDiagnosis' rules and refusals, its Provenance, and its one commit, which also
+    carries the code's link to the new diagnosis (``link``)."""
     async def add(db: AsyncSession, user: CurrentUser, encounter_id: UUID, code: str,
-                  display: str, name_patient: Any) -> UUID:
+                  display: str, name_patient: Any,
+                  link: Callable[[UUID], Awaitable[None]]) -> UUID:
         added = await encounter_diagnoses.add(
             db, SqlEncounterRepository(), SqlDiagnosisRepository(), SqlFhirStore(), check, user,
             encounter_id, DiagnosisCreate(code=Coding(system=systems.ICD10CM, code=code,
-                                                      display=display)), name_patient)
+                                                      display=display)), name_patient,
+            before_commit=link)
         return added.value.id
 
     return add

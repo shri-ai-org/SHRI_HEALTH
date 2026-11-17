@@ -126,6 +126,27 @@ async def test_a_suggestion_is_stored_with_one_row_per_code_and_read_by_its_requ
                             lambda patient: None)
 
 
+async def test_a_refused_diagnosis_writes_no_link_and_commits_nothing() -> None:
+    """The diagnosis service refuses (for example the note is signed): it raises before its one
+    commit, so the code's link is never written and nothing is committed here; in the database
+    the decision rolls back with it and the code stays pending."""
+    repo = FakeAIRepository()
+    set_id = await _suggested(repo, DEV_USERS["md"])
+    first = (await cs.get(None, repo, _ok, DEV_USERS["md"], set_id)).codes[0]  # type: ignore[arg-type]
+
+    async def refused(db: Any, user: CurrentUser, encounter: UUID, code: str, display: str,
+                      name: Any, link: Any) -> UUID:
+        raise Conflict(code="invalid-state-transition", currentState="signed")
+
+    session = _Session()
+    with pytest.raises(Conflict):
+        await cs.decide(session, repo, _ok, refused, DEV_USERS["md"],  # type: ignore[arg-type]
+                        set_id, first.id, SuggestedCodeDecision(decision="accepted"),
+                        lambda patient: None)
+    assert first.id not in repo.targets
+    assert session.commits == 0
+
+
 async def test_accepting_adds_the_diagnosis_and_rejecting_does_not() -> None:
     repo = FakeAIRepository()
     set_id = await _suggested(repo, DEV_USERS["md"])
@@ -134,8 +155,9 @@ async def test_accepting_adds_the_diagnosis_and_rejecting_does_not() -> None:
     diagnosis = uuid4()
 
     async def add(db: Any, user: CurrentUser, encounter: UUID, code: str, display: str,
-                  name: Any) -> UUID:
+                  name: Any, link: Any) -> UUID:
         added.append((code, display))
+        await link(diagnosis)   # the link is written before the service's one commit
         return diagnosis
 
     session = _Session()
@@ -144,6 +166,7 @@ async def test_accepting_adds_the_diagnosis_and_rejecting_does_not() -> None:
                                lambda patient: None)
     assert added == [("J20.9", "Acute bronchitis, unspecified")]
     assert accepted.decision == "accepted" and accepted.diagnosis_id == diagnosis
+    assert session.commits == 0   # the diagnosis service commits once, decision and link included
     assert repo.decisions[first.id] == AIDecision.ACCEPTED
     with pytest.raises(Conflict):
         await cs.decide(session, repo, _ok, add, DEV_USERS["md"],  # type: ignore[arg-type]
