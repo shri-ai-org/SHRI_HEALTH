@@ -15,6 +15,7 @@ server's readiness checks (``demo_checks``) after a reset.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sys
 from collections.abc import Sequence
@@ -75,16 +76,18 @@ def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Ch
     ]
 
 
-def demo_checks() -> list[Check]:
+def demo_checks(day: dt.date | None = None) -> list[Check]:
     """The demo server's readiness (13 Nov): what the rehearsal and the demo need after a reset,
     in the demo clinic (the master user sees every clinic, so each query names it). "Today" is
-    the clinic's own day, in its zone."""
+    the clinic's own day, in its zone; a test passes the seed's own `day` (demo.DEMO_DAY), so a
+    session that runs past midnight in San Jose still counts the day the seed booked."""
     from app.core.deps import CLINIC_A, FACILITY_A
     from app.db.seed import demo, history, results
     from app.db.seed.starter import PRACTITIONER, sid
 
     clinic = f"'{CLINIC_A}'::uuid"
     zone = demo.CLINIC_ZONE.key
+    today = f"DATE '{day.isoformat()}'" if day else f"(now() AT TIME ZONE '{zone}')::date"
     shown = ", ".join(f"'{sid(demo.PATIENT, p.n)}'" for p in demo.SHOWN_PATIENTS)
     accounts = [(demo.DEMO_PATIENT_SUBJECT, demo.DEMO_PORTAL_PATIENT),
                 *((subject, n) for _, n, _, subject in demo.PORTAL_USERS)]
@@ -127,8 +130,8 @@ def demo_checks() -> list[Check]:
               "SELECT count(DISTINCT a.id) FROM clinical.appointment a JOIN "
               "clinical.appointment_participant x ON x.appointment_id = a.id WHERE "
               f"a.tenant_id = {clinic} AND a.status = 'booked' AND x.actor_practitioner_id = "
-              f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = "
-              f"(now() AT TIME ZONE '{zone}')::date", "6", at_least=True, fix=RESET),
+              f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = {today}",
+              "6", at_least=True, fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
               str(len(demo.SHOWN_PATIENTS)), fix=RESET),
