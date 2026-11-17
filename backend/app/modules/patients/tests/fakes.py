@@ -292,6 +292,10 @@ class FakeRepository:
             restricted=bool(found.labels & {"R", "V"}), active=d.active,
             merged_into_id=found.merged_into_id,
             general_practitioner_id=found.general_practitioner_id,
+            preferred_pharmacy=schemas.PharmacyRef(
+                id=found.pharmacy_id, name=self.world.pharmacies[found.pharmacy_id][0],
+                address=schemas.PharmacyAddress(city="Springfield", state="IL"))
+            if found.pharmacy_id is not None else None,
             created_at=_NOW, updated_at=_NOW), found.version)
 
     async def get_patient(self, db: Any, patient_id: UUID) -> Versioned[schemas.Patient]:
