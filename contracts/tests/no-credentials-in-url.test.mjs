@@ -1,6 +1,7 @@
 // The credentials-in-URL rule (owasp:api2:2023-no-credentials-in-url, redefined in openapi/rules/noCredentialsInUrl.js)
-// keeps its one exception narrow (D105): only `token` in the query of GET /files/{fileId}/content, and only while that
-// operation needs the session cookie and answers with `Referrer-Policy: no-referrer`. Everything else is still refused.
+// keeps its one exception narrow (D105): only `token` in the query of GET /files/{fileId}/content (staff session cookie)
+// and GET /portal/me/files/{fileId}/content (portal session cookie), and only while that operation needs its own session
+// cookie and answers with `Referrer-Policy: no-referrer`. Everything else is still refused.
 //
 //   node --test tests/no-credentials-in-url.test.mjs     (part of npm test)
 import { createRequire } from 'node:module';
@@ -9,6 +10,7 @@ import assert from 'node:assert/strict';
 
 const rule = createRequire(import.meta.url)('../openapi/rules/noCredentialsInUrl.js');
 const PATH = '/files/{fileId}/content';
+const PORTAL_PATH = '/portal/me/files/{fileId}/content';
 
 /** A minimal contract with one operation: the content download as written in files.yaml unless `change` alters it. */
 function contract(change = () => {}) {
@@ -60,4 +62,41 @@ test('path-level and component parameters are checked too', () => {
   assert.equal(rule(pathLevel).length, 1);
   const component = contract((doc) => { doc.components = { parameters: { T: { name: 'accessToken', in: 'query' } } }; });
   assert.equal(rule(component).length, 1);
+});
+
+/** The portal's content download as written in portal.yaml, unless `change` alters it. */
+function portalContract(change = () => {}) {
+  const doc = contract((d, op) => {
+    d.paths = { [PORTAL_PATH]: { get: op } };
+    op.security = [{ portalSessionCookie: [] }];
+  });
+  change(doc, doc.paths[PORTAL_PATH].get);
+  return doc;
+}
+
+test('the download token on GET /portal/me/files/{fileId}/content is allowed with the portal session', () => {
+  assert.deepEqual(rule(portalContract()), []);
+});
+
+test('the portal exception needs the portal session cookie, never the staff one or none', () => {
+  const staff = rule(portalContract((doc, op) => { op.security = [{ sessionCookie: [] }]; }));
+  assert.equal(staff.length, 1);
+  assert.match(staff[0].message, /portal session cookie/);
+  const none = rule(portalContract((doc, op) => { op.security = []; }));
+  assert.match(none[0].message, /portal session cookie/);
+  const staffOnStaffPath = rule(contract((doc, op) => { op.security = [{ portalSessionCookie: [] }]; }));
+  assert.equal(staffOnStaffPath.length, 1);
+  assert.match(staffOnStaffPath[0].message, /session cookie/);
+});
+
+test('the portal exception needs Referrer-Policy: no-referrer and covers only that path, method and name', () => {
+  const none = rule(portalContract((doc, op) => { delete op.responses[200].headers; }));
+  assert.match(none[0].message, /Referrer-Policy/);
+  const other = portalContract((doc, op) => { doc.paths = { '/portal/me/record-download-url': { get: op } }; });
+  assert.equal(rule(other).length, 1);
+  const post = portalContract((doc, op) => { doc.paths[PORTAL_PATH] = { post: op }; });
+  assert.equal(rule(post).length, 1);
+  const extra = rule(portalContract((doc, op) => { op.parameters.push({ name: 'password', in: 'query' }); }));
+  assert.equal(extra.length, 1);
+  assert.match(extra[0].message, /password/);
 });

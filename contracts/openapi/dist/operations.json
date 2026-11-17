@@ -532,6 +532,18 @@
    "path": "/api/v1/patients/{patientId}/portal-invitations",
    "permission": "portal-invitations:create"
   },
+  "createPortalMessage": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/me/messages",
+   "permission": "portal-messages:create"
+  },
   "createPracticePayer": {
    "audit": {
     "action": "C",
@@ -669,6 +681,18 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/files/{fileId}/content",
+   "permission": "authenticated"
+  },
+  "downloadPortalFileContent": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "export",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/files/{fileId}/content",
    "permission": "authenticated"
   },
   "enablePortalAccount": {
@@ -1086,6 +1110,18 @@
    "path": "/api/v1/portal/me/appointments/{appointmentId}",
    "permission": "portal-appointments:read"
   },
+  "getPortalMessageThread": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/messages/{threadId}",
+   "permission": "portal-records:read"
+  },
   "getPortalProblem": {
    "audit": {
     "action": "R",
@@ -1109,6 +1145,18 @@
    "method": "GET",
    "path": "/api/v1/portal/me",
    "permission": "portal-profile:read"
+  },
+  "getPortalRecordDownloadUrl": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "export",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/record-download-url",
+   "permission": "portal-records:export"
   },
   "getPortalSession": {
    "audit": {
@@ -1730,6 +1778,18 @@
    "path": "/api/v1/portal/me/change-requests",
    "permission": "portal-profile:read"
   },
+  "listPortalLabResults": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/lab-results",
+   "permission": "portal-records:read"
+  },
   "listPortalMedications": {
    "audit": {
     "action": "R",
@@ -1740,6 +1800,18 @@
    "idempotency": null,
    "method": "GET",
    "path": "/api/v1/portal/me/medications",
+   "permission": "portal-records:read"
+  },
+  "listPortalMessageThreads": {
+   "audit": {
+    "action": "R",
+    "actor": "patient",
+    "category": "phi-read",
+    "patient": "session"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/portal/me/messages",
    "permission": "portal-records:read"
   },
   "listPortalProblems": {
@@ -2227,6 +2299,18 @@
    "method": "POST",
    "path": "/api/v1/inbox/{inboxItemId}/replies",
    "permission": "messages:create"
+  },
+  "replyToPortalMessageThread": {
+   "audit": {
+    "action": "C",
+    "actor": "patient",
+    "category": "phi-write",
+    "patient": "session"
+   },
+   "idempotency": "supported",
+   "method": "POST",
+   "path": "/api/v1/portal/me/messages/{threadId}/replies",
+   "permission": "portal-messages:create"
   },
   "requestPortalChange": {
    "audit": {

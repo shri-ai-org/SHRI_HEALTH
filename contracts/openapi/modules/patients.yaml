@@ -3778,6 +3778,15 @@ components:
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none
             is chosen.
           x-phi: clinical
+        consents:
+          type: array
+          maxItems: 20
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/PatientConsent'
+          description: 'The current consent of each kind, one entry per kind recorded (kinds never recorded are left out).
+            Read-only: consents are recorded with `POST /patients/{patientId}/consents`.'
+          x-phi: clinical
         generalPractitionerId: &idgp
           $ref: ../components/schemas/Id.yaml
           description: The patient's primary provider (FHIR `Patient.generalPractitioner`), chosen from `GET /booking/providers`
@@ -4659,6 +4668,11 @@ components:
           $ref: ../components/schemas/Timestamp.yaml
           description: When it was recorded.
           x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          readOnly: true
+          description: The staff member who recorded it, from the session (never the body). Read-only.
+          x-phi: none
     ConsentCreate:
       description: Body to record a consent.
       type: object
@@ -4692,6 +4706,39 @@ components:
         nextCursor:
           $ref: ../components/schemas/Cursor.yaml
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    ClinicianRef:
+      description: A clinician or staff member, for display.
+      type: object
+      required:
+      - id
+      - displayName
+      properties:
+        id:
+          $ref: ../components/schemas/Id.yaml
+          description: Practitioner ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    PatientConsent:
+      description: 'The current consent of one kind: the latest `active` consent of that kind (`GET /patients/{patientId}/consents`
+        has the full history).'
+      type: object
+      required:
+      - kind
+      - decision
+      - signedAt
+      properties:
+        kind: *id058
+        decision: *id059
+        signedAt: *id061
+        policyVersion: *id062
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: The staff member who recorded it.
           x-phi: none
     PreferredPharmacySet:
       description: Body to set the preferred pharmacy.

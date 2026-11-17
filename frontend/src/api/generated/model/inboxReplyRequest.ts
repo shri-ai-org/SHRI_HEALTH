@@ -27,4 +27,6 @@ export interface InboxReplyRequest {
   text: string;
   /** Hand the item to the other party: the sender when the assignee (or a holder of the assignee role) replies, the assignee when the sender replies. Messages and tasks only, and only for those two parties: for anyone else, and for items the system created, the reply is added and the item stays where it is. The hand-back is checked inside the transaction, so it only happens if the replier is still the assignee or the sender at that moment, and the new assignee must work at the facility and be able to see the item (as for PATCH). Default true. */
   assignBack?: boolean;
+  /** For a `patient-message` item only: true sends this reply to the patient, who reads it on the portal thread (`GET /portal/me/messages/{threadId}`); false (the default) keeps it among staff. Only replies with `toPatient: true` ever reach the portal. True on any other kind is `422` (`/toPatient` `not-allowed-value`); on an item about a restricted chart the user may not open it is `403 break-glass-required` (D37). The reply never goes out by email, SMS or push: outside the app the patient gets only "You have a new item in Shri Health" (D81). */
+  toPatient?: boolean;
 }

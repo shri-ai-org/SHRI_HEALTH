@@ -17,14 +17,14 @@
 import type { Timestamp } from './timestamp';
 
 /**
- * A short-lived link to the PDF (the file service; no patient data in the link).
+ * A one-time download link (D105; no patient data in the link): it points at `GET /portal/me/files/{fileId}/content` on our own API, for this patient's portal session only.
  */
 export interface PortalDownloadUrl {
   /**
-     * Download link, valid until `expiresAt`.
+     * A link to `GET /portal/me/files/{fileId}/content` with a one-time token: for this patient's portal session only, valid until `expiresAt` (about one minute), accepted once (D105). A bearer secret: never log or store it.
      * @maxLength 2000
      */
   url: string;
-  /** When the link stops working (5 minutes). */
+  /** When the link stops working (about one minute). */
   expiresAt: Timestamp;
 }

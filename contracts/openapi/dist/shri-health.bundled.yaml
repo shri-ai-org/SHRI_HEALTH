@@ -20622,7 +20622,7 @@ paths:
           description: Only these kinds; repeat the parameter for several.
           schema:
             type: array
-            maxItems: 15
+            maxItems: 20
             items:
               type: string
               maxLength: 40
@@ -21432,7 +21432,7 @@ paths:
     post:
       operationId: replyToInboxItem
       summary: Reply on an inbox item
-      description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). Anyone who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply never moves an item for anyone else.'
+      description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). Anyone who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply never moves an item for anyone else. On a `patient-message` item, `toPatient: true` sends the reply to the patient''s portal thread; without it the reply stays among staff.'
       tags:
         - inbox
       x-owner: anand
@@ -21543,7 +21543,7 @@ paths:
           description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
         '403':
           $ref: '#/components/responses/Forbidden'
-          description: 403. `permission-denied` (the role lacks `messages:create`); `csrf-check-failed` (missing or wrong CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `messages:create`); `break-glass-required` (`toPatient: true` on an item about a restricted chart the user may not open, D37); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
         '404':
           $ref: '#/components/responses/NotFound'
           description: '404. `not-found` (no such inbox item that the user can see: in another clinic, at a facility the user is not assigned to, assigned to someone else, or of a type the user may not read (BATCH3_PLAN §5)).'
@@ -21552,7 +21552,7 @@ paths:
           description: 409. `invalid-state-transition` (the item is completed or cancelled); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+          description: 422. `validation-failed` (a body field or a parameter is invalid; `errors` names `/toPatient` `not-allowed-value` when it is true on an item that is not a `patient-message`); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -23283,7 +23283,7 @@ paths:
     get:
       operationId: getPortalVisitSummaryDownloadUrl
       summary: Get a visit summary's download link
-      description: A short-lived link to the PDF (the file service). A held summary has no link (D86).
+      description: 'A one-time link to the PDF (D105): it points at `GET /portal/me/files/{fileId}/content`, for this patient''s portal session only, valid for about one minute and accepted once. A held summary has no link (D86).'
       tags:
         - portal
       x-owner: vimal
@@ -23317,8 +23317,8 @@ paths:
                 link:
                   summary: Link
                   value:
-                    url: https://portal.company-domain.invalid/files/download/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b
-                    expiresAt: '2035-01-01T16:05:00Z'
+                    url: https://portal.company-domain.invalid/api/v1/portal/me/files/0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b/content?token=TEST-download-token-0000000000000000000001
+                    expiresAt: '2035-01-01T16:01:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
           description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
@@ -23625,7 +23625,7 @@ paths:
       description: 'The patient''s medication list (§8.2 E of the batch 1 plan): what the practice prescribed, with where it is on its way to the pharmacy, and what the patient reported taking. Active first; entered-in-error entries never appear. No prescriber-only notes.'
       tags:
         - portal
-      x-owner: thulasi
+      x-owner: anand
       x-permission: portal-records:read
       x-audit:
         action: R
@@ -23795,6 +23795,590 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /portal/me/lab-results:
+    get:
+      operationId: listPortalLabResults
+      summary: List my lab results
+      description: 'The patient''s lab reports (FHIR `DiagnosticReport`, category `LAB`, with their analytes), newest first. Only final, amended, corrected and appended reports, as the staff read: registered, partial and preliminary ones never appear while Q32 is open, nor cancelled or entered-in-error ones (D24). Released at once (D86). A clinician may hold a report from the portal for one of two reasons only (D90): a risk of harm, or the patient''s own request to wait; a held report is listed with `releaseStatus: held` and its `id` only, with no content and never the reason. No prescriber-only notes.'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: clinical
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalLabResultList'
+              examples:
+                page:
+                  summary: One available report and one held
+                  value:
+                    items:
+                      - id: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+                        releaseStatus: available
+                        code:
+                          system: http://loinc.org
+                          code: 4548-4
+                          display: Hemoglobin A1c/Hemoglobin.total in Blood
+                        shortName: Hemoglobin A1c
+                        status: final
+                        effectiveAt: '2026-10-27T16:10:00Z'
+                        issuedAt: '2026-10-27T21:40:00Z'
+                        results:
+                          - code:
+                              system: http://loinc.org
+                              code: 4548-4
+                              display: Hemoglobin A1c/Hemoglobin.total in Blood
+                            shortName: Hemoglobin A1c
+                            value:
+                              value: 7.2
+                              unit: '%'
+                            referenceRange:
+                              low: 4
+                              high: 5.6
+                            interpretation: H
+                        conclusion: Above the target range.
+                      - id: 3b4c5d6e-7f8a-4b9c-8d0e-2f3a4b5c6d7e
+                        releaseStatus: held
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account is not enrolled).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/me/messages:
+    get:
+      operationId: listPortalMessageThreads
+      summary: List my messages
+      description: The patient's message threads with the practice, most recent activity first. A thread is a `patient-message` inbox item (D77); the list carries no message text, which `GET /portal/me/messages/{threadId}` returns.
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMessageThreadList'
+              examples:
+                page:
+                  summary: One open thread
+                  value:
+                    items:
+                      - id: 4c5d6e7f-8a9b-4c0d-9e1f-3a4b5c6d7e8f
+                        subject: Question about my blood pressure medicine
+                        status: open
+                        createdAt: '2026-11-16T15:02:00Z'
+                        lastMessageAt: '2026-11-16T17:45:00Z'
+                        lastMessageFrom: clinic
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account is not enrolled).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+    post:
+      operationId: createPortalMessage
+      summary: Send a message to the practice
+      description: 'Starts a thread with the practice: a `patient-message` inbox item (D77) with the subject as its title, the message as its body and the session''s patient, routed by the inbox service to the practice''s queue for patient messages (a role at the patient''s facility); staff reassign it like any item. Staff answer with `POST /inbox/{inboxItemId}/replies` and `toPatient: true`; only those replies reach the portal. Raises `inbox.item-assigned`. Notifications outside the app, to staff or to the patient, never carry the subject or the text: only "You have a new item in Shri Health" (D81).'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-messages:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: supported
+      x-storage: admin
+      x-events:
+        - inbox.item-assigned
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalMessageCreate'
+            examples:
+              message:
+                summary: A new message
+                value:
+                  subject: Question about my blood pressure medicine
+                  body: Should I take my lisinopril in the morning or at night?
+      responses:
+        '201':
+          description: Created. The new thread.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMessageThread'
+              examples:
+                created:
+                  summary: Sent
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-3a4b5c6d7e8f
+                    subject: Question about my blood pressure medicine
+                    status: open
+                    createdAt: '2026-11-16T15:02:00Z'
+                    lastMessageAt: '2026-11-16T15:02:00Z'
+                    lastMessageFrom: patient
+                    messages:
+                      - id: 5d6e7f8a-9b0c-4d1e-8f2a-4b5c6d7e8f9a
+                        author: patient
+                        body: Should I take my lisinopril in the morning or at night?
+                        sentAt: '2026-11-16T15:02:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-messages:create`: not a patient session, or the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/me/messages/{threadId}:
+    parameters:
+      - name: threadId
+        in: path
+        required: true
+        description: Message thread ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPortalMessageThread
+      summary: Get one message thread
+      description: 'One thread with its messages, oldest first: the patient''s own messages and the staff replies sent with `toPatient: true`. Staff-only replies, assignments, status changes and the names of who holds the item never appear.'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-records:read
+      x-audit:
+        action: R
+        category: phi-read
+        patient: session
+        actor: patient
+      x-storage: admin
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      responses:
+        '200':
+          description: The thread.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMessageThread'
+              examples:
+                answered:
+                  summary: Answered by the practice
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-3a4b5c6d7e8f
+                    subject: Question about my blood pressure medicine
+                    status: open
+                    createdAt: '2026-11-16T15:02:00Z'
+                    lastMessageAt: '2026-11-16T17:45:00Z'
+                    lastMessageFrom: clinic
+                    messages:
+                      - id: 5d6e7f8a-9b0c-4d1e-8f2a-4b5c6d7e8f9a
+                        author: patient
+                        body: Should I take my lisinopril in the morning or at night?
+                        sentAt: '2026-11-16T15:02:00Z'
+                      - id: 6e7f8a9b-0c1d-4e2f-9a3b-5c6d7e8f9a0b
+                        author: clinic
+                        authorName: Dr. Lowe58
+                        body: Either is fine; take it at the same time every day.
+                        sentAt: '2026-11-16T17:45:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-records:read`: not a patient session, or the account is not enrolled).'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such thread of the signed-in patient; another patient's thread gives the same answer, D84).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/me/messages/{threadId}/replies:
+    parameters:
+      - name: threadId
+        in: path
+        required: true
+        description: Message thread ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: replyToPortalMessageThread
+      summary: Reply in a message thread
+      description: 'Adds the patient''s reply to an open thread: a comment on the `patient-message` inbox item, which stays with its assignee, who gets `inbox.item-assigned`. A closed thread (the practice completed or cancelled the item) takes no replies: the patient starts a new message. Notifications outside the app never carry the text (D81).'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-messages:create
+      x-audit:
+        action: C
+        category: phi-write
+        patient: session
+        actor: patient
+      x-idempotency: supported
+      x-storage: admin
+      x-events:
+        - inbox.item-assigned
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyOptional'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalMessageReply'
+            examples:
+              reply:
+                summary: Reply
+                value:
+                  body: Thank you, I will take it every morning.
+      responses:
+        '200':
+          description: The thread, with the reply.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalMessageThread'
+              examples:
+                replied:
+                  summary: Replied
+                  value:
+                    id: 4c5d6e7f-8a9b-4c0d-9e1f-3a4b5c6d7e8f
+                    subject: Question about my blood pressure medicine
+                    status: open
+                    createdAt: '2026-11-16T15:02:00Z'
+                    lastMessageAt: '2026-11-16T18:10:00Z'
+                    lastMessageFrom: patient
+                    messages:
+                      - id: 5d6e7f8a-9b0c-4d1e-8f2a-4b5c6d7e8f9a
+                        author: patient
+                        body: Should I take my lisinopril in the morning or at night?
+                        sentAt: '2026-11-16T15:02:00Z'
+                      - id: 6e7f8a9b-0c1d-4e2f-9a3b-5c6d7e8f9a0b
+                        author: clinic
+                        authorName: Dr. Lowe58
+                        body: Either is fine; take it at the same time every day.
+                        sentAt: '2026-11-16T17:45:00Z'
+                      - id: 7f8a9b0c-1d2e-4f3a-8b4c-6d7e8f9a0b1c
+                        author: patient
+                        body: Thank you, I will take it every morning.
+                        sentAt: '2026-11-16T18:10:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-messages:create`: not a patient session, or the account is not enrolled; or the chart is inactive); `csrf-check-failed` (missing or wrong CSRF header or Origin).'
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such thread of the signed-in patient; another patient's thread gives the same answer, D84).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the thread is closed; start a new message); `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a field is invalid); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/me/record-download-url:
+    get:
+      operationId: getPortalRecordDownloadUrl
+      summary: Download my health record
+      description: '"My records": builds the patient''s own record as a PDF (`pdf`) or a FHIR R4 `Bundle` of type `collection` in JSON (`fhir-r4`, the US Core resources the portal shows), and returns a one-time link to it (D105). It holds what the portal shows and nothing more: released items only (D86); held items, drafts, entered-in-error records and psychotherapy notes are left out (D90). The link points at `GET /portal/me/files/{fileId}/content`, for this patient''s portal session only, valid for about one minute and accepted once.'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: portal-records:export
+      x-audit:
+        action: R
+        category: export
+        patient: session
+        actor: patient
+      x-storage: files
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      parameters:
+        - name: format
+          in: query
+          required: true
+          description: '`pdf` (a readable summary) or `fhir-r4` (a FHIR R4 Bundle, `application/fhir+json`).'
+          schema:
+            type: string
+            enum:
+              - pdf
+              - fhir-r4
+          x-phi: none
+      responses:
+        '200':
+          description: 'The link: for this patient''s portal session only, valid for about one minute, accepted once.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDownloadUrl'
+              examples:
+                link:
+                  summary: Link
+                  value:
+                    url: https://portal.company-domain.invalid/api/v1/portal/me/files/8a9b0c1d-2e3f-4a4b-9c5d-7e8f9a0b1c2d/content?token=TEST-download-token-0000000000000000000002
+                    expiresAt: '2035-01-01T16:01:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid portal session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: '403. `permission-denied` (the session lacks `portal-records:export`: not a patient session, or the account is not enrolled).'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`format` is missing or not `pdf` or `fhir-r4`).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the record can't be built right now, because the key service or the object store is unavailable).
+  /portal/me/files/{fileId}/content:
+    parameters:
+      - name: fileId
+        in: path
+        required: true
+        description: File ID.
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: downloadPortalFileContent
+      summary: Download one of my files
+      description: 'Where a portal download link points (D105, for a patient session): our own API, never the object store, because files are encrypted at rest. The token was issued, with the release and own-record checks, by the portal operation that gave out the link (`GET /portal/me/visit-summaries/{visitSummaryId}/download-url` or `GET /portal/me/record-download-url`). **The token is not enough on its own:** the request must also carry the portal session of the same patient it was issued to (the browser sends the portal session cookie with the link). Core signs and checks the token: for this portal session''s patient and this file, not expired (about one minute) and not used: it is accepted once. A staff token never works here, and a portal token never works on `GET /files/{fileId}/content`. **Every invalid, expired, reused, other-patient or other-file token gets the same `404`**, as does a file that isn''t the session patient''s (D84), so neither can be probed; the screen asks for a new link. The API then decrypts the file as it streams it, with `Content-Disposition: attachment`, `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. **The query string is never logged on this route**, neither by nginx nor by the API, and the token never appears in events or audit rows. Every download is audited as an export, with the patient from the session. The token is one of the two query parameters the credentials-in-URL lint rule allows, each only on its own download operation (this one and `downloadFileContent`; CONTRACT_GOVERNANCE §5).'
+      tags:
+        - portal
+      x-owner: anand
+      x-permission: authenticated
+      x-audit:
+        action: R
+        category: export
+        patient: session
+        actor: patient
+      x-storage: files
+      x-release: P1
+      security:
+        - portalSessionCookie: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: 'The one-time download token from the link. Not enough on its own: the same patient''s portal session must come with it. Never logged; on this route the query string is dropped from nginx and API logs.'
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{32,512}$
+            minLength: 32
+            maxLength: 512
+          x-phi: none
+      responses:
+        '200':
+          description: The file's bytes, decrypted, with its own media type.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            Content-Disposition:
+              description: Always `attachment`, with a file name made from the purpose and the file ID, never from patient data.
+              schema:
+                type: string
+                maxLength: 200
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+            Referrer-Policy:
+              description: Always `no-referrer`, so the link and its token are never sent on as a Referer.
+              schema:
+                type: string
+                const: no-referrer
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                maxLength: 2147483648
+                description: The file. Its real media type is in `Content-Type` (the file's own).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: '401. `unauthenticated` (no valid portal session: the token alone is never enough); `session-expired` (the session ended).'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (not a patient session, or the account is not enrolled).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: '404. `not-found` (no such file of the signed-in patient, or the token is invalid, expired, already used, another session''s or for another file: always the same answer).'
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the file is no longer `clean`).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`token` is missing, or doesn't match its pattern). A well-formed token that core refuses is `404`.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (the file can't be decrypted right now, because the key service or the object store is unavailable).
   /portal/practices/{practiceLinkId}/pre-registrations:
     parameters:
       - name: practiceLinkId
@@ -25977,6 +26561,63 @@ components:
           $ref: '#/components/schemas/PharmacyAddress'
           description: Address.
           x-phi: clinical
+    ClinicianRef:
+      description: A clinician or staff member, for display.
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Practitioner ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    PatientConsent:
+      description: 'The current consent of one kind: the latest `active` consent of that kind (`GET /patients/{patientId}/consents` has the full history).'
+      type: object
+      required:
+        - kind
+        - decision
+        - signedAt
+      properties:
+        kind:
+          type: string
+          enum:
+            - treatment
+            - privacy-notice
+            - ambient-recording
+            - telehealth
+            - research
+            - information-sharing
+            - financial
+          description: What the consent is for. `ambient-recording` is the recording consent AI-01 needs.
+          x-phi: clinical
+        decision:
+          type: string
+          enum:
+            - permit
+            - deny
+          default: permit
+          description: The patient's decision.
+          x-phi: clinical
+        signedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was given.
+          x-phi: identifier
+        policyVersion:
+          type: string
+          maxLength: 40
+          description: Version of the form or notice the patient saw.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          description: The staff member who recorded it.
+          x-phi: none
     Patient:
       description: 'A patient: demographics, contact details and identifiers (FHIR-shaped `Patient`, US Core Patient).'
       type: object
@@ -26107,6 +26748,14 @@ components:
         preferredPharmacy:
           $ref: '#/components/schemas/PharmacyRef'
           description: Preferred pharmacy, set with `PUT /patients/{patientId}/preferred-pharmacy` (D50). Absent when none is chosen.
+          x-phi: clinical
+        consents:
+          type: array
+          maxItems: 20
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/PatientConsent'
+          description: 'The current consent of each kind, one entry per kind recorded (kinds never recorded are left out). Read-only: consents are recorded with `POST /patients/{patientId}/consents`.'
           x-phi: clinical
         generalPractitionerId:
           $ref: '#/components/schemas/Id'
@@ -26904,6 +27553,11 @@ components:
         createdAt:
           $ref: '#/components/schemas/Timestamp'
           description: When it was recorded.
+          x-phi: none
+        recordedBy:
+          $ref: '#/components/schemas/ClinicianRef'
+          readOnly: true
+          description: The staff member who recorded it, from the session (never the body). Read-only.
           x-phi: none
     ConsentList:
       description: One page of consents, newest first.
@@ -28997,22 +29651,6 @@ components:
         - finished
         - cancelled
         - entered-in-error
-    ClinicianRef:
-      description: A clinician or staff member, for display.
-      type: object
-      required:
-        - id
-        - displayName
-      properties:
-        id:
-          $ref: '#/components/schemas/Id'
-          description: Practitioner ID.
-          x-phi: internal-id
-        displayName:
-          type: string
-          maxLength: 200
-          description: Name as shown on screens (staff, not patient data).
-          x-phi: none
     EncounterDiagnosis:
       description: 'A diagnosis on this encounter: a Condition with category `encounter-diagnosis`, ranked 1 to 12 for the claim (FRS FR-ENC-02; DATA_OWNERSHIP §2.5). Entered-in-error diagnoses are kept for audit but left out of the chart, problem list, decision support, AI summaries, claims and patient views (D24).'
       type: object
@@ -35956,7 +36594,7 @@ components:
           description: When the session stops accepting a card.
           x-phi: none
     InboxItemType:
-      description: 'Kind of inbox item (BATCH3_PLAN §3). An extensible enum (API_STANDARDS §6.5): later batches add kinds, so screens show an unknown kind as a generic item. `message` and `task` come from `POST /messages`; every other kind is created and, except where noted, completed by the inbox service from an event: `cosign` and `cosign-returned` (notes), `unsigned-note` (a draft note at check-out), `fax-indexing` (an incoming fax; filing completes it), `document-review` (a filed document routed to a clinician), `result-review` (B5; within 60 seconds, FR-ORD-02), `refill-request` and `prescription-failure` (B5), `unmatched-result` (B5), `break-glass-review` (for the compliance officer, A36), `eligibility`, `claim-rejection` and `rooming`.'
+      description: 'Kind of inbox item (BATCH3_PLAN §3). An extensible enum (API_STANDARDS §6.5): later batches add kinds, so screens show an unknown kind as a generic item. `message` and `task` come from `POST /messages`; every other kind is created and, except where noted, completed by the inbox service from an event: `cosign` and `cosign-returned` (notes), `unsigned-note` (a draft note at check-out), `fax-indexing` (an incoming fax; filing completes it), `document-review` (a filed document routed to a clinician), `result-review` (B5; within 60 seconds, FR-ORD-02), `refill-request` and `prescription-failure` (B5), `unmatched-result` (B5), `break-glass-review` (for the compliance officer, A36), `eligibility`, `claim-rejection` and `rooming`. `patient-message` is a message a patient sent from the portal (`POST /portal/me/messages`): the patient is its sender, so it has no `createdBy`; staff answer it with `POST /inbox/{inboxItemId}/replies` and `toPatient: true`, and complete or cancel it by hand like a message, which closes the portal thread.'
       type: string
       maxLength: 40
       x-extensible-enum:
@@ -35975,6 +36613,7 @@ components:
         - eligibility
         - claim-rejection
         - rooming
+        - patient-message
     InboxItemStatus:
       description: Where the item is (DATA_OWNERSHIP §5.9). `open` (waiting; in a role queue or with one person), `in-progress`, `on-hold` (waiting on someone else), `completed`, `cancelled` (a message or task closed with a reason). Who has it is `assignee`, not the status.
       type: string
@@ -36127,6 +36766,14 @@ components:
           maxLength: 4000
           description: The reply, completion comment or cancel reason. May contain PHI.
           x-phi: clinical
+        fromPatient:
+          type: boolean
+          description: True on a comment the patient wrote on the portal (a `patient-message` item); `by` is then absent.
+          x-phi: none
+        toPatient:
+          type: boolean
+          description: 'True on a staff reply sent to the patient (`toPatient: true`), which the patient reads on the portal thread. Other comments stay among staff.'
+          x-phi: none
     InboxItem:
       description: One inbox item (`work_item`; BATCH3_PLAN §3). Visible only to users at its facility who are its assignee, hold its role, or sent it, and who hold the read permission for its kind (§5).
       type: object
@@ -36219,7 +36866,7 @@ components:
           x-phi: none
         createdBy:
           $ref: '#/components/schemas/StaffRef'
-          description: The sender. Absent for items the system created.
+          description: The sender. Absent for items the system created and for a `patient-message`, which the patient sent.
           x-phi: none
         createdAt:
           $ref: '#/components/schemas/Timestamp'
@@ -36417,6 +37064,11 @@ components:
           type: boolean
           default: true
           description: 'Hand the item to the other party: the sender when the assignee (or a holder of the assignee role) replies, the assignee when the sender replies. Messages and tasks only, and only for those two parties: for anyone else, and for items the system created, the reply is added and the item stays where it is. The hand-back is checked inside the transaction, so it only happens if the replier is still the assignee or the sender at that moment, and the new assignee must work at the facility and be able to see the item (as for PATCH). Default true.'
+          x-phi: none
+        toPatient:
+          type: boolean
+          default: false
+          description: 'For a `patient-message` item only: true sends this reply to the patient, who reads it on the portal thread (`GET /portal/me/messages/{threadId}`); false (the default) keeps it among staff. Only replies with `toPatient: true` ever reach the portal. True on any other kind is `422` (`/toPatient` `not-allowed-value`); on an item about a restricted chart the user may not open it is `403 break-glass-required` (D37). The reply never goes out by email, SMS or push: outside the app the patient gets only "You have a new item in Shri Health" (D81).'
           x-phi: none
     MessageCreate:
       description: Body to send a message or create a task (#217; Q1; Minalini's item). The sender must work at `facilityId`, and must be able to open `patientId` and the linked `subject` (D80); a user assignee must work there too.
@@ -37291,7 +37943,7 @@ components:
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
     PortalDownloadUrl:
-      description: A short-lived link to the PDF (the file service; no patient data in the link).
+      description: 'A one-time download link (D105; no patient data in the link): it points at `GET /portal/me/files/{fileId}/content` on our own API, for this patient''s portal session only.'
       type: object
       required:
         - url
@@ -37301,11 +37953,11 @@ components:
           type: string
           format: uri
           maxLength: 2000
-          description: Download link, valid until `expiresAt`.
+          description: 'A link to `GET /portal/me/files/{fileId}/content` with a one-time token: for this patient''s portal session only, valid until `expiresAt` (about one minute), accepted once (D105). A bearer secret: never log or store it.'
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
-          description: When the link stops working (5 minutes).
+          description: When the link stops working (about one minute).
           x-phi: none
     PortalProblem:
       description: 'A health issue on the patient''s problem list (entered-in-error entries never appear, D24). A clinician may hold a problem from the portal for one of two reasons only (D90): a risk of harm to the life or physical safety of the patient or another person, or the patient''s own request to wait. A held problem is listed with `releaseStatus: held` and its `id` only: no content, and never the reason. Allergies and vitals are never held.'
@@ -37585,6 +38237,311 @@ components:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
+    PortalReferenceRange:
+      description: The lab's reference range, as numbers in the result's unit or as text.
+      type: object
+      properties:
+        low:
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+          description: The range's low end, in the result's unit.
+          x-phi: clinical
+        high:
+          type: number
+          minimum: -1000000
+          maximum: 1000000
+          description: The range's high end, in the result's unit.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 200
+          description: The range as text, when the lab gives no numbers.
+          x-phi: clinical
+    PortalLabObservation:
+      description: One analyte of a lab report (FHIR `Observation`, category `laboratory`), final, amended or corrected only.
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          $ref: '#/components/schemas/CodedValue'
+          description: The analyte (LOINC).
+          x-phi: clinical
+        shortName:
+          type: string
+          maxLength: 100
+          description: A short name for screens, e.g. "Hemoglobin A1c".
+          x-phi: clinical
+        value:
+          $ref: '#/components/schemas/Quantity'
+          description: The measured value with its UCUM unit. Absent when the result is text.
+          x-phi: clinical
+        text:
+          type: string
+          maxLength: 2000
+          description: A result given as text (for example "Negative"). Absent when the result is a quantity.
+          x-phi: clinical
+        referenceRange:
+          $ref: '#/components/schemas/PortalReferenceRange'
+          description: The lab's reference range, when it gives one.
+          x-phi: clinical
+        interpretation:
+          type: string
+          enum:
+            - H
+            - L
+            - 'N'
+            - A
+          description: High, low, normal or abnormal (HL7 v3 ObservationInterpretation). A critically high or low result (`HH`, `LL` on the staff read) is shown as `H` or `L`.
+          x-phi: clinical
+    PortalLabResult:
+      description: 'A lab report (FHIR `DiagnosticReport`, category `LAB`): final, amended, corrected or appended only (Q32). A clinician may hold a report from the portal for one of two reasons only (D90): a risk of harm to the life or physical safety of the patient or another person, or the patient''s own request to wait. A held report is listed with `releaseStatus: held` and its `id` only: no content, and never the reason.'
+      type: object
+      required:
+        - id
+        - releaseStatus
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The report's ID.
+          x-phi: internal-id
+        releaseStatus:
+          $ref: '#/components/schemas/PortalReleaseStatus'
+          description: Available or held (D90).
+          x-phi: none
+        code:
+          $ref: '#/components/schemas/CodedValue'
+          description: The test or panel (LOINC). Absent while held.
+          x-phi: clinical
+        shortName:
+          type: string
+          maxLength: 100
+          description: A short name for screens, e.g. "Lipid panel". Absent while held.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - final
+            - amended
+            - corrected
+            - appended
+          description: The report's status (FHIR DiagnosticReport.status). Absent while held.
+          x-phi: clinical
+        effectiveAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the specimen was collected. Absent while held.
+          x-phi: identifier
+        issuedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the lab issued this version of the report. Absent while held.
+          x-phi: none
+        results:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalLabObservation'
+          description: The analytes. Absent while held.
+          x-phi: clinical
+        conclusion:
+          type: string
+          maxLength: 4000
+          description: The lab's or the clinician's conclusion, when there is one. Absent while held.
+          x-phi: clinical
+    PortalLabResultList:
+      description: The patient's lab reports, newest first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalLabResult'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalMessageThreadSummary:
+      description: A message thread with the practice, without its messages (the list).
+      type: object
+      required:
+        - id
+        - subject
+        - status
+        - createdAt
+        - lastMessageAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Thread ID.
+          x-phi: internal-id
+        subject:
+          type: string
+          minLength: 3
+          maxLength: 200
+          description: The subject the patient gave.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+          description: '`open` (replies welcome), or `closed` once the practice completed or cancelled the item: start a new message.'
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the patient started it.
+          x-phi: none
+        lastMessageAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the latest message the patient can see was sent.
+          x-phi: none
+        lastMessageFrom:
+          type: string
+          enum:
+            - patient
+            - clinic
+          description: Who sent the latest message the patient can see.
+          x-phi: none
+    PortalMessageThreadList:
+      description: The patient's message threads, most recent activity first.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PortalMessageThreadSummary'
+          description: The items on this page.
+          x-phi: clinical
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PortalMessageCreate:
+      description: Body to start a thread with the practice.
+      type: object
+      additionalProperties: false
+      required:
+        - subject
+        - body
+      properties:
+        subject:
+          type: string
+          minLength: 3
+          maxLength: 200
+          description: The subject. Never in a notification outside the app (D81).
+          x-phi: clinical
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The message. Never in a notification outside the app (D81).
+          x-phi: clinical
+    PortalMessage:
+      description: 'One message in a thread, from the patient or from the practice (a staff reply sent with `toPatient: true`).'
+      type: object
+      required:
+        - id
+        - author
+        - body
+        - sentAt
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Message ID.
+          x-phi: internal-id
+        author:
+          type: string
+          enum:
+            - patient
+            - clinic
+          description: '`patient` (the patient wrote it) or `clinic` (a staff member of the practice).'
+          x-phi: none
+        authorName:
+          type: string
+          maxLength: 200
+          description: For `clinic`, the staff member's name as shown on screens. Absent for `patient`.
+          x-phi: none
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The text.
+          x-phi: clinical
+        sentAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was sent.
+          x-phi: none
+    PortalMessageThread:
+      description: A message thread with the practice, with its messages, oldest first.
+      type: object
+      required:
+        - id
+        - subject
+        - status
+        - createdAt
+        - lastMessageAt
+        - messages
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: Thread ID.
+          x-phi: internal-id
+        subject:
+          type: string
+          minLength: 3
+          maxLength: 200
+          description: The subject the patient gave.
+          x-phi: clinical
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+          description: '`open` (replies welcome), or `closed` once the practice completed or cancelled the item: start a new message.'
+          x-phi: none
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the patient started it.
+          x-phi: none
+        lastMessageAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the latest message the patient can see was sent.
+          x-phi: none
+        lastMessageFrom:
+          type: string
+          enum:
+            - patient
+            - clinic
+          description: Who sent the latest message the patient can see.
+          x-phi: none
+        messages:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/PortalMessage'
+          description: 'The patient''s messages and the staff replies sent with `toPatient: true`, oldest first.'
+          x-phi: clinical
+    PortalMessageReply:
+      description: Body to reply in a thread.
+      type: object
+      additionalProperties: false
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The reply. Never in a notification outside the app (D81).
+          x-phi: clinical
     PreRegistrationCreate:
       description: Body of the public pre-registration form (D96).
       type: object

@@ -49,7 +49,7 @@ paths:
         description: Only these kinds; repeat the parameter for several.
         schema:
           type: array
-          maxItems: 15
+          maxItems: 20
           items:
             type: string
             maxLength: 40
@@ -680,7 +680,8 @@ paths:
       description: 'Adds a reply to the item''s thread (new inventory row #254; D38: the inbox holds message threads). Anyone
         who can see the item may reply; replies are insert-only. Only the assignee (or a holder of its role) and the sender
         of a message or task hand it to the other party (`assignBack`, default true), who gets `inbox.item-assigned`; a reply
-        never moves an item for anyone else.'
+        never moves an item for anyone else. On a `patient-message` item, `toPatient: true` sends the reply to the patient''s
+        portal thread; without it the reply stays among staff.'
       tags:
       - inbox
       x-owner: anand
@@ -730,8 +731,9 @@ paths:
         '401': *id006
         '403':
           $ref: ../components/responses/Forbidden.yaml
-          description: 403. `permission-denied` (the role lacks `messages:create`); `csrf-check-failed` (missing or wrong
-            CSRF header or Origin).
+          description: '403. `permission-denied` (the role lacks `messages:create`); `break-glass-required` (`toPatient: true`
+            on an item about a restricted chart the user may not open, D37); `csrf-check-failed` (missing or wrong CSRF header
+            or Origin).'
         '404': *id016
         '409':
           $ref: ../components/responses/Conflict.yaml
@@ -739,8 +741,9 @@ paths:
             (a request with this Idempotency-Key is still running).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: 422. `validation-failed` (a body field or a parameter is invalid); `idempotency-key-reused` (the Idempotency-Key
-            was used with a different body).
+          description: '422. `validation-failed` (a body field or a parameter is invalid; `errors` names `/toPatient` `not-allowed-value`
+            when it is true on an item that is not a `patient-message`); `idempotency-key-reused` (the Idempotency-Key was
+            used with a different body).'
         '429': *id007
         '500': *id008
   /messages:
@@ -871,7 +874,9 @@ components:
         `unsigned-note` (a draft note at check-out), `fax-indexing` (an incoming fax; filing completes it), `document-review`
         (a filed document routed to a clinician), `result-review` (B5; within 60 seconds, FR-ORD-02), `refill-request` and
         `prescription-failure` (B5), `unmatched-result` (B5), `break-glass-review` (for the compliance officer, A36), `eligibility`,
-        `claim-rejection` and `rooming`.'
+        `claim-rejection` and `rooming`. `patient-message` is a message a patient sent from the portal (`POST /portal/me/messages`):
+        the patient is its sender, so it has no `createdBy`; staff answer it with `POST /inbox/{inboxItemId}/replies` and
+        `toPatient: true`, and complete or cancel it by hand like a message, which closes the portal thread.'
       type: string
       maxLength: 40
       x-extensible-enum:
@@ -890,6 +895,7 @@ components:
       - eligibility
       - claim-rejection
       - rooming
+      - patient-message
     InboxItemStatus:
       description: Where the item is (DATA_OWNERSHIP §5.9). `open` (waiting; in a role queue or with one person), `in-progress`,
         `on-hold` (waiting on someone else), `completed`, `cancelled` (a message or task closed with a reason). Who has it
@@ -1059,6 +1065,15 @@ components:
           maxLength: 4000
           description: The reply, completion comment or cancel reason. May contain PHI.
           x-phi: clinical
+        fromPatient:
+          type: boolean
+          description: 'True on a comment the patient wrote on the portal (a `patient-message` item); `by` is then absent.'
+          x-phi: none
+        toPatient:
+          type: boolean
+          description: 'True on a staff reply sent to the patient (`toPatient: true`), which the patient reads on the portal
+            thread. Other comments stay among staff.'
+          x-phi: none
     InboxItem:
       description: One inbox item (`work_item`; BATCH3_PLAN §3). Visible only to users at its facility who are its assignee,
         hold its role, or sent it, and who hold the read permission for its kind (§5).
@@ -1157,7 +1172,7 @@ components:
           x-phi: none
         createdBy:
           $ref: '#/components/schemas/StaffRef'
-          description: The sender. Absent for items the system created.
+          description: The sender. Absent for items the system created and for a `patient-message`, which the patient sent.
           x-phi: none
         createdAt:
           $ref: ../components/schemas/Timestamp.yaml
@@ -1397,4 +1412,13 @@ components:
             else, and for items the system created, the reply is added and the item stays where it is. The hand-back is checked
             inside the transaction, so it only happens if the replier is still the assignee or the sender at that moment,
             and the new assignee must work at the facility and be able to see the item (as for PATCH). Default true.'
+          x-phi: none
+        toPatient:
+          type: boolean
+          default: false
+          description: 'For a `patient-message` item only: true sends this reply to the patient, who reads it on the portal
+            thread (`GET /portal/me/messages/{threadId}`); false (the default) keeps it among staff. Only replies with `toPatient:
+            true` ever reach the portal. True on any other kind is `422` (`/toPatient` `not-allowed-value`); on an item about
+            a restricted chart the user may not open it is `403 break-glass-required` (D37). The reply never goes out by email,
+            SMS or push: outside the app the patient gets only "You have a new item in Shri Health" (D81).'
           x-phi: none
