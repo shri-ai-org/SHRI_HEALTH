@@ -3,9 +3,10 @@
  * the Overview's two cards that show them (D115: adapted from ResultsPartPage, ReportsPage,
  * ResultsCard and ReportCard in this folder, which keep the mock-up's sample screens). Read only,
  * from shri-health/results.ts; every time is the clinic's (D40).
- *   Test results    — each lab report, newest first: its name, when collected, the lab, and its
- *                     analytes in a table (value with unit or the lab's text, reference range, the
- *                     flag in a word), then the lab's conclusion.
+ *   Test results    — each test with two or more numeric values as a graph over time
+ *                     (LabTrendCard), then each lab report, newest first: its name, when
+ *                     collected, the lab, and its analytes in a table (value with unit or the
+ *                     lab's text, reference range, the flag in a word), then the lab's conclusion.
  *   Imaging reports — each report, newest first: the study, when it was done, the radiology group,
  *                     the impression, and the full report. Text only: there are no images behind
  *                     these reports, so there is no viewer and no image area.
@@ -26,6 +27,7 @@ import { RangeBar } from '../ui/RangeBar'
 import { StatTile } from '../ui/StatTile'
 
 import { ClinicalFlag, TextLink } from './bits'
+import { LabTrendCard } from './LabTrendCard'
 
 const when = (at?: string) => (at ? formatClinicDateTime(at) : 'date not recorded')
 const statusChip = (status: string) => (status === 'final' ? null : <Chip word={status} tone={status === 'amended' || status === 'corrected' ? 'warn' : 'neu'} />)
@@ -58,6 +60,8 @@ export function ApiResults({ patient: p }: { patient: Patient }) {
         />
         <StatTile label="Analytes" value={reports.reduce((n, r) => n + r.analytes.length, 0)} sub="across every report" />
       </div>
+
+      <LabTrendCard reports={reports} />
 
       {reports.length === 0 ? (
         <Card titleSize="sm" title="Test results">
