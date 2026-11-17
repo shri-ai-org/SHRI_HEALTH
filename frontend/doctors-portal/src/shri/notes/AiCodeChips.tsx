@@ -194,6 +194,12 @@ export function AiCodeChips({ encounterId, patientId, locked }: { encounterId: s
               ))}
             </ul>
           )}
+          {/* Once nothing is left to decide, the doctor may ask again (after writing more of the note, say). */}
+          {mayAsk && !locked && visibleCodes(phase.value).every((c) => c.decision !== 'pending') && (
+            <Pill variant="control" size="md" icon={RotateCcw} onClick={ask} className="self-start">
+              Ask again
+            </Pill>
+          )}
           <RejectDialog
             open={rejecting !== null}
             capabilityName={rejecting ? `Suggested code ${rejecting.code}` : 'Suggested code'}
