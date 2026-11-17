@@ -98,6 +98,11 @@ async def mark_ai_drafted(db: AsyncSession, note_id: UUID,
     return sections
 
 
+async def mark_ai_assisted(db: AsyncSession, note_id: UUID) -> None:
+    """Marks a draft note AI-assisted (an accepted or edited AI visit summary went into it)."""
+    await db.execute(_AI_NOTE, {"note": note_id})
+
+
 # ------------------------------------------------------------------------------- vocabulary
 #: VitalType -> LOINC (the contract's VitalType; the helpers write the same codes).
 VITAL_LOINC: dict[str, str] = {

@@ -114,6 +114,15 @@ class SuggestionRecord:
     unknowns: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class DecisionRecord:
+    """A decided suggestion's who, when and what (a visit summary's view of its decision)."""
+    decided_at: datetime | None
+    decided_by: ClinicianRef | None
+    rejection_reason: str | None
+    edited_content: dict[str, Any] | None
+
+
 class AIRepository(Protocol):
     async def switches(self, db: AsyncSession, feature: AIFeature) -> Switches: ...
 
@@ -156,6 +165,9 @@ class AIRepository(Protocol):
     async def practitioner_of_user(self, db: AsyncSession, user_id: UUID) -> UUID | None: ...
 
     async def month_usage(self, db: AsyncSession) -> list[Usage]: ...
+
+    async def decision_record(self, db: AsyncSession, suggestion_id: UUID
+                              ) -> DecisionRecord | None: ...
 
 
 def _prompt(row: PromptTemplate) -> PromptRef:
@@ -330,6 +342,21 @@ class SqlAIRepository:
         rows = (await db.execute(_MONTH_USAGE)).mappings().all()
         return [Usage(r["model_name"], int(r["tokens_in"]), int(r["tokens_out"])) for r in rows]
 
+    async def decision_record(self, db: AsyncSession, suggestion_id: UUID
+                              ) -> DecisionRecord | None:
+        """Who decided a suggestion, when, and what they wrote (the rejection reason, the
+        edited content); None for one the session can't see."""
+        r = (await db.execute(_DECISION, {"id": suggestion_id})).mappings().first()
+        if r is None:
+            return None
+        return DecisionRecord(
+            decided_at=r["decided_at"],
+            decided_by=ClinicianRef(id=r["decider_practitioner_id"] or r["decider_id"],
+                                    display_name=r["decider_name"] or "")
+            if r["decider_id"] is not None else None,
+            rejection_reason=r["rejection_reason"],
+            edited_content=dict(r["edited_content"]) if r["edited_content"] else None)
+
 
 def _age(born: date) -> int:
     today = datetime.now(UTC).date()
@@ -414,3 +441,12 @@ def _unique(sources: Sequence[SourceRef]) -> list[SourceRef]:
             seen.add((s.resource_type, s.resource_id))
             out.append(s)
     return out
+
+
+_DECISION = text("""
+SELECT s.decided_at, s.rejection_reason, s.edited_content, u.id AS decider_id,
+       u.practitioner_id AS decider_practitioner_id, u.display_name AS decider_name
+FROM admin.ai_suggestion s
+LEFT JOIN admin.app_user u ON u.id = s.decided_by_user_id
+WHERE s.id = :id
+""")

@@ -83,6 +83,7 @@ from .schemas import (
     Transcription,
     VisitSummary,
     VisitSummaryCreate,
+    VisitSummaryDecision,
 )
 from .service import Gateway
 from .transcripts import FileTranscripts, Transcripts
@@ -568,6 +569,32 @@ async def decide_ai_suggestion(
 ) -> AiSuggestion:
     return await rules.decide(db, repo, drafts, check, user, suggestion_id, body,
                               _named(request, audit))
+
+
+def summary_placer(check: Annotated[rules.ChartCheck, Depends(chart_check)]
+                   ) -> visits_ai.PlaceSummary:
+    """An accepted or edited visit summary goes into the note through the encounters' seam
+    (encounters/ai_drafts.py ``place_visit_summary``): the note-editing checks, Anand's note
+    helper, no commit of its own."""
+    async def place(db: AsyncSession, user: CurrentUser, encounter_id: UUID, note_id: UUID,
+                    text: str) -> UUID:
+        return await EncounterNoteDrafts().place_visit_summary(db, check, user, encounter_id,
+                                                               note_id, text)
+
+    return place
+
+
+@router.post("/ai/visit-summaries/{visitSummaryId}/decision", operation_id="decideVisitSummary",
+             response_model=VisitSummary, response_model_exclude_none=True)
+async def decide_visit_summary(
+    user: Annotated[CurrentUser, Depends(require("ai-suggestions:decision"))],
+    summary_id: Annotated[UUID, Path(alias="visitSummaryId")], body: VisitSummaryDecision,
+    request: Request, db: DB, repo: Repo, check: Check, audit: Audit,
+    place: Annotated[visits_ai.PlaceSummary, Depends(summary_placer)],
+) -> VisitSummary:
+    """``accepted`` and ``edited`` put the text in the draft note in the same transaction."""
+    return await visits_ai.decide(db, repo, check, place, user, summary_id, body,
+                                  _named(request, audit))
 
 
 @router.get("/ai/transcriptions/{transcriptionId}", operation_id="getTranscription",

@@ -415,12 +415,25 @@ class VisitSummaryCreate(Closed):
     encounter_id: UUID
 
 
+class VisitSummaryDecision(Closed):
+    decision: Literal["accepted", "edited", "rejected"]
+    note_id: UUID | None = None
+    text: Annotated[str, StringConstraints(min_length=1, max_length=4000)] | None = None
+    reason: Annotated[str, StringConstraints(min_length=1, max_length=500)] | None = None
+
+
 class VisitSummary(Out):
     id: UUID
     patient_id: UUID
     encounter_id: UUID
     statements: list[ChartAnswerStatement]
     insufficient_evidence: bool
+    decision: Literal["pending", "accepted", "edited", "rejected"] = "pending"
+    decided_at: datetime | None = None
+    decided_by: ClinicianRef | None = None
+    rejection_reason: str | None = None
+    edited_text: str | None = None
+    note_id: UUID | None = None
     ai_generated: Literal[True] = True
     generated_by: AiGeneratedBy
     created_at: datetime
