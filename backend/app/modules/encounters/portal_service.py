@@ -17,10 +17,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from app.core.deps import PortalPatient, require_own_record
+from app.core.download_tokens import PortalDownloadTokens
+from app.core.errors import Conflict, NotFound
 from app.modules.scheduling.portal_service import own_rows
 from app.modules.scheduling.service import decode_cursor, encode_cursor
 
@@ -80,3 +83,22 @@ async def one(db: Any, reads: Reads, patient: PortalPatient, summary_id: UUID
         require_own_record(patient, None)  # 404, as for another patient's record (D84)
         raise AssertionError("unreachable")
     return found
+
+
+async def download_url(db: Any, reads: Reads, patient: PortalPatient, summary_id: UUID,
+                       tokens: PortalDownloadTokens) -> ps.PortalDownloadUrl:
+    """getPortalVisitSummaryDownloadUrl: the session patient's released summary only (404 as for
+    another patient's, D84; 409 while a clinician holds it, D86), then a link to the portal's
+    decrypting route with core's portal token, bound to this patient, this file and this clinic,
+    one minute, used once (D105). The route checks the file again before a byte is sent."""
+    found = await one(db, reads, patient, summary_id)
+    if found.release_status == "held":
+        raise Conflict(code="invalid-state-transition", currentState="held")
+    file_id = await reads.summary_file(db, summary_id)
+    if file_id is None:
+        raise NotFound()
+    claims = tokens.claims(file_id, patient.patient_id, patient.organization_id)
+    token = tokens.sign(claims)
+    return ps.PortalDownloadUrl(
+        url=f"/api/v1/portal/me/files/{file_id}/content?{urlencode({'token': token})}",
+        expires_at=claims.expires_at)

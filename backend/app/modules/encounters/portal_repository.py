@@ -58,6 +58,8 @@ class PortalSummaryReads(Protocol):
 
     async def provider_names(self, db: Any, ids: list[UUID]) -> dict[UUID, str]: ...
 
+    async def summary_file(self, db: Any, summary_id: UUID) -> UUID | None: ...
+
 
 # The latest current summary of each visit. available_at: when it was made, or when its last
 # hold was lifted, whichever is later (a lifted hold's marker row stays readable, D90).
@@ -89,6 +91,16 @@ _ZONE = text("SELECT timezone FROM admin.facility WHERE is_active ORDER BY code,
 DEFAULT_ZONE = "UTC"
 
 
+# The summary's PDF: its document's attachment, read as shri_portal, whose own-chart policy shows
+# only content of the session patient's visible documents. The download route checks the file
+# again through admin.portal_file() (0025) before a byte is sent (D105).
+_SUMMARY_FILE = text("""
+SELECT c.attachment_binary_object_id FROM clinical.document_reference_content c
+WHERE c.document_reference_id = :id AND c.attachment_binary_object_id IS NOT NULL
+ORDER BY c.id LIMIT 1
+""")
+
+
 class SqlPortalSummaryReads:
     async def released(self, db: AsyncSession, patient_id: UUID) -> list[SummaryRow]:
         rows = list((await db.execute(_RELEASED, {"patient": patient_id,
@@ -111,3 +123,9 @@ class SqlPortalSummaryReads:
 
     async def provider_names(self, db: AsyncSession, ids: list[UUID]) -> dict[UUID, str]:
         return await scheduling.provider_names(db, ids)
+
+    async def summary_file(self, db: AsyncSession, summary_id: UUID) -> UUID | None:
+        """The summary's PDF file, or None (no attachment)."""
+        found: UUID | None = (await db.execute(_SUMMARY_FILE, {"id": summary_id})
+                              ).scalar_one_or_none()
+        return found
