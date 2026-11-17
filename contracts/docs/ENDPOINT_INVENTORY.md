@@ -88,6 +88,11 @@ This is the checklist for Stage 4: an endpoint is "done" when its contract exist
 | 25 | POST | `/admin/integration-messages/{messageId}/replay` | T | Ad | `integration-messages:replay` | adm | S | | | TA §7.1 | B6 | |
 | 26 | GET | `/health` (root) | T | – | `public` | – | – | | | §6 Availability | B1 | Outside `/api/v1`, public through Nginx (T24) |
 | 27 | GET | ~~`/ready`~~ | T | – | — | – | – | | | §6 | — | **Not in the contract:** internal only (load balancer and Compose), T24 |
+| 314 | POST | `/ai/visit-summaries` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | §3.4 | Demo | **New** 2026-11-17 (`createVisitSummary`, D119): a short AI summary of one visit for the top of the consultation note; operation `ai.visit-summary`; every statement cites a record; an unreviewed AI note section is never a source; restricted charts by D37; never written to the note or the chart; `chart-summary` switch |
+| 315 | GET | `/ai/visit-summaries/{visitSummaryId}` | V | Ad | `chart-summaries:read` | pr | – | | | §3.4 | Demo | **New** 2026-11-17 (`getVisitSummary`, D119): the statements and `insufficientEvidence`; labelled AI; requester only |
+| 316 | POST | `/ai/coding-suggestions` | V | Ad | `chart-summaries:create` | ai | S | | ✓ | §3.4 AI-04 | Demo | **New** 2026-11-17 (`createCodingSuggestion`, D119): ICD-10-CM codes for a visit, each citing records; only active, billable codes of the loaded ICD-10-CM table, named as the table names them; `low` or `medium` only; nothing applied automatically; needs `diagnoses:create` too (MD, APP); `chart-summary` switch |
+| 317 | GET | `/ai/coding-suggestions/{codingSuggestionId}` | V | Ad | `chart-summaries:read` | pr | – | | | §3.4 AI-04 | Demo | **New** 2026-11-17 (`getCodingSuggestion`, D119): the codes with their decisions and `insufficientEvidence`; requester only |
+| 318 | POST | `/ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision` | V | Cl+Ad | `ai-suggestions:decision` | ai | S | | | §3.4 AI-04 | Demo | **New** 2026-11-17 (`decideSuggestedCode`, D70, D119): the clinician's one accept or reject per code; `accepted` adds the code as a visit diagnosis through the encounters' diagnosis rules in the same transaction (`diagnosisId`); `rejected` needs a reason; requester only, `diagnoses:create` too |
 
 ## 2. Patients and insurance — Vimal
 

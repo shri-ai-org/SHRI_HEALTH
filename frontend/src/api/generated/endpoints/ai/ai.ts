@@ -26,15 +26,20 @@ import type {
   ChartQuestionCreate,
   ChartSummary,
   ChartSummaryCreate,
+  CodingSuggestion,
+  CodingSuggestionCreate,
   ConflictResponse,
   CreateChartQuestionHeaders,
   CreateChartSummaryHeaders,
+  CreateCodingSuggestionHeaders,
   CreateDifferentialHeaders,
   CreateEncounterAudioHeaders,
   CreateMorningBriefHeaders,
   CreateNoteDraftHeaders,
   CreateTranscriptionHeaders,
+  CreateVisitSummaryHeaders,
   DecideAiSuggestionHeaders,
+  DecideSuggestedCodeHeaders,
   Differential,
   DifferentialCreate,
   ForbiddenResponse,
@@ -49,12 +54,16 @@ import type {
   PreconditionFailedResponse,
   PreconditionRequiredResponse,
   ReplaceAiSettingsHeaders,
+  SuggestedCode,
+  SuggestedCodeDecision,
   SuggestedQuestionList,
   TooManyRequestsResponse,
   Transcription,
   TranscriptionCreate,
   UnauthorizedResponse,
-  UnprocessableContentResponse
+  UnprocessableContentResponse,
+  VisitSummary,
+  VisitSummaryCreate
 } from '../../model';
 
 import { apiFetch } from '../../../client';
@@ -1112,6 +1121,424 @@ export const getDifferential = async (differentialId: Id, options?: Parameters<t
     method: 'GET'
 
 
+  }
+);}
+
+
+export type createVisitSummaryResponse202 = {
+  data: Operation
+  status: 202
+}
+
+export type createVisitSummaryResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createVisitSummaryResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createVisitSummaryResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createVisitSummaryResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createVisitSummaryResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createVisitSummaryResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createVisitSummaryResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createVisitSummaryResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createVisitSummaryResponseSuccess = (createVisitSummaryResponse202) & {
+  headers: Headers;
+};
+export type createVisitSummaryResponseError = (createVisitSummaryResponse400 | createVisitSummaryResponse401 | createVisitSummaryResponse403 | createVisitSummaryResponse404 | createVisitSummaryResponse409 | createVisitSummaryResponse422 | createVisitSummaryResponse429 | createVisitSummaryResponse500) & {
+  headers: Headers;
+};
+
+export type createVisitSummaryResponse = (createVisitSummaryResponseSuccess | createVisitSummaryResponseError)
+
+export const getCreateVisitSummaryUrl = () => {
+
+
+
+
+  return `/ai/visit-summaries`
+}
+
+/**
+ * A short AI summary of one visit, shown at the top of the consultation note (D119): a few statements, each citing the records it rests on. Returns `202` and an operation of kind `ai.visit-summary`; its result is the summary (`GET /ai/visit-summaries/{visitSummaryId}`). The model sees the visit (reason for visit, its diagnoses so far, the vital signs taken at it and its notes' sections) and the chart (recent visits, allergies, medications, problems, lab results), read within the caller's own request through each module's service with the caller's permissions and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet is never a source**: the summary rests on what the clinician wrote or accepted. Every statement cites at least one record; one that cites none is dropped. It is **never part of the note or the chart**: nothing is written to the visit. Labelled as AI output (`aiGenerated`). Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.
+ * @summary Summarize a visit for its clinician
+ */
+export const createVisitSummary = async (visitSummaryCreate: VisitSummaryCreate,
+    headers?: CreateVisitSummaryHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createVisitSummaryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createVisitSummaryResponse>(getCreateVisitSummaryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(visitSummaryCreate)
+  }
+);}
+
+
+export type getVisitSummaryResponse200 = {
+  data: VisitSummary
+  status: 200
+}
+
+export type getVisitSummaryResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getVisitSummaryResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getVisitSummaryResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getVisitSummaryResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getVisitSummaryResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getVisitSummaryResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getVisitSummaryResponseSuccess = (getVisitSummaryResponse200) & {
+  headers: Headers;
+};
+export type getVisitSummaryResponseError = (getVisitSummaryResponse401 | getVisitSummaryResponse403 | getVisitSummaryResponse404 | getVisitSummaryResponse422 | getVisitSummaryResponse429 | getVisitSummaryResponse500) & {
+  headers: Headers;
+};
+
+export type getVisitSummaryResponse = (getVisitSummaryResponseSuccess | getVisitSummaryResponseError)
+
+export const getGetVisitSummaryUrl = (visitSummaryId: Id,) => {
+
+
+
+
+  return `/ai/visit-summaries/${visitSummaryId}`
+}
+
+/**
+ * The result of `POST /ai/visit-summaries` (D119): the statements in order, each with the records it rests on, and `insufficientEvidence` when the visit holds too little to summarize. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.
+ * @summary Get a visit summary
+ */
+export const getVisitSummary = async (visitSummaryId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getVisitSummaryResponse> => {
+
+  return apiFetch<getVisitSummaryResponse>(getGetVisitSummaryUrl(visitSummaryId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type createCodingSuggestionResponse202 = {
+  data: Operation
+  status: 202
+}
+
+export type createCodingSuggestionResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createCodingSuggestionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createCodingSuggestionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createCodingSuggestionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createCodingSuggestionResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createCodingSuggestionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type createCodingSuggestionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type createCodingSuggestionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createCodingSuggestionResponseSuccess = (createCodingSuggestionResponse202) & {
+  headers: Headers;
+};
+export type createCodingSuggestionResponseError = (createCodingSuggestionResponse400 | createCodingSuggestionResponse401 | createCodingSuggestionResponse403 | createCodingSuggestionResponse404 | createCodingSuggestionResponse409 | createCodingSuggestionResponse422 | createCodingSuggestionResponse429 | createCodingSuggestionResponse500) & {
+  headers: Headers;
+};
+
+export type createCodingSuggestionResponse = (createCodingSuggestionResponseSuccess | createCodingSuggestionResponseError)
+
+export const getCreateCodingSuggestionUrl = () => {
+
+
+
+
+  return `/ai/coding-suggestions`
+}
+
+/**
+ * AI-04 coding suggestions (FRS §3.4; D119): ICD-10-CM codes for the visit, each with its reasoning and the records it rests on. Returns `202` and an operation of kind `ai.coding-suggestion`; its result is the suggestion (`GET /ai/coding-suggestions/{codingSuggestionId}`). The model sees the same lines as a differential: the visit (reason for visit, its diagnoses so far, the vital signs taken at it and its notes' sections) and the chart, read within the caller's own request through each module's service with the caller's permissions and the restricted-chart check (D37), audited as `ai`. **A note section the AI drafted and nobody has reviewed yet is never a source.** Every code cites at least one record; one that cites none is dropped. **Every code must be an active, billable code in the loaded ICD-10-CM table**; any other code the model returns is dropped, a code already on the visit too, and the name shown is the table's, never the model's. Confidence is `low` or `medium`, never `high`. **Nothing is applied automatically**: each code waits for the clinician's decision (`POST /ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision`). **Only clinicians who can diagnose ask for one**: a user without `diagnoses:create` gets `403 permission-denied`. Readable by its requester only; nothing of it is logged. Governed by the `chart-summary` switch: refused with `409 feature-disabled` while AI or `chart-summary` is off. The operation fails with `ai-unavailable` or `ai-output-rejected`.
+ * @summary Suggest ICD-10-CM codes for a visit
+ */
+export const createCodingSuggestion = async (codingSuggestionCreate: CodingSuggestionCreate,
+    headers?: CreateCodingSuggestionHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<createCodingSuggestionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<createCodingSuggestionResponse>(getCreateCodingSuggestionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(codingSuggestionCreate)
+  }
+);}
+
+
+export type getCodingSuggestionResponse200 = {
+  data: CodingSuggestion
+  status: 200
+}
+
+export type getCodingSuggestionResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getCodingSuggestionResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getCodingSuggestionResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getCodingSuggestionResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getCodingSuggestionResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getCodingSuggestionResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getCodingSuggestionResponseSuccess = (getCodingSuggestionResponse200) & {
+  headers: Headers;
+};
+export type getCodingSuggestionResponseError = (getCodingSuggestionResponse401 | getCodingSuggestionResponse403 | getCodingSuggestionResponse404 | getCodingSuggestionResponse422 | getCodingSuggestionResponse429 | getCodingSuggestionResponse500) & {
+  headers: Headers;
+};
+
+export type getCodingSuggestionResponse = (getCodingSuggestionResponseSuccess | getCodingSuggestionResponseError)
+
+export const getGetCodingSuggestionUrl = (codingSuggestionId: Id,) => {
+
+
+
+
+  return `/ai/coding-suggestions/${codingSuggestionId}`
+}
+
+/**
+ * The result of `POST /ai/coding-suggestions` (D119): the suggested ICD-10-CM codes in order, each with its reasoning, confidence, source links and the clinician's decision, and `insufficientEvidence` when the visit holds too little to code. Labelled as AI output (`aiGenerated`). Readable by **its requester only**, who must still be able to read the chart (D37); anyone else gets `404`. Still readable when AI is switched off.
+ * @summary Get a coding suggestion
+ */
+export const getCodingSuggestion = async (codingSuggestionId: Id, options?: Parameters<typeof apiFetch>[1]): Promise<getCodingSuggestionResponse> => {
+
+  return apiFetch<getCodingSuggestionResponse>(getGetCodingSuggestionUrl(codingSuggestionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type decideSuggestedCodeResponse200 = {
+  data: SuggestedCode
+  status: 200
+}
+
+export type decideSuggestedCodeResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type decideSuggestedCodeResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type decideSuggestedCodeResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type decideSuggestedCodeResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type decideSuggestedCodeResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type decideSuggestedCodeResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type decideSuggestedCodeResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type decideSuggestedCodeResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type decideSuggestedCodeResponseSuccess = (decideSuggestedCodeResponse200) & {
+  headers: Headers;
+};
+export type decideSuggestedCodeResponseError = (decideSuggestedCodeResponse400 | decideSuggestedCodeResponse401 | decideSuggestedCodeResponse403 | decideSuggestedCodeResponse404 | decideSuggestedCodeResponse409 | decideSuggestedCodeResponse422 | decideSuggestedCodeResponse429 | decideSuggestedCodeResponse500) & {
+  headers: Headers;
+};
+
+export type decideSuggestedCodeResponse = (decideSuggestedCodeResponseSuccess | decideSuggestedCodeResponseError)
+
+export const getDecideSuggestedCodeUrl = (codingSuggestionId: Id,
+    suggestedCodeId: Id,) => {
+
+
+
+
+  return `/ai/coding-suggestions/${codingSuggestionId}/codes/${suggestedCodeId}/decision`
+}
+
+/**
+ * Records the clinician's one decision on one suggested ICD-10-CM code (D70, D119), once (the database refuses a second decision). **`accepted` is the clinician's action that adds the code to the visit**: in one transaction, the code becomes a visit diagnosis through the encounters' own diagnosis rules (as `POST /encounters/{encounterId}/diagnoses`: only until the visit's first note is signed, after its last diagnosis, with Provenance), and the response carries its `diagnosisId`. Nothing is ever added without this call. `rejected` needs a `reason` and changes nothing on the visit. Only the user who asked for the suggestion decides, and only a clinician who can diagnose (`diagnoses:create`). Not gated by the AI switches: a pending code can be decided after AI is turned off.
+ * @summary Accept or reject a suggested code
+ */
+export const decideSuggestedCode = async (codingSuggestionId: Id,
+    suggestedCodeId: Id,
+    suggestedCodeDecision: SuggestedCodeDecision,
+    headers?: DecideSuggestedCodeHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<decideSuggestedCodeResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<decideSuggestedCodeResponse>(getDecideSuggestedCodeUrl(codingSuggestionId,suggestedCodeId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(suggestedCodeDecision)
   }
 );}
 

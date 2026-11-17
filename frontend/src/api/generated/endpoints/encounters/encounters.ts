@@ -1242,7 +1242,7 @@ export const getAddEncounterDiagnosisUrl = (encounterId: Id,) => {
 }
 
 /**
- * Adds a diagnosis to the encounter: a Condition with category `encounter-diagnosis` and its rank, with Provenance, in one transaction (inventory #71; FRS FR-ENC-02). Allowed until the encounter's first note is signed; after that, a new diagnosis needs an addendum workflow outside this endpoint. AI-suggested codes are added only through the AI decision endpoint (batch 7), never directly.
+ * Adds a diagnosis to the encounter: a Condition with category `encounter-diagnosis` and its rank, with Provenance, in one transaction (inventory #71; FRS FR-ENC-02). Allowed until the encounter's first note is signed; after that, a new diagnosis needs an addendum workflow outside this endpoint. An AI-suggested code is added when the clinician accepts it (`POST /ai/coding-suggestions/{codingSuggestionId}/codes/{suggestedCodeId}/decision`, D119), which applies these same rules; the clinician may also type any code here.
  * @summary Add a diagnosis
  */
 export const addEncounterDiagnosis = async (encounterId: Id,
