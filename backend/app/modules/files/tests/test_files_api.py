@@ -21,7 +21,7 @@ from app.core import download_tokens as core_tokens
 from app.core.deps import CLINIC_A, CLINIC_B, DEV_USERS
 from app.core.download_tokens import TTL_SECONDS, DownloadTokens
 
-from .. import crypto, service
+from .. import crypto, schemas, service, storage
 from ..repository import FileRecord
 from ..storage import CLEAN_BUCKET, QUARANTINE_BUCKET
 from .fakes import (
@@ -125,6 +125,17 @@ def test_upload_needs_files_create(as_user: Client, world: World, name: str) -> 
     assert not world.files
 
 
+def test_the_upload_rules_refuse_every_server_made_purpose() -> None:
+    """Receipt, after-visit-summary and imaging are never uploaded, so an imaging file (never
+    scanned, 0023) can't arrive through an upload."""
+    for purpose in ("receipt", "after-visit-summary", "imaging"):
+        body = schemas.UploadUrlRequest(
+            purpose=purpose, content_type="image/jpeg", size_bytes=10, sha256="0" * 64)
+        assert service.upload_rule_errors(body) == [
+            {"in": "body", "pointer": "/purpose", "code": "not-allowed-value"}], purpose
+    assert storage.GENERATED_PURPOSES == {"receipt", "after-visit-summary", "imaging"}
+
+
 @pytest.mark.parametrize(("overrides", "errors"), [
     ({"contentType": "application/pdf"}, [("/contentType", "not-allowed-value")]),
     ({"contentType": "image/heic"}, [("/contentType", "not-allowed-value")]),
@@ -133,6 +144,7 @@ def test_upload_needs_files_create(as_user: Client, world: World, name: str) -> 
      [("/contentType", "not-allowed-value"), ("/sizeBytes", "out-of-range")]),
     ({"purpose": "receipt"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "after-visit-summary"}, [("/purpose", "not-allowed-value")]),
+    ({"purpose": "imaging"}, [("/purpose", "not-allowed-value")]),   # never scanned (0023)
     ({"purpose": "document"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "encounter-audio"}, [("/purpose", "not-allowed-value")]),
 ])

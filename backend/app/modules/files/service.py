@@ -2,8 +2,9 @@
 
 **Request an upload** (``createUploadUrl``): the purpose decides what may be uploaded. The demo's
 two uploaded purposes, ``insurance-card`` and ``identity``, take JPEG or PNG up to 10 MB
-(``MAX_IMAGE_BYTES``, 10 MiB; M13). ``receipt`` and ``after-visit-summary`` are made by the
-server, never uploaded. Every other purpose has no upload rule yet and is refused the same way,
+(``MAX_IMAGE_BYTES``, 10 MiB; M13). ``receipt``, ``after-visit-summary`` and ``imaging`` are
+made by the server, never uploaded: an imaging file is never scanned (0023), so no upload may
+arrive under it. Every other purpose has no upload rule yet and is refused the same way,
 ``422 business-rule-violation`` naming the field. The file's row is written ``pending-upload``
 in the quarantine bucket, with the declared size and SHA-256, and the answer is a link to
 ``PUT`` the bytes there, valid for ``UPLOAD_LINK_LIFETIME``. Client file names are never stored.
@@ -101,6 +102,8 @@ READ_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "receipt": ("payments:create", "superbills:read"),
     # The front desk prints the latest summary at check-out without encounters:read (D98, T50).
     "after-visit-summary": ("encounters:read", "after-visit-summaries:read"),
+    # An imaging report's illustrative image is read with its report (#386).
+    "imaging": ("results:read",),
 }
 #: How each accepted media type starts, so a file can't claim to be what it isn't.
 SIGNATURES: dict[str, bytes] = {

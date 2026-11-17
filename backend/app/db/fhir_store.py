@@ -107,6 +107,7 @@ from app.db.models.fhir.orders import (
     DiagnosticReportBasedOn,
     DiagnosticReportCategory,
     DiagnosticReportPerformer,
+    DiagnosticReportPresentedForm,
     DiagnosticReportResult,
     ServiceRequest,
     ServiceRequestCategory,
@@ -494,6 +495,15 @@ _ORDER_CATEGORIES = {"laboratory": ("108252007", "Laboratory procedure"),
 
 
 @dataclass(frozen=True)
+class ImageIn:
+    """An image shown with a report (``presentedForm``): a clean, server-made file of purpose
+    ``imaging`` in the same clinic, its media type and a caption (the attachment's title)."""
+    file_id: uuid.UUID
+    content_type: str  # image/jpeg | image/png
+    title: str
+
+
+@dataclass(frozen=True)
 class ReportIn:
     """A final report (DiagnosticReport, category LAB or RAD) with its results, for an order.
     ``effective`` is the collection or study time, ``issued`` when it was reported."""
@@ -508,6 +518,7 @@ class ReportIn:
     results: tuple[ResultIn, ...]
     conclusion: str | None = None
     id: uuid.UUID | None = None
+    images: tuple[ImageIn, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1757,7 +1768,9 @@ class SqlFhirStore:
         laboratory, or imaging for a radiology narrative) with its range and flag, linked
         through ``diagnostic_report_result``; the report is based on its order and performed
         by one organization. Collected (or studied) at ``effective``, reported at ``issued``,
-        never before it and never in the future."""
+        never before it and never in the future. A radiology report may carry up to three
+        ``images``, written with the report in the same flush (the report is final, so they
+        can't be added later), each its file, media type and caption."""
         await _not_merged(db, data.patient_id)
         if data.category not in ("LAB", "RAD"):
             raise InvalidInput(f"unknown report category {data.category!r}", field="category")
@@ -1767,6 +1780,20 @@ class SqlFhirStore:
             raise InvalidInput("a report is never issued in the future", field="issued")
         if not data.results:
             raise InvalidInput("a report has at least one result", field="results")
+        if data.images and data.category != "RAD":
+            raise InvalidInput("only an imaging report has images", field="images")
+        if len(data.images) > 3:
+            raise InvalidInput("a report has at most three images", field="images")
+        if any(i.content_type not in ("image/jpeg", "image/png") for i in data.images):
+            raise InvalidInput("an image is JPEG or PNG", field="images")
+        if data.images:
+            usable = set((await db.execute(text(
+                "SELECT id FROM admin.binary_object WHERE id = ANY(:ids) "
+                "AND purpose = 'imaging' AND state = 'clean'"),
+                {"ids": [i.file_id for i in data.images]})).scalars())
+            if usable != {i.file_id for i in data.images}:
+                raise InvalidInput("an image is a clean imaging file of this clinic",
+                                   field="images")
         observation_category = "laboratory" if data.category == "LAB" else "imaging"
         rows = []
         for r in data.results:
@@ -1814,6 +1841,9 @@ class SqlFhirStore:
             organization_id=data.performer_organization_id)]
         report.result = [DiagnosticReportResult(observation_id=o.id, sequence=i)
                          for i, o in enumerate(rows, start=1)]
+        report.presented_form = [DiagnosticReportPresentedForm(
+            binary_object_id=i.file_id, content_type=i.content_type, title=i.title,
+            creation=data.issued) for i in data.images]
         db.add(await _new(db, report))
         await db.flush()
         return await _written(db, report)

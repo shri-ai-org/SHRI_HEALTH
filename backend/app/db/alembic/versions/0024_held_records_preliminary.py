@@ -15,11 +15,11 @@ are unchanged.
 
 No table, column, policy or other grant changes. The downgrade puts 0022's body back.
 
-Numbering: 0023 is #387's (the imaging file purpose). Whichever of the two merges second points
-its down_revision at the other before merging.
+Numbering: 0023 is #387's imaging file purpose, which is approved on its latest commit, so this
+is 0024 on top of it (stacked on #387) and the portal file read is 0025.
 
 Revision ID: 0024
-Revises: 0022
+Revises: 0023
 Create Date: 2026-11-17
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0024"
-down_revision = "0022"
+down_revision = "0023"
 branch_labels = None
 depends_on = None
 
