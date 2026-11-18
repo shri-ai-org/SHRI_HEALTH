@@ -28,7 +28,9 @@ import { useRoomWatch } from '../telehealth/roomWatch'
 import { RxCourier } from '../telehealth/RxCourier'
 import { useWaitingAlerts } from '../telehealth/waitingAlerts'
 import { WaitingBar } from '../telehealth/WaitingBar'
-import { AI_ASSISTANT_ON } from '../logic/assistant'
+import { AI_ASSISTANT_ON, assistantOfferedAt } from '../logic/assistant'
+import { roomForBubble } from '../logic/bubbleRoom'
+import { useAiActive } from '../state/ai'
 
 import { AppBar } from './AppBar'
 import { AssistantBubble } from './AssistantBubble'
@@ -48,6 +50,7 @@ export function AppShell() {
   // The video visits start fresh on every load of the doctor's portal: all Waiting, a new demonstration code.
   useState(freshStart)
   const { pathname } = useLocation()
+  const aiOn = useAiActive()
   const navigate = useNavigate()
   // A patient waiting in a video call: asked of the hospital's Jitsi, announced with a chime and a notice on this computer.
   // One tab per browser asks the Jitsi server and says the demo code; every tab shows the alert.
@@ -68,7 +71,9 @@ export function AppShell() {
           style={{ gridTemplateColumns: `${railOpen ? 220 : 76}px minmax(0, 1fr)` }}
         >
           <NavRail />
-          <main className="min-w-0">
+          {/* Room at the foot for the fixed assistant bubble (62px, 30px up; above the tab bar on a phone),
+              so the page's last line scrolls clear of it. Only where the bubble shows. */}
+          <main className={roomForBubble(AI_ASSISTANT_ON, aiOn, assistantOfferedAt(pathname)) ? 'min-w-0 pb-[108px] max-sm:pb-[78px]' : 'min-w-0'}>
             <RouteBoundary resetKey={pathname}>
               <Outlet />
             </RouteBoundary>
