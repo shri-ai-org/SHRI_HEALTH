@@ -2,6 +2,7 @@
   "realm": "shri-staff",
   "displayName": "Shri Health",
   "enabled": true,
+  "loginTheme": "shri",
   "sslRequired": "external",
   "registrationAllowed": false,
   "registrationEmailAsUsername": false,

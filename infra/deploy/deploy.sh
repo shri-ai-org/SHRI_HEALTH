@@ -367,7 +367,7 @@ guard_ours() {
 }
 
 sync_clients() {
-    say "Keycloak sign-in addresses: $SHRI_PUBLIC_URL"
+    say "Keycloak sign-in addresses and login theme: $SHRI_PUBLIC_URL"
     wait_for "$EDGE_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" PUBLIC_URL="$SHRI_PUBLIC_URL" \
