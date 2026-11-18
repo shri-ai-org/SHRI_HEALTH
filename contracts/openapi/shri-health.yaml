@@ -480,6 +480,8 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1logout'
   /portal/enrollments:
     $ref: 'modules/portal.yaml#/paths/~1portal~1enrollments'
+  /portal/auth/demo-sign-in:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1demo-sign-in'
   /portal/me:
     $ref: 'modules/portal.yaml#/paths/~1portal~1me'
   /portal/me/change-requests:

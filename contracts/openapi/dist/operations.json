@@ -2611,6 +2611,17 @@
    "path": "/api/v1/prescriptions/{prescriptionId}/sign-and-send",
    "permission": "prescriptions:sign-and-send"
   },
+  "signInToPortalForDemo": {
+   "audit": {
+    "action": "E",
+    "actor": "patient",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/portal/auth/demo-sign-in",
+   "permission": "public"
+  },
   "signNote": {
    "audit": {
     "action": "E",
