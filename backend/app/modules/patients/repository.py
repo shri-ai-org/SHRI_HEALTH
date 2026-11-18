@@ -238,6 +238,22 @@ def _employer(row: Mapping[str, Any]) -> schemas.Employer:
                                                 address=address)
 
 
+def _current_consents(rows: Iterable[fhir_store.ConsentOnFile]) -> list[schemas.PatientConsent]:
+    """Patient.consents (D120): the latest active consent of each kind, by kind, mapped as
+    listConsents maps a consent (no provision reads as permit; signedAt is the signing time)."""
+    out: dict[str, schemas.PatientConsent] = {}
+    for c in rows:  # by kind, newest first: the first of each kind is the current one
+        if c.kind in out:
+            continue
+        out[c.kind] = schemas.PatientConsent(
+            kind=cast(Any, c.kind), decision=cast(Any, c.decision or "permit"),
+            signed_at=c.date_time or c.recorded_at, policy_version=c.policy_version,
+            recorded_by=schemas.StaffRef(id=c.recorded_by_user_id,
+                                         display_name=c.recorded_by_name)
+            if c.recorded_by_user_id and c.recorded_by_name else None)
+    return list(out.values())
+
+
 def e164(value: str) -> str:
     """A stored phone as E.164 where that is unambiguous: our own writes already are, and a
     U.S. number written another way (``+1 (555) 010-2000``, ``555-010-2000``) becomes
@@ -321,6 +337,7 @@ class SqlPatientRepository:
                                 ).scalar_one_or_none()
         mrn = next((i.value for i in identifiers if i.type == "MR"), "")
         pharmacy = await fhir_store.preferred_pharmacy(db, patient_id)  # D50, on the read too
+        consents = await fhir_store.consents_on_file(db, patient_id)  # D120, on the read too
         patient = schemas.Patient(
             id=row["id"], mrn=mrn,
             name=_name(official) if official else schemas.HumanName(family=""),
@@ -345,6 +362,7 @@ class SqlPatientRepository:
                                                  state=pharmacy.state,
                                                  postal_code=pharmacy.postal_code))
             if pharmacy is not None else None,
+            consents=_current_consents(consents),
             restricted=bool(RESTRICTED_LABELS & set(row["meta_security"] or [])),
             active=row["active"], merged_into_id=row["merged_into_id"],
             created_at=row["created_at"], updated_at=row["meta_last_updated"])

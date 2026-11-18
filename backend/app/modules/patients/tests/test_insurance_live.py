@@ -228,6 +228,12 @@ def test_consents_latest_of_a_kind_grantor_and_signed_form(client: Any,  # noqa:
     assert signed.status_code == 201 and signed.json()["grantorRelatedPersonId"] == guardian["id"]
     missing_file = client("fd").post(base, json=_consent(signedFormFileId=str(uuid.uuid4())))
     assert missing_file.status_code == 422 and missing_file.json()["code"] == "file-not-ready"
+    # getPatient carries the current consent of each kind, by kind (D120; #428)
+    current = client("fd").get(f"/api/v1/patients/{patient['id']}").json()["consents"]
+    assert [(c["kind"], c["decision"]) for c in current] == [
+        ("ambient-recording", "permit"), ("financial", "permit"), ("treatment", "deny")]
+    assert current[2]["signedAt"].startswith("2026-11-04T09:00:00")
+    assert all(c["recordedBy"]["displayName"] for c in current)
     clean, card = uuid.uuid4(), uuid.uuid4()
     admin = create_engine(sync_url(), poolclass=NullPool)
     with admin.begin() as c:
@@ -292,3 +298,6 @@ def test_registration_consents_commit_with_the_patient_or_not_at_all(client: Any
         f"/api/v1/patients/{registered.json()['id']}/consents").json()["items"]
     assert [c["kind"] for c in items] == ["privacy-notice"] and items[0]["status"] == "active"
     assert items[0]["recordedBy"]["displayName"]
+    on_patient = registered.json()["consents"]  # createPatient returns them too (D120)
+    assert [(c["kind"], c["policyVersion"]) for c in on_patient] == [("privacy-notice", "2026-10")]
+    assert on_patient[0]["recordedBy"] == items[0]["recordedBy"]

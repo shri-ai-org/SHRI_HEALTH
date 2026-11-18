@@ -182,6 +182,8 @@ class Patient(Out):
     general_practitioner_id: UUID | None = None
     identifiers: list[PatientIdentifier] = []
     preferred_pharmacy: PharmacyRef | None = None
+    #: The current consent of each kind recorded (D120; patients.yaml PatientConsent).
+    consents: list[PatientConsent] = []
     restricted: bool
     active: bool
     merged_into_id: UUID | None = None
@@ -435,6 +437,18 @@ class StaffRef(Out):
     """A staff user, for display (patients.yaml StaffRef: the user's ID, never a practitioner's)."""
     id: UUID
     display_name: str
+
+
+class PatientConsent(Out):
+    """The current consent of one kind, on the Patient (patients.yaml PatientConsent)."""
+    kind: ConsentKind
+    decision: Literal["permit", "deny"]
+    signed_at: datetime
+    policy_version: str | None = None
+    recorded_by: StaffRef | None = None
+
+
+Patient.model_rebuild()  # consents names PatientConsent, defined here
 
 
 class Consent(Out):
