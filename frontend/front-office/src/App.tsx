@@ -27,6 +27,8 @@ import { useStoreValue } from './hooks/useStore'
 import { getAdmissionById } from './domain/admissionSelectors'
 // TEMPORARY — no source screen (frontend/docs/SCREEN_PORT.md): demo steps 3 and 6.
 import { PatientInsurancePage, TemporaryInsuranceRedirect } from '../shri-health/TemporaryRoutes'
+import { AdminArea } from '../shri-health/admin/AdminArea'
+import { REAL_API } from '../shri-health/client'
 
 /**
  * Starts the page afresh when its query changes — Register opened from the
@@ -136,6 +138,8 @@ function App() {
 
             {/* Billing — one page; collecting happens in the billing flow */}
             <Route path="/billing" element={<BillingPage />} />
+            {/* SHRI_HEALTH: the administrator's area (read only; each screen checks its permission). */}
+            {REAL_API ? <Route path="/admin/*" element={<AdminArea />} /> : null}
             <Route path="/activity-analytics" element={<ActivityAnalyticsPage />} />
             <Route path="/reports" element={<Navigate to="/activity-analytics" replace />} />
             <Route path="/billing/bills" element={<Navigate to="/billing?filter=all" replace />} />
