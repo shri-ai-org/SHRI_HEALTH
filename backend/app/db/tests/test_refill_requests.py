@@ -252,3 +252,40 @@ def test_a_second_open_request_is_refused_by_the_index(admin_engine: Engine) -> 
             "'uq_medication_request_open_refill'")).scalar()
     assert definition is not None and "UNIQUE" in definition
     assert "intent" in definition and "proposal" in definition and "active" in definition
+
+
+async def test_the_portal_request_and_its_inbox_event_commit_together(
+        database: Database, portal: Database, clinic: dict[str, Any]) -> None:
+    """Thulasi's #424 review: createPortalRefillRequest publishes `refill-request.received` in the
+    request's transaction, as shri_portal. portal_own_event allows that one kind besides 0021's
+    booking events, for the session patient only; any other kind, or another patient's event,
+    is still refused (42501), and the role still can't read the log."""
+    patient, enc = await _visit(database, clinic)
+    other, _ = await _visit(database, clinic)
+    rx = await _prescribed(database, clinic, patient, enc)
+    insert = text("INSERT INTO admin.event_log (id, tenant_id, patient_id, type, subject, data) "
+                  "VALUES (gen_random_uuid(), :t, :p, :k, 'refill-request', '{}')")
+    async with portal.patient_session(clinic["tenant"], patient.id) as s:   # was a 500
+        asked = await STORE.create_refill_request(s, fs.RefillRequestIn(
+            patient_id=patient.id, prior_prescription_id=rx.id, note=None))
+        await s.execute(insert, {"t": clinic["tenant"], "p": patient.id,
+                                 "k": "refill-request.received"})
+        await s.commit()
+    async with session(database, clinic) as s:
+        events = (await s.execute(text(
+            "SELECT type FROM admin.event_log WHERE patient_id = :p"),
+            {"p": patient.id})).scalars().all()
+    assert "refill-request.received" in events
+    assert (await _row(database, clinic, asked.id)).intent == "proposal"
+    for who, kind in ((patient.id, "refill-request.approved"),    # not a portal event
+                      (patient.id, "prescription.signed"),
+                      (other.id, "refill-request.received")):     # someone else's
+        async with portal.patient_session(clinic["tenant"], patient.id) as s:
+            with pytest.raises(Exception) as refused:  # noqa: PT011 - the policy refuses
+                await s.execute(insert, {"t": clinic["tenant"], "p": who, "k": kind})
+            assert getattr(getattr(refused.value, "orig", None), "sqlstate", "") == "42501" or \
+                "row-level security" in str(refused.value), (who, kind, refused.value)
+    async with portal.patient_session(clinic["tenant"], patient.id) as s:   # still write-only
+        with pytest.raises(Exception) as unread:  # noqa: PT011
+            await s.execute(text("SELECT count(*) FROM admin.event_log"))
+        assert "permission denied" in str(unread.value)

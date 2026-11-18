@@ -31,6 +31,12 @@ medication: every list and rule that reads medications reads intent `plan` and `
       request is never signed).
   portal_fhir_no_refill_request
       A RESTRICTIVE policy for shri_fhir_reader: /fhir never serves a proposal.
+  portal_own_event (0021)
+      shri_portal may also insert its own patient's `refill-request.received` event, which
+      createPortalRefillRequest publishes in the request's transaction for the clinic's inbox
+      (the contract's x-events), besides 0021's three booking events; nothing else changes:
+      insert only, the session patient only, under the table's clinic policies (Thulasi's
+      #424 review, found wiring #415).
 
 Revision ID: 0029
 Revises: 0028
@@ -145,6 +151,16 @@ REVOKE ALL ON FUNCTION admin.portal_request_refill(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin.portal_request_refill(uuid) TO shri_portal;
 """
 
+_PATIENT = "NULLIF(current_setting('app.current_patient_id', true), '')::uuid"
+_BOOKING_EVENTS = "'appointment.booked', 'appointment.cancelled', 'appointment.rescheduled'"
+
+
+def _portal_events(types: str) -> str:
+    """0021's portal_own_event with the given event types (gen_db_rules.PORTAL_EVENT_TYPES)."""
+    return (f"ALTER POLICY portal_own_event ON admin.event_log WITH CHECK "
+            f"(patient_id = {_PATIENT} AND type IN ({types}))")
+
+
 DROP_REFILLS = """
 DROP FUNCTION admin.portal_request_refill(uuid);
 DROP POLICY portal_fhir_no_refill_request ON clinical.medication_request;
@@ -155,6 +171,7 @@ DROP INDEX clinical.uq_medication_request_open_refill;
 def upgrade() -> None:
     op.execute(_signature_rule(_PROPOSAL_ARM))
     op.execute(REFILLS)
+    op.execute(_portal_events(f"{_BOOKING_EVENTS}, 'refill-request.received'"))
 
 
 def downgrade() -> None:
@@ -166,5 +183,6 @@ DO $$ BEGIN
     RAISE EXCEPTION 'refill requests exist; 0029 cannot be downgraded';
   END IF;
 END $$;""")
+    op.execute(_portal_events(_BOOKING_EVENTS))
     op.execute(DROP_REFILLS)
     op.execute(_signature_rule(""))

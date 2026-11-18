@@ -449,8 +449,9 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
-    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`
-    and nothing else there (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
+    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`,
+    and, for a refill request (0029), `refill-request.received`, and nothing else there
+    (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
     session patient FOR SHARE and answers whether the chart is active and not merged. A booked
     revisit (an appointment a follow-up request points at, D98) can't change status as
     `shri_portal` (`P0001`, constraint `portal_revisit_locked`): the clinic moves it. The
