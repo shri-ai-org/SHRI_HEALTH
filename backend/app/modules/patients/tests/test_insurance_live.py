@@ -270,3 +270,25 @@ def test_keyed_coverage_and_consent_are_replayed_not_repeated(client: Any,  # no
     assert once.status_code == twice.status_code == 201 and twice.json() == once.json()
     assert twice.headers["Idempotent-Replayed"] == "true"
     assert [c["status"] for c in client("fd").get(consents).json()["items"]] == ["active"]
+
+
+def test_registration_consents_commit_with_the_patient_or_not_at_all(client: Any) -> None:  # noqa: F811
+    """D120 (#411; Anand's review): a refused consent registers nothing, so the same person
+    registers cleanly afterwards (no 409 possible-duplicate); an accepted one is the patient's,
+    with the staff user who recorded it (recordedBy, Thulasi's review)."""
+    n = uuid.uuid4().int
+    family = "Reg" + "".join(chr(97 + (n >> (5 * i)) % 26) for i in range(8))
+    born = (date(1940, 1, 1) + timedelta(days=n % 20_000)).isoformat()
+    phones = [{"number": f"+1217555{(n >> 40) % 10_000:04d}", "use": "mobile"}]
+    refused = client("fd").post("/api/v1/patients", json=_body(
+        family, identifiers=[], birthDate=born, phones=phones,
+        consents=[_consent(), _consent()]))
+    assert refused.status_code == 422, refused.text
+    registered = client("fd").post("/api/v1/patients", json=_body(
+        family, identifiers=[], birthDate=born, phones=phones,
+        consents=[_consent(kind="privacy-notice")]))
+    assert registered.status_code == 201, registered.text  # nothing was left behind
+    items = client("fd").get(
+        f"/api/v1/patients/{registered.json()['id']}/consents").json()["items"]
+    assert [c["kind"] for c in items] == ["privacy-notice"] and items[0]["status"] == "active"
+    assert items[0]["recordedBy"]["displayName"]

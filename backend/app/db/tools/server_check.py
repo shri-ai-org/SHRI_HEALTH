@@ -15,6 +15,7 @@ server's readiness checks (``demo_checks``) after a reset.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sys
 from collections.abc import Sequence
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0025"
+HEAD = "0028"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -58,6 +59,21 @@ UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.re
             "AND NOT (c.relrowsecurity AND c.relforcerowsecurity)")
 
 
+# Who may create objects in the schemas the writing SECURITY DEFINER functions name in their
+# search_path (clinical, admin, audit, public, pg_temp; 0028): only their owner, shri_migrator.
+# Any other service role, or PUBLIC, with CREATE there could shadow a table a trigger names
+# unqualified, so each (schema, role) pair counts, and PUBLIC counts as one.
+SCHEMA_CREATORS = (
+    "SELECT (SELECT count(*) FROM pg_namespace n CROSS JOIN pg_roles r "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND r.rolname LIKE 'shri\\_%' AND r.rolname <> 'shri_migrator' "
+    "AND has_schema_privilege(r.oid, n.oid, 'CREATE')) "
+    "+ (SELECT count(*) FROM pg_namespace n, "
+    "aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND a.grantee = 0 AND a.privilege_type = 'CREATE')")
+
+
 def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Check]:
     return [
         Check("migrations at head", "SELECT version_num FROM admin.alembic_version", head),
@@ -71,20 +87,24 @@ def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Ch
               "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'shri\\_%' "
               "AND (rolbypassrls OR rolsuper)",
               "0"),
+        Check("only shri_migrator may create in clinical, admin, audit and public",
+              SCHEMA_CREATORS, "0"),
         Check("demo patients loaded", "SELECT count(*) FROM clinical.patient", str(patients)),
     ]
 
 
-def demo_checks() -> list[Check]:
+def demo_checks(day: dt.date | None = None) -> list[Check]:
     """The demo server's readiness (13 Nov): what the rehearsal and the demo need after a reset,
     in the demo clinic (the master user sees every clinic, so each query names it). "Today" is
-    the clinic's own day, in its zone."""
+    the clinic's own day, in its zone; a test passes the seed's own `day` (demo.DEMO_DAY), so a
+    session that runs past midnight in San Jose still counts the day the seed booked."""
     from app.core.deps import CLINIC_A, FACILITY_A
     from app.db.seed import demo, history, results
     from app.db.seed.starter import PRACTITIONER, sid
 
     clinic = f"'{CLINIC_A}'::uuid"
     zone = demo.CLINIC_ZONE.key
+    today = f"DATE '{day.isoformat()}'" if day else f"(now() AT TIME ZONE '{zone}')::date"
     shown = ", ".join(f"'{sid(demo.PATIENT, p.n)}'" for p in demo.SHOWN_PATIENTS)
     accounts = [(demo.DEMO_PATIENT_SUBJECT, demo.DEMO_PORTAL_PATIENT),
                 *((subject, n) for _, n, _, subject in demo.PORTAL_USERS)]
@@ -127,8 +147,14 @@ def demo_checks() -> list[Check]:
               "SELECT count(DISTINCT a.id) FROM clinical.appointment a JOIN "
               "clinical.appointment_participant x ON x.appointment_id = a.id WHERE "
               f"a.tenant_id = {clinic} AND a.status = 'booked' AND x.actor_practitioner_id = "
-              f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = "
-              f"(now() AT TIME ZONE '{zone}')::date", "6", at_least=True, fix=RESET),
+              f"'{sid(PRACTITIONER, 3)}' AND (a.start AT TIME ZONE '{zone}')::date = {today}",
+              "6", at_least=True, fix=RESET),
+        # The seed's own visits only (their fixed IDs), so a dry run booked earlier doesn't count.
+        Check("Linda Thompson's visit is the first of today's seeded visits",
+              "SELECT a.subject_patient_id::text FROM clinical.appointment a WHERE "
+              f"a.tenant_id = {clinic} AND a.id::text LIKE '{str(sid(demo.APPOINTMENT, 0))[:9]}%' "
+              f"AND (a.start AT TIME ZONE '{zone}')::date = {today} "
+              "ORDER BY a.start, a.id LIMIT 1", str(sid(demo.PATIENT, 3)), fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
               str(len(demo.SHOWN_PATIENTS)), fix=RESET),
@@ -167,7 +193,7 @@ def demo_checks() -> list[Check]:
               f"'{sid(demo.PATIENT, 2)}' AND code_code = '723' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 2)}' AND medication_codeable_concept_code = '861007' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
         Check("Linda Thompson's after-visit summaries (one per signed past visit)",
               "SELECT count(*) FROM clinical.document_reference WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND type_code = '34133-9' AND status = 'current' "
@@ -181,7 +207,7 @@ def demo_checks() -> list[Check]:
               f"'{sid(demo.PATIENT, 3)}' AND code_code = '2670' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
     ]
 
 

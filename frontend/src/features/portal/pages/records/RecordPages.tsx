@@ -7,6 +7,8 @@ import { useResource } from '../../api/useResource'
 import { Link } from '../../router'
 import { AsyncPanel, Card, DefinitionList, formatInstantShort, formatShortDate, HeldMarker, matches, PageHeader, Pager, SearchBox, Table, tableLink, usePaged } from '../../ui'
 import { useClinicTimeZone } from '../../clinicZone'
+import { REAL_API } from '../../features'
+import { LabResultsPage } from './LabResultsPage'
 
 /*
  * The old Health Summary record screens: a searchable list, and a detail page per record. Detail
@@ -24,6 +26,10 @@ function Footer({ topic }: { topic: string }) {
 /* ---------- Test Results ---------- */
 
 export function TestResultsPage() {
+  return REAL_API ? <LabResultsPage /> : <SampleTestResultsPage />
+}
+
+function SampleTestResultsPage() {
   const api = usePortalApi()
   const results = useResource(() => api.listResults(), [])
   const [q, setQ] = useState('')

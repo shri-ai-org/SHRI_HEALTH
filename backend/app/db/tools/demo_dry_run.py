@@ -14,10 +14,10 @@ test. The test server uses real sign-in, so this script doesn't run against it y
 **After a reset** (``python -m app.db.seed reset`` on an empty database, or ``deploy.sh reset``):
 the demo layer is enough for steps 1 to 4. Steps 5 and 6 also need the code releases loaded
 (``python -m app.db.terminology icd10cm …`` and ``… rxnorm …``); without them they fail with
-"no codes loaded". The seed's clinic hours (08:00 to 17:00 every day, in each facility's time
-zone) give free times from today, so the visit is booked today, at the first free time at least
-5 minutes ahead and not before 08:00 there. The revisit is booked exactly 14 days after the
-visit, at the first free time from 08:00, in the facility's time zone, with the same provider;
+"no codes loaded". The seed's providers are bookable all day (00:00 to 23:59 every day, in each
+facility's time zone), so the visit is booked today, at the first free time at least 5 minutes
+ahead there. The revisit is booked exactly 14 days after the visit, at the first free time from
+08:00, in the facility's time zone, with the same provider;
 it fails, and says so, if that day has no free time (the demo seed's weekly rules have no end
 date).
 
@@ -32,9 +32,10 @@ stand-in (never on a server), or step 7's summary fails. The summary's download 
 signed with ``SESSION_SECRET``, which every server sets; a laptop sets a random one per run, or
 step 7 answers ``503 Downloads are not configured``. Nothing else differs.
 
-**Time of day.** Check-in is same-day only in the facility's time zone: late in the evening
-there, after the day's clinic hours (the last free time is 16:40), step 2 fails with "no free
-time left today". Run it after midnight there (13:30 IST in November) and before 16:40.
+**Time of day.** Check-in is same-day only in the facility's time zone, and the last free time
+of a day is 23:20 there. Step 2 tries each facility in turn, and the demo's two (San Jose and New
+York) are three hours apart, so one of them always has a free time left today: the dry run passes
+at any time of day.
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm"
 RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm"
 #: The revisit is booked exactly this many days after the visit, in the facility's time zone.
 REVISIT_DAYS = 14
-DAY_STARTS = dt.time(8)   # clinic hours start, in the facility's time zone
+REVISIT_FROM = dt.time(8)   # the revisit's earliest time, in the facility's time zone
 STEPS = {1: "register the patient", 2: "book", 3: "check in", 4: "room",
          5: "doctor: diagnosis and signed note", 6: "prescribe and send",
          7: "check-out: follow-up, summary, revisit",
@@ -167,9 +168,10 @@ def _first_code(c: Client, system: str, query: str, what: str) -> dict[str, Any]
     return match
 
 
-def _free_time(c: Client, v: Visit, day: dt.date, after: dt.datetime) -> str | None:
-    """The first free time that day after ``after`` and not before ``DAY_STARTS`` there."""
-    after = max(after, dt.datetime.combine(day, DAY_STARTS, ZoneInfo(v.zone)))
+def _free_time(c: Client, v: Visit, day: dt.date, after: dt.datetime,
+               earliest: dt.time = dt.time(0)) -> str | None:
+    """The first free time that day at or after ``after`` and not before ``earliest`` there."""
+    after = max(after, dt.datetime.combine(day, earliest, ZoneInfo(v.zone)))
     r = c.call("fd", "GET", f"/slots?date={day}&facilityId={v.facility}"
                f"&providerId={v.provider}&appointmentTypeId={v.visit_type}")
     for slot in _items(r):
@@ -220,9 +222,9 @@ def book(c: Client, v: Visit) -> str:
         if start:
             break
     if start is None:
-        raise StepFailed("no free time left today at any facility (clinic hours are 08:00 to "
-                         "17:00 in the facility's time zone, and check-in is same-day only): "
-                         "run it again after midnight there, before 16:40")
+        raise StepFailed("no free time left today at any facility (the last free time is 23:20 "
+                         "in each facility's time zone, and check-in is same-day only): check "
+                         "the providers' availability rules (a reset restores them)")
     js = c.call("fd", "POST", "/appointments", {
         "patientId": v.patient, "providerId": v.provider, "facilityId": v.facility,
         "appointmentTypeId": v.visit_type, "startAt": start,
@@ -325,7 +327,7 @@ def check_out(c: Client, v: Visit) -> str:
     c.wait(made, "md")
     c.call("fd", "GET", f"/encounters/{v.encounter}/after-visit-summary/download-url")
     revisit_day = _visit_day(v) + dt.timedelta(days=REVISIT_DAYS)  # the follow-up's 2 weeks
-    start = _free_time(c, v, revisit_day, dt.datetime.now(dt.UTC))
+    start = _free_time(c, v, revisit_day, dt.datetime.now(dt.UTC), REVISIT_FROM)
     if start is None:
         raise StepFailed(f"no free time on {revisit_day}, {REVISIT_DAYS} days out, for the "
                          "visit's provider (the demo seed's weekly clinic hours give some)")

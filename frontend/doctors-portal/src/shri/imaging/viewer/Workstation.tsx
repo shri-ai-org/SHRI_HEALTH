@@ -67,6 +67,10 @@ const KEYS: [string, string][] = [
 ]
 
 const MODE_KEY: Record<string, Mode> = { l: 'length', g: 'angle', e: 'ellipse', a: 'arrow', t: 'text', f: 'pen', x: 'erase', w: 'wl', p: 'pan' }
+/** The modes that only look, for a viewer without marks (`marks={false}`). */
+const LOOK_MODES = new Set<Mode>(['pointer', 'pan', 'wl'])
+/** The shortcuts that make or select marks: not listed in a viewer without marks. */
+const MARK_KEYS = new Set(['L · G · E', 'A · T · F', 'X', 'K', 'Ctrl+Z · Ctrl+Y', 'Del', 'Esc'])
 
 export function Workstation({
   series,
@@ -76,6 +80,8 @@ export function Workstation({
   slice: controlled,
   onSlice,
   tools = true,
+  marks = true,
+  onImageError,
   className,
 }: {
   series: SeriesView
@@ -87,6 +93,13 @@ export function Workstation({
   onSlice?: (n: number) => void
   /** The reading tools; off for a second, look-only pane. */
   tools?: boolean
+  /**
+   * The marking tools (length, angle, ROI, arrow, text, pen, key images, snapshot). Off where marks
+   * must not be kept: they are stored in this browser with the study (state/imaging.ts).
+   */
+  marks?: boolean
+  /** The image failed to load (an expired or used one-time link): the screen offers Try again. */
+  onImageError?: () => void
   className?: string
 }) {
   const me = useCurrentStaff()
@@ -123,7 +136,8 @@ export function Workstation({
   const [invert, setInvert] = useState(false)
   const [wl, setWl] = useState<[number, number]>([0, 0]) // brightness, contrast — percentage points
   const [showAi, setShowAi] = useState(true)
-  const [mode, setMode] = useState<Mode>('pointer')
+  // Without marks there is nothing to select, so the image starts on Pan (the Pointer tool is hidden).
+  const [mode, setMode] = useState<Mode>(marks ? 'pointer' : 'pan')
   const [playing, setPlaying] = useState(false)
   const [fps, setFps] = useState<(typeof FPS)[number]>(10)
   const [draft, setDraft] = useState<Pt[] | null>(null)
@@ -302,8 +316,8 @@ export function Workstation({
     let handled = true
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') step(1)
     else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') step(-1)
-    else if (mod && k === 'z') undo()
-    else if (mod && k === 'y') redo()
+    else if (mod && k === 'z' && marks) undo()
+    else if (mod && k === 'y' && marks) redo()
     else if (mod) handled = false
     else if (e.key === '+' || e.key === '=') setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))
     else if (e.key === '-') setZoom((z) => Math.max(MIN_ZOOM, z / 1.25))
@@ -313,16 +327,16 @@ export function Workstation({
     else if (k === 'h') setFlip(([h, v]) => [!h, v])
     else if (k === 'v') setFlip(([h, v]) => [h, !v])
     else if (k === 'i') setInvert((v) => !v)
-    else if (k === 'k') markKey()
+    else if (k === 'k' && marks) markKey()
     else if (e.key === ' ' && series.frames > 1) {
       if (reduced) step(1)
       else setPlaying((p) => !p)
     }
     else if (e.key === 'Escape') {
-      setMode('pointer')
+      setMode(marks ? 'pointer' : 'pan')
       setDraft(null)
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && selected) remove(selected)
-    else if (MODE_KEY[k]) setMode(MODE_KEY[k])
+    else if (MODE_KEY[k] && (marks || LOOK_MODES.has(MODE_KEY[k]))) setMode(MODE_KEY[k])
     else handled = false
     if (handled) e.preventDefault()
   }
@@ -376,7 +390,7 @@ export function Workstation({
       {tools && (
         <div role="toolbar" aria-label="Reading tools" className="flex flex-wrap items-center gap-[4px] rounded-[16px] bg-sh-card p-[6px]">
           <ToolGroup>
-            <Tool icon={MousePointer2} label="Pointer — select a mark" keyHint="Esc" on={mode === 'pointer'} onClick={() => setMode('pointer')} />
+            {marks && <Tool icon={MousePointer2} label="Pointer — select a mark" keyHint="Esc" on={mode === 'pointer'} onClick={() => setMode('pointer')} />}
             <Tool icon={Hand} label="Pan" keyHint="P" on={mode === 'pan'} onClick={() => setMode('pan')} />
             <Tool icon={Contrast} label="Window/level — drag up/down for brightness, sideways for contrast" keyHint="W" on={mode === 'wl'} onClick={() => setMode('wl')} />
           </ToolGroup>
@@ -389,6 +403,7 @@ export function Workstation({
             <Tool icon={FlipVertical2} label="Flip vertically" keyHint="V" on={flip[1]} onClick={() => setFlip(([h, v]) => [h, !v])} />
             <Tool icon={SunMedium} label="Invert" keyHint="I" on={invert} onClick={() => setInvert((v) => !v)} />
           </ToolGroup>
+          {marks && (
           <ToolGroup>
             <Tool icon={Ruler} label="Length" keyHint="L" on={mode === 'length'} onClick={() => setMode('length')} />
             <Tool icon={AngleIcon} label="Angle — three clicks" keyHint="G" on={mode === 'angle'} onClick={() => setMode('angle')} />
@@ -398,17 +413,22 @@ export function Workstation({
             <Tool icon={PenLine} label="Pen" keyHint="F" on={mode === 'pen'} onClick={() => setMode('pen')} />
             <Tool icon={Eraser} label="Eraser — click a mark to delete it" keyHint="X" on={mode === 'erase'} onClick={() => setMode('erase')} />
           </ToolGroup>
+          )}
           <ToolGroup>
-            <Tool icon={Undo2} label="Undo" keyHint="Ctrl+Z" disabled={history.undo.length === 0} onClick={undo} />
-            <Tool icon={Redo2} label="Redo" keyHint="Ctrl+Y" disabled={history.redo.length === 0} onClick={redo} />
-            <Tool icon={Star} label={isKey ? 'Unmark key image' : 'Mark as key image'} keyHint="K" on={isKey} onClick={markKey} />
-            <Tool icon={Camera} label="Save a snapshot with the marks" onClick={snapshot} />
+            {marks && (
+              <>
+                <Tool icon={Undo2} label="Undo" keyHint="Ctrl+Z" disabled={history.undo.length === 0} onClick={undo} />
+                <Tool icon={Redo2} label="Redo" keyHint="Ctrl+Y" disabled={history.redo.length === 0} onClick={redo} />
+                <Tool icon={Star} label={isKey ? 'Unmark key image' : 'Mark as key image'} keyHint="K" on={isKey} onClick={markKey} />
+                <Tool icon={Camera} label="Save a snapshot with the marks" onClick={snapshot} />
+              </>
+            )}
             <span className="relative">
               <Tool icon={Keyboard} label="Keyboard shortcuts" on={keysOpen} onClick={() => setKeysOpen((v) => !v)} />
               {keysOpen && (
                 <div role="dialog" aria-label="Keyboard shortcuts" className="absolute right-0 top-[52px] z-20 w-[280px] rounded-[16px] bg-sh-card p-[14px] text-[12px] shadow-lg ring-1 ring-sh-line">
                   <dl className="grid grid-cols-[auto_1fr] gap-x-[12px] gap-y-[6px]">
-                    {KEYS.map(([k, v]) => (
+                    {KEYS.filter(([k]) => (marks || !MARK_KEYS.has(k)) && (k !== 'Space' || series.frames > 1)).map(([k, v]) => (
                       <div key={k} className="contents">
                         <dt className="font-mono font-semibold text-sh-text">{k}</dt>
                         <dd className="text-sh-text-2">{v}</dd>
@@ -436,7 +456,7 @@ export function Workstation({
         className={cn('relative mx-auto aspect-square w-full max-w-[min(100%,74vh)] touch-none overflow-hidden rounded-[16px] bg-black outline-none focus-visible:ring-2 focus-visible:ring-sh-accent', cursor)}
       >
         <span id={`${studyId}-ws-help`} className="sr-only">
-          Arrow keys step the images; the toolbar and its letters choose a tool; marks are kept with the study.
+          {marks ? 'Arrow keys step the images; the toolbar and its letters choose a tool; marks are kept with the study.' : 'Arrow keys step the images; the toolbar and its letters choose a tool.'}
         </span>
         <div className="absolute inset-0" style={{ transform, transformOrigin: '50% 50%' }}>
           <img
@@ -445,6 +465,7 @@ export function Workstation({
             alt={series.alt(slice)}
             draggable={false}
             onLoad={(e) => setSize([e.currentTarget.naturalWidth || 512, e.currentTarget.naturalHeight || 512])}
+            onError={onImageError}
             className="absolute inset-0 size-full select-none object-contain"
             style={{ filter }}
           />

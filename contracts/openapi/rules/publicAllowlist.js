@@ -3,9 +3,10 @@
 const { operations } = require('./_lib.js');
 // The patient portal's sign-in, callback and enrolment come before any session exists (ADR-0013 §3, §5; D85; U.S. spelling, D18).
 // Pre-registration is a public form with no account at all, under the practice's own link, and its bot-check
-// challenge needs no session or practice code (D96).
+// challenge needs no session or practice code (D96). The demo sign-in comes before any session too, and the server
+// answers it only on a demo server (D121).
 const ALLOWED = new Set(['/auth/login', '/auth/callback', '/health', '/portal/auth/login', '/portal/auth/callback', '/portal/enrollments',
-  '/portal/practices/{practiceLinkId}/pre-registrations', '/portal/bot-challenge']);
+  '/portal/practices/{practiceLinkId}/pre-registrations', '/portal/bot-challenge', '/portal/auth/demo-sign-in']);
 module.exports = (doc) => {
   const out = [];
   for (const { path, op, at } of operations(doc)) {

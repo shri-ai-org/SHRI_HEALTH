@@ -78,6 +78,10 @@ export interface NoteAuthoringProps {
   railBadge?: number
   /** Rendered above the fields — the record's doors, a risk banner. */
   banner?: ReactNode
+  /** SHRI_HEALTH: at the top of the note, above Subjective (the AI visit summary, with the API). */
+  noteTop?: ReactNode
+  /** SHRI_HEALTH: under the Assessment and plan fields (the AI's ICD-10 suggestions, with the API). */
+  afterAssessment?: ReactNode
   /** Extra field groups below the standard ones. */
   extraGroups?: ReactNode
   /** Where Sign returns to. */
@@ -104,6 +108,8 @@ export function NoteAuthoring({
   railTitle = 'Suggestions',
   railBadge,
   banner,
+  noteTop,
+  afterAssessment,
   extraGroups,
   onSigned,
   showCoding = true,
@@ -436,12 +442,15 @@ export function NoteAuthoring({
           />
         )}
 
+        {noteTop}
+
         {/* S · O · A · P, then the code. The order a note is spoken in. */}
         <Card titleSize="sm" title="Subjective and objective">
           <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">{seeds.filter((s) => s.key === 'subjective' || s.key === 'objective').map(section)}</div>
         </Card>
         <Card titleSize="sm" title="Assessment and plan">
           <div className="grid grid-cols-1 gap-[20px] lg:grid-cols-2">{seeds.filter((s) => s.key === 'assessment' || s.key === 'plan').map(section)}</div>
+          {afterAssessment}
         </Card>
         {/* SHRI_HEALTH: the patient instructions (69730-0), with the API only: optional, printed on the after-visit summary. */}
         {seeds.some((s) => s.key === 'instructions') && (

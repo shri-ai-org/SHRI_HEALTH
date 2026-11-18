@@ -19,9 +19,9 @@ import { useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'rea
 import { useNavigate } from 'react-router-dom'
 
 import { trendPointsFor, type ResultRow } from '@/data/clinical'
-import { formatDate } from '@/data/format'
 import type { VitalSeries } from '@/data/vitals-history'
 
+import { axisDay, spacedLabels } from '../logic/labTrends'
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, Pill } from '../ui/primitives'
@@ -101,7 +101,7 @@ export function TrendCard({
   const fmt = (n: number) => n.toFixed(decimals)
   // Over a year or more, the axis names the month and year; otherwise the day.
   const long = points.length > 1 && points[points.length - 1].at.getTime() - points[0].at.getTime() > 300 * 86_400_000
-  const when = (d: Date) => (long ? formatDate(d).slice(3) : formatDate(d).replace(/-\d{4}$/, ''))
+  const when = (d: Date) => axisDay(d, long)
   const range = r.refLow !== undefined && r.refHigh !== undefined ? `reference ${fmt(r.refLow)}–${fmt(r.refHigh)}` : 'no reference range'
 
   return (
@@ -375,10 +375,11 @@ function TrendChart({ r, points: pts, fmt, when }: { r: ResultRow; points: Point
         )}
       </div>
       <div className="relative mt-[6px] h-[12px] text-[10px]/none tabular-nums text-sh-text-3" aria-hidden="true">
+        {/* Only labels that fit side by side: always the first and last date (audit issue 3, at 390). */}
         {w > 0 &&
-          pts.map((pt, i) => (
-            <span key={pt.at.getTime()} className={cn('absolute top-0 whitespace-nowrap', X_LABEL[i === 0 ? 'first' : i === last ? 'last' : 'mid'])} style={{ left: x(i) }}>
-              {when(pt.at)}
+          spacedLabels(xs, 60).map((i) => (
+            <span key={pts[i]!.at.getTime()} className={cn('absolute top-0 whitespace-nowrap', X_LABEL[i === 0 ? 'first' : i === last ? 'last' : 'mid'])} style={{ left: x(i) }}>
+              {when(pts[i]!.at)}
             </span>
           ))}
       </div>

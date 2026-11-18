@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LabAnalyte, LabReport } from '../../../shri-health/results'
-import { labSeries, rangeLine, trendSummary } from './labTrends'
+import { labSeries, rangeLine, trendSummary, axisDay, spacedLabels } from './labTrends'
+import { unitText } from '../../../shri-health/results'
 
 // Synthetic values only, shaped as shri-health/results.ts gives them (newest report first).
 const analyte = (name: string, value: number, extra: Partial<LabAnalyte> = {}): LabAnalyte => ({
@@ -81,5 +82,31 @@ describe('the words beside the graph', () => {
     expect(rangeLine(one({ flag: '↑↑ Critical high' }, 12))).toBe('Critical high (above 5.6)')
     expect(rangeLine(one({ flag: 'Normal' }, 5))).toBe('Within range (4–5.6)')
     expect(rangeLine(one({ low: undefined, high: undefined }, 5))).toBe('No reference range')
+  })
+})
+
+describe('the trend chart x-axis (audit issue 3)', () => {
+  it('writes whole US dates, never a cut one', () => {
+    const d = new Date(2025, 10, 18, 9, 30)
+    expect(axisDay(d, false, true)).toBe('Nov 18')
+    expect(axisDay(d, true, true)).toBe('Nov 2025')
+    expect(axisDay(new Date(2026, 0, 6), true, true)).toBe('Jan 2026')
+    expect(axisDay(d, true, true)).not.toMatch(/^\d/)
+  })
+})
+
+describe('units as people write them (audit issue 4)', () => {
+  it('turns UCUM annotations into plain text', () => {
+    expect(unitText('mL/min/{1.73_m2}')).toBe('mL/min/1.73 m²')
+    expect(unitText('mg/dL')).toBe('mg/dL')
+  })
+})
+
+describe('x-axis labels that fit (audit issue 3, at 390)', () => {
+  it('keeps the first and last, and a middle label only with room on both sides', () => {
+    expect(spacedLabels([0, 50, 100, 150, 200, 250, 300], 60)).toEqual([0, 2, 4, 6])
+    expect(spacedLabels([0, 20, 40, 60, 80, 100, 120], 60)).toEqual([0, 3, 6])
+    expect(spacedLabels([0, 300], 60)).toEqual([0, 1])
+    expect(spacedLabels([0], 60)).toEqual([0])
   })
 })

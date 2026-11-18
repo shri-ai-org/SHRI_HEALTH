@@ -1,4 +1,4 @@
-import { CalendarPlus, CalendarX, ExternalLink, MapPin, Video } from 'lucide-react'
+import { CalendarPlus, CalendarX, ExternalLink, FileText, MapPin, Video } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { PortalAppointment } from '../../../../api/generated/model'
 import { Alert, Badge, Button, EmptyState, Field, formatAddressLines, formatTime, isOverLimit, Modal, problemCopy, Textarea, useToast } from '../../../../design-system'
@@ -86,6 +86,12 @@ function Tiles({ list }: { list: PortalAppointment[] }) {
                 <span className="mt-1 block">
                   <AppointmentStatusBadge status={a.status} />
                 </span>
+                {a.status !== 'booked' && a.visitSummaryId ? (
+                  <span className="mt-1 flex items-center gap-1 text-sm text-primary-700">
+                    <FileText aria-hidden="true" size={14} />
+                    Visit summary
+                  </span>
+                ) : null}
               </span>
             </Link>
           </li>
@@ -237,17 +243,37 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
   const api = usePortalApi()
   const summary = useResource(() => api.getVisitSummary(visitSummaryId), [visitSummaryId])
   const [opening, setOpening] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
+  const [failure, setFailure] = useState<{ title: string; text: string; tone: 'info' | 'critical' } | null>(null)
+
+  /** True when the summary itself now reads as not found (removed since the page opened). */
+  async function summaryGone(): Promise<boolean> {
+    try {
+      await api.getVisitSummary(visitSummaryId)
+      return false
+    } catch (err) {
+      return toProblem(err).status === 404
+    }
+  }
 
   async function open() {
     setOpening(true)
     setFailure(null)
     try {
-      // A short-lived link, opened at once and never kept (D86).
+      // A short-lived, single-use link, asked for again on every click, opened at once and never kept
+      // (D86). Same tab: the file comes as an attachment, so the browser downloads it and stays on
+      // this page (a new tab would be left empty; Anand's review of #420).
       const { url } = await api.getVisitSummaryDownloadUrl(visitSummaryId)
-      window.open(url, '_blank', 'noopener,noreferrer')
+      window.location.assign(url)
     } catch (err) {
-      setFailure(problemCopy(toProblem(err)).message)
+      const problem = toProblem(err)
+      // A 404 is either no download yet (the link isn't served) or a summary that is gone: the
+      // API says not-found for both, so read the summary again to tell them apart.
+      const removed = problem.status === 404 && (await summaryGone())
+      setFailure(
+        problem.status === 404 && !removed
+          ? { tone: 'info', title: "This summary can't be downloaded yet", text: 'Ask your clinic for a copy of your visit summary.' }
+          : { tone: 'critical', title: "Couldn't open the visit summary", text: problemCopy(problem).message },
+      )
     } finally {
       setOpening(false)
     }
@@ -259,7 +285,11 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
       <AsyncPanel resource={summary} label="the visit summary">
         {(s) => (
           <div className="max-w-3xl space-y-4">
-            {failure ? <Alert tone="critical" title="Couldn't open the visit summary">{failure}</Alert> : null}
+            {failure ? (
+              <Alert tone={failure.tone} title={failure.title}>
+                {failure.text}
+              </Alert>
+            ) : null}
             <Card>
               <DefinitionList
                 items={[

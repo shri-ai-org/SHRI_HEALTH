@@ -110,3 +110,14 @@ def test_a_merged_patient_is_refused(as_user: Client, world: World) -> None:
     _record(world, patient_id).merged_into_id = uuid.uuid4()
     refused = _put(as_user, "fd", patient_id, {"pharmacyId": pharmacy})
     assert refused.status_code == 409 and refused.json()["code"] == "patient-merged"
+
+
+def test_the_patient_read_carries_the_preferred_pharmacy(as_user: Client, world: World) -> None:
+    """D50: getPatient's preferredPharmacy, which the prescription screen reads (audit run 3:
+    "No pharmacy on the patient's record" while the seed had set one)."""
+    patient_id, pharmacy = _patient(as_user), _pharmacy(world)
+    assert "preferredPharmacy" not in as_user("md").get(f"/api/v1/patients/{patient_id}").json()
+    assert _put(as_user, "fd", patient_id, {"pharmacyId": pharmacy}).status_code == 200
+    read = as_user("md").get(f"/api/v1/patients/{patient_id}").json()
+    assert read["preferredPharmacy"]["id"] == pharmacy
+    assert read["preferredPharmacy"]["name"] == "Test Pharmacy 12"

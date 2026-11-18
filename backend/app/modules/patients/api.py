@@ -85,13 +85,15 @@ async def search_patients(
 async def register_patient(
     user: Annotated[CurrentUser, Depends(require("patients:create"))],
     body: schemas.PatientCreate, request: Request, response: Response, db: DB, repo: Repo,
-    store: Store, audit: Audit,
+    store: Store, audit: Audit, insurance_repo: Insurance,
 ) -> schemas.Patient:
     if body.duplicate_check == "override" and body.duplicate_override_reason:
         audit.detail(request, "create", body.duplicate_override_reason)  # the override's reason
     created = await service.register(
         db, repo, store, body, today=datetime.now(UTC).date(),
-        name_patient=lambda patient_id: audit.patients(request, [patient_id]))
+        name_patient=lambda patient_id: audit.patients(request, [patient_id]),
+        write_consents=lambda patient_id: insurance.write_registration_consents(
+            db, insurance_repo, store, patient_id, body.consents))
     response.headers["ETag"] = service.etag(created.version)
     response.headers["Location"] = f"/api/v1/patients/{created.value.id}"
     return created.value

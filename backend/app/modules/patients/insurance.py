@@ -215,25 +215,51 @@ async def coverage_entered_in_error(db: AsyncSession, repo: InsuranceRepository,
 
 
 # -------------------------------------------------------------------------------------- consents
+async def _write_consent(db: AsyncSession, repo: InsuranceRepository, store: FhirStore,
+                         patient_id: UUID, body: schemas.ConsentCreate, where: str = ""
+                         ) -> UUID:
+    """One consent, without the commit: the helpers make the patient's earlier active consent of
+    the same kind inactive, in the same transaction."""
+    grantor = body.grantor_related_person_id
+    if grantor is not None and not await repo.is_related_person(db, patient_id, grantor):
+        raise business_rule("body", f"{where}/grantorRelatedPersonId", "invalid-reference")
+    if body.signed_form_file_id is not None and not await repo.file_ready(
+            db, body.signed_form_file_id, "document"):
+        raise ValidationFailed(code="file-not-ready", fileId=str(body.signed_form_file_id))
+    written = await store.create_consent(db, ConsentIn(
+        patient_id=patient_id, kind=body.kind, status="active", categories=CATEGORIES[body.kind],
+        date_time=body.signed_at, policy_version=body.policy_version,
+        signature_method=body.signature_method, provision_type=body.decision,
+        grantor_related_person_id=grantor,
+        source_attachment_binary_object_id=body.signed_form_file_id,
+        performer_patient_id=None if grantor else patient_id,
+        performer_related_person_id=grantor))
+    return written.id
+
+
+async def write_registration_consents(db: AsyncSession, repo: InsuranceRepository,
+                                      store: FhirStore, patient_id: UUID,
+                                      consents: list[schemas.ConsentCreate]) -> None:
+    """registerPatient's consents[] (D120): one per kind, no representative (the patient's
+    related persons don't exist yet), each as recordConsent writes it, without the commit, so
+    they commit with the patient or not at all."""
+    seen: set[str] = set()
+    for n, body in enumerate(consents):
+        if body.kind in seen:
+            raise business_rule("body", f"/consents/{n}/kind", "conflicting-fields")
+        if body.grantor_related_person_id is not None:
+            raise business_rule("body", f"/consents/{n}/grantorRelatedPersonId",
+                                "not-allowed-value")
+        seen.add(body.kind)
+        await _write_consent(db, repo, store, patient_id, body, where=f"/consents/{n}")
+
+
 async def record_consent(db: AsyncSession, repo: InsuranceRepository, store: FhirStore,
                          patient: schemas.Patient, body: schemas.ConsentCreate
                          ) -> Versioned[schemas.Consent]:
     """Insert-only: the helpers make the patient's earlier active consent of the same kind
     inactive, in the same transaction."""
     writable(patient)
-    grantor = body.grantor_related_person_id
-    if grantor is not None and not await repo.is_related_person(db, patient.id, grantor):
-        raise business_rule("body", "/grantorRelatedPersonId", "invalid-reference")
-    if body.signed_form_file_id is not None and not await repo.file_ready(
-            db, body.signed_form_file_id, "document"):
-        raise ValidationFailed(code="file-not-ready", fileId=str(body.signed_form_file_id))
-    written = await store.create_consent(db, ConsentIn(
-        patient_id=patient.id, kind=body.kind, status="active", categories=CATEGORIES[body.kind],
-        date_time=body.signed_at, policy_version=body.policy_version,
-        signature_method=body.signature_method, provision_type=body.decision,
-        grantor_related_person_id=grantor,
-        source_attachment_binary_object_id=body.signed_form_file_id,
-        performer_patient_id=None if grantor else patient.id,
-        performer_related_person_id=grantor))
+    consent_id = await _write_consent(db, repo, store, patient.id, body)
     await db.commit()
-    return await repo.get_consent(db, patient.id, written.id)
+    return await repo.get_consent(db, patient.id, consent_id)

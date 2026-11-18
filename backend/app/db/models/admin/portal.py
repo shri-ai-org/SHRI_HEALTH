@@ -18,6 +18,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     SmallInteger,
@@ -36,6 +37,10 @@ from app.db.models.enums import ChangeRequestStatus, HoldReason, PortalAccountSt
 
 #: Failed redemptions after which an invitation is revoked (ADR-0013 §3).
 MAX_INVITATION_TRIES = 5
+#: How an account signs in (migration 0027): through the patient realm, or the demo server's
+#: mobile number and date of birth (SHRI_DEMO only, Vimal on #85, 18 Nov), with no Keycloak user.
+SIGN_IN_METHODS = ("keycloak", "demo-phone")
+_METHODS = ", ".join(f"'{m}'" for m in SIGN_IN_METHODS)
 
 
 class PortalInvitation(Base, AdminMixin):
@@ -70,10 +75,15 @@ class PortalAccount(Base, AdminMixin):
     """The link from a patient-realm Keycloak user to one chart (ADR-0013 §5; one account, one
     chart in P1, D85). Disabling (D92) needs its time and reason; a merge suspends the account
     (ADR-0013 §6) and keeps the status it had, which the undo restores. A disabled account is
-    never suspended or re-activated by a merge."""
+    never suspended or re-activated by a merge. A ``demo-phone`` account (migration 0027) has
+    no Keycloak user; every other account has one."""
     __tablename__ = "portal_account"
     __table_args__ = (
         Index("uq_portal_account_keycloak_user_id", "keycloak_user_id", unique=True),
+        UniqueConstraint("id", "sign_in_method"),
+        CheckConstraint(f"sign_in_method IN ({_METHODS})", name="sign_in_method_codes"),
+        CheckConstraint("(sign_in_method = 'keycloak') = (keycloak_user_id IS NOT NULL)",
+                        name="keycloak_has_user"),
         Index("uq_portal_account_patient", "tenant_id", "patient_id", unique=True),
         CheckConstraint("(status = 'disabled') = (disabled_at IS NOT NULL AND "
                         "coalesce(length(trim(disabled_reason)), 0) > 0)",
@@ -87,7 +97,9 @@ class PortalAccount(Base, AdminMixin):
                         name="set_up_has_time"),
     )
 
-    keycloak_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    keycloak_user_id: Mapped[str | None] = mapped_column(String(100))
+    sign_in_method: Mapped[str] = mapped_column(String(20), nullable=False, default="keycloak",
+                                                server_default=text("'keycloak'"))
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
                                                   nullable=False)
     status: Mapped[PortalAccountStatus] = mapped_column(
@@ -108,7 +120,9 @@ class PortalAccount(Base, AdminMixin):
 class PortalSession(Base, AdminMixin):
     """A patient's server-side session (ADR-0013 §5): the app_session columns, for the account
     and its patient instead of a user. ``__Host-shri_portal`` carries the token, stored only as
-    a SHA-256 hash. 15 minutes idle and 4 hours absolute (Q20), set by core."""
+    a SHA-256 hash. 15 minutes idle and 4 hours absolute (Q20), set by core. A ``demo-phone``
+    session has no Keycloak tokens or session ID, and only a ``demo-phone`` account has one
+    (migration 0027)."""
     __tablename__ = "portal_session"
     __table_args__ = (
         Index("uq_portal_session_token_hash", "token_hash", unique=True),
@@ -118,6 +132,16 @@ class PortalSession(Base, AdminMixin):
         CheckConstraint("idle_expires_at <= expires_at", name="idle_within_absolute"),
         CheckConstraint(f"keycloak_access_token_enc {CIPHERTEXT} AND "
                         f"keycloak_refresh_token_enc {CIPHERTEXT}", name="tokens_encrypted"),
+        CheckConstraint(f"sign_in_method IN ({_METHODS})", name="sign_in_method_codes"),
+        CheckConstraint("(sign_in_method = 'keycloak' AND keycloak_access_token_enc IS NOT NULL "
+                        "AND keycloak_refresh_token_enc IS NOT NULL) OR "
+                        "(sign_in_method = 'demo-phone' AND keycloak_access_token_enc IS NULL "
+                        "AND keycloak_refresh_token_enc IS NULL AND keycloak_sid IS NULL)",
+                        name="tokens_match_method"),
+        ForeignKeyConstraint(["account_id", "sign_in_method"],
+                             [f"{ADMIN_SCHEMA}.portal_account.id",
+                              f"{ADMIN_SCHEMA}.portal_account.sign_in_method"],
+                             name="fk_portal_session_account_sign_in_method"),
     )
 
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(f"{ADMIN_SCHEMA}.portal_account.id"),
@@ -125,8 +149,10 @@ class PortalSession(Base, AdminMixin):
     patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
                                                   nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    keycloak_access_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
-    keycloak_refresh_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_in_method: Mapped[str] = mapped_column(String(20), nullable=False, default="keycloak",
+                                                server_default=text("'keycloak'"))
+    keycloak_access_token_enc: Mapped[str | None] = mapped_column(Text)
+    keycloak_refresh_token_enc: Mapped[str | None] = mapped_column(Text)
     keycloak_sid: Mapped[str | None] = mapped_column(String(100))
     last_activity_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     tokens_refreshed_at: Mapped[datetime] = mapped_column(nullable=False,

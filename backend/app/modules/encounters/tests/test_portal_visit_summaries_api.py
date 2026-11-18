@@ -26,6 +26,7 @@ from app.core.deps import (
     portal_db,
     portal_session,
 )
+from app.core.download_tokens import PortalDownloadTokens, portal_download_tokens
 from app.main import create_app
 
 from .. import portal_api
@@ -56,6 +57,7 @@ class Summary:
 class World:
     summaries: list[Summary] = field(default_factory=list)
     leaky: bool = False
+    files: dict[UUID, UUID] = field(default_factory=dict)  # summary -> its PDF
 
 
 class FakeReads:
@@ -81,6 +83,9 @@ class FakeReads:
     async def provider_names(self, db: FakePortalDb, ids: list[UUID]) -> dict[UUID, str]:
         return {i: "Dr. Avery401 Lindqvist58" for i in ids if i == PROVIDER}
 
+    async def summary_file(self, db: FakePortalDb, summary_id: UUID) -> UUID | None:
+        return self.world.files.get(summary_id)
+
 
 def summary(patient: UUID, visit: datetime, **kw: Any) -> Summary:
     return Summary(SummaryRow(uuid4(), patient, visit, ZONE, PROVIDER, "Main office (synthetic)",
@@ -102,6 +107,7 @@ def app(world: World) -> Iterator[FastAPI]:
 
     application.dependency_overrides[portal_db] = fake_portal_db
     application.dependency_overrides[portal_api.portal_summaries] = lambda: FakeReads(world)
+    application.dependency_overrides[portal_download_tokens] = lambda: TOKENS
     yield application
     application.dependency_overrides.clear()
 
@@ -233,3 +239,32 @@ def test_invalid_requests_are_refused(app: FastAPI, chart: dict[str, Summary], p
                                       params: dict[str, Any], expected: int) -> None:
     r = as_patient(app, ANA).get(URL + path, params=params)
     assert r.status_code == expected, r.text
+
+
+# ------------------------------------------------- the summary's PDF link (#280; D105, #409, #416)
+TOKENS = PortalDownloadTokens("t" * 64)
+
+
+def test_a_released_summary_gives_a_one_minute_link_bound_to_the_patient(
+        app: FastAPI, world: World, chart: dict[str, Summary]) -> None:
+    pdf = uuid4()
+    world.files[chart["a-new"].row.id] = pdf
+    r = as_patient(app, ANA).get(f"{URL}/{chart['a-new'].row.id}/download-url")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["url"].startswith(f"/api/v1/portal/me/files/{pdf}/content?token=")
+    token = body["url"].split("token=", 1)[1]
+    assert TOKENS.verify(token, patient_id=ANA, file_id=pdf, tenant_id=CLINIC) is not None
+    assert "expiresAt" in body
+
+
+def test_a_held_missing_or_unfiled_summary_gives_no_link(
+        app: FastAPI, world: World, chart: dict[str, Summary]) -> None:
+    ana = as_patient(app, ANA)
+    world.files[chart["a-held"].row.id] = uuid4()
+    held = ana.get(f"{URL}/{chart['a-held'].row.id}/download-url")
+    assert held.status_code == 409 and held.json()["code"] == "invalid-state-transition"
+    assert ana.get(f"{URL}/{chart['a-old'].row.id}/download-url").status_code == 404  # no PDF
+    world.files[chart["b-one"].row.id] = uuid4()
+    assert ana.get(f"{URL}/{chart['b-one'].row.id}/download-url").status_code == 404  # not hers
+    assert ana.get(f"{URL}/{uuid4()}/download-url").status_code == 404

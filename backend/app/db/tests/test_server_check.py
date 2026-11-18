@@ -43,6 +43,20 @@ def test_a_clinic_table_without_row_security_and_a_superuser_fail(admin_engine: 
             "no service role bypasses row security"} <= failed
 
 
+def test_a_service_role_or_public_able_to_create_in_a_named_schema_fails(
+        admin_engine: Engine) -> None:
+    """0028's writing definer functions pin search_path to clinical, admin, audit, public: only
+    their owner may create there, never another service role or PUBLIC."""
+    name = "only shri_migrator may create in clinical, admin, audit and public"
+    for grant in ("GRANT CREATE ON SCHEMA admin TO shri_portal",
+                  "GRANT CREATE ON SCHEMA public TO PUBLIC"):
+        with admin_engine.connect() as conn, conn.begin() as tx:
+            conn.execute(text(grant))
+            failed = {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
+            tx.rollback()
+        assert name in failed, grant
+
+
 def test_a_query_that_fails_is_a_failed_check_not_a_crash(admin_engine: Engine) -> None:
     with admin_engine.connect() as conn:
         [(_, got)] = sc.run(conn, [sc.Check("missing", "SELECT x FROM no_such_table", "1")])
@@ -72,13 +86,13 @@ def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
     _load()
     load_linda()
     with admin_engine.connect() as conn:
-        failed = {c.name for c, v in sc.run(conn, sc.demo_checks()) if not c.passes(v)}
+        failed = {c.name for c, v in sc.run(conn, sc.demo_checks(demo.DEMO_DAY)) if not c.passes(v)}
         assert failed <= {"ICD-10-CM codes loaded", "RxNorm codes loaded"}, failed
         conn.rollback()
         conn.execute(text("UPDATE admin.ai_feature_setting SET is_enabled = false, "
                           "reason = 'rehearsal (synthetic)' WHERE feature = 'chart-summary' "
                           "AND tenant_id = :t"), {"t": CLINIC_A})
-        off = {c.name for c, v in sc.run(conn, sc.demo_checks()) if not c.passes(v)}
+        off = {c.name for c, v in sc.run(conn, sc.demo_checks(demo.DEMO_DAY)) if not c.passes(v)}
         conn.rollback()                                     # nothing is kept
     assert "both AI features on in the demo clinic" in off
 
@@ -102,3 +116,15 @@ def test_a_failed_seed_line_says_a_reset_is_needed() -> None:
     none_today = sc.line(visits, "0")
     assert "(expected at least 6); reset needed" in none_today
     assert sc.line(sc.Check("x", "SELECT 1", "1"), "2") == "FAIL  x: 2 (expected 1)"
+
+
+def test_visits_today_counts_the_day_it_is_given_or_the_clinics_today() -> None:
+    """A test passes the seed's own demo day, so a run past midnight in San Jose counts the day
+    the seed booked; the server's check, given none, counts the clinic's today."""
+    import datetime as dt
+
+    def visits(day: dt.date | None) -> str:
+        return next(c for c in sc.demo_checks(day) if c.name.startswith("visits today")).sql
+
+    assert "DATE '2026-11-20'" in visits(dt.date(2026, 11, 20))
+    assert "now() AT TIME ZONE 'America/Los_Angeles'" in visits(None)

@@ -44,9 +44,14 @@ def _test_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(demo, "POPULATION_SIZE", 5)
 
 
-def _seed(engine: Engine) -> None:
+#: The tests' reset time: 06:12 in San Jose on the demo day, so today's visits start at 06:25.
+SJ = ZoneInfo("America/Los_Angeles")
+RESET_AT = dt.datetime.combine(demo.DEMO_DAY, dt.time(6, 12), SJ)
+
+
+def _seed(engine: Engine, now: dt.datetime = RESET_AT) -> None:
     with Session(engine) as db, db.begin():
-        demo.load_demo(db)
+        demo.load_demo(db, now)
 
 
 @pytest.fixture
@@ -83,9 +88,9 @@ def test_the_front_desk_sees_the_demo_day(migrator_engine: Engine,
     day = rows("SELECT a.start, t.code FROM clinical.appointment a JOIN admin.appointment_type t "
                f"ON t.id = a.ext_appointment_type_id WHERE a.start::date = '{demo.DEMO_DAY}' "
                "ORDER BY a.start")
-    assert [r.code for r in day] == ["NEW", "FU", "FU", "ANNUAL", "FU", "FU", "FU"]
-    nine = dt.datetime.combine(demo.DEMO_DAY, dt.time(9), ZoneInfo("America/Los_Angeles"))
-    assert day[0].start == nine                                  # 9:00 at the San Jose office
+    assert [r.code for r in day] == ["FU", "NEW", "FU", "ANNUAL", "FU", "FU", "FU"]
+    first = dt.datetime.combine(demo.DEMO_DAY, dt.time(6, 25), SJ)
+    assert day[0].start == first                  # 06:12 + 10 minutes, up to the next :05
     assert len(rows("SELECT 1 FROM clinical.coverage WHERE status = 'active'")) >= 4
     required = {r.kind for r in rows("SELECT kind FROM admin.consent_requirement "
                                      "WHERE is_required AND is_active")}
@@ -335,7 +340,7 @@ def test_every_provider_has_clinic_hours_every_day_with_no_end_date(
             {"ids": DAILY_IDS}).all()
     assert len(rows) == len(starter.PROVIDERS) * 2 * 7       # each provider, facility and day
     assert {(r.start_time, r.end_time, r.effective_from, r.effective_to) for r in rows} == {
-        (dt.time(8, 0), dt.time(17, 0), starter.EFFECTIVE_FROM, None)}
+        (dt.time(0, 0), dt.time(23, 59), starter.EFFECTIVE_FROM, None)}
     for zone in ZONES:                                       # weekends included
         assert {r.day_of_week for r in _daily_rules(admin_engine, zone)} == set(demo.DAYS_OF_WEEK)
 
@@ -347,7 +352,7 @@ def test_every_provider_has_clinic_hours_every_day_with_no_end_date(
     dt.datetime(2026, 11, 20, 4, 59, 30, tzinfo=dt.UTC),      # 23:59:30 in New York
     dt.datetime(2026, 11, 20, 5, 0, 30, tzinfo=dt.UTC),       # 00:00:30 in New York
 ])
-def test_a_revisit_14_days_out_has_free_times_in_clinic_hours_only(
+def test_a_revisit_14_days_out_has_free_times_all_day(
         migrator_engine: Engine, admin_engine: Engine, now: dt.datetime) -> None:
     _seed(migrator_engine)
     for zone in ZONES:
@@ -355,25 +360,27 @@ def test_a_revisit_14_days_out_has_free_times_in_clinic_hours_only(
         later = _free(admin_engine, zone, today + dt.timedelta(days=14), now)
         assert {s.provider_id for s in later} == {r.provider_id for r in
                                                   _daily_rules(admin_engine, zone)}
-        assert len(later) >= 27 * len(starter.PROVIDERS)     # 08:00 to 16:40, every 20 min
+        assert len(later) >= 71 * len(starter.PROVIDERS)     # 00:00 to 23:20, every 20 min
         local = {s.start.astimezone(ZoneInfo(zone)).time() for s in later}
-        assert min(local) == dt.time(8, 0) and max(local) == dt.time(16, 40)
+        assert min(local) == dt.time(0, 0) and max(local) == dt.time(23, 20)
 
 
-def test_the_first_free_time_today_is_08_00_weekends_too_and_none_after_hours(
+def test_the_first_free_time_today_is_the_next_slot_weekends_too_and_none_after_23_20(
         migrator_engine: Engine, admin_engine: Engine) -> None:
-    """Vimal's A3: at 05:00 in San Jose the first free time is 08:00 there, not 05:20."""
+    """Open 24 hours (Vimal on #85, 17 Nov): at 05:00 in San Jose the first free time is the
+    next 20-minute slot there; after 23:20 nothing is left today."""
     _seed(migrator_engine)
     sj = "America/Los_Angeles"
     now = dt.datetime(2026, 11, 20, 13, 0, tzinfo=dt.UTC)      # Friday, 05:00 in San Jose
     first = min(s.start for s in _free(admin_engine, sj, dt.date(2026, 11, 20), now))
-    assert first.astimezone(ZoneInfo(sj)).time() == dt.time(8, 0)
-    late = dt.datetime(2026, 11, 21, 0, 50, tzinfo=dt.UTC)     # Friday, 16:50 in San Jose
+    assert now <= first < now + dt.timedelta(minutes=20)
+    late = dt.datetime(2026, 11, 21, 7, 50, tzinfo=dt.UTC)     # Friday, 23:50 in San Jose
     assert _free(admin_engine, sj, dt.date(2026, 11, 20), late) == []
     for weekend in (dt.date(2026, 11, 14), dt.date(2026, 11, 15)):    # Vimal's #347 review
         saturday_5am = dt.datetime.combine(weekend, dt.time(5), ZoneInfo(sj))
         free = _free(admin_engine, sj, weekend, saturday_5am)
-        assert min(s.start for s in free).astimezone(ZoneInfo(sj)).time() == dt.time(8, 0)
+        assert saturday_5am <= min(s.start for s in free) < saturday_5am + \
+            dt.timedelta(minutes=20)
 
 
 @pytest.mark.parametrize(("now", "day"), [
@@ -382,28 +389,28 @@ def test_the_first_free_time_today_is_08_00_weekends_too_and_none_after_hours(
 ])
 def test_a_daylight_saving_day_keeps_clinic_hours_local(
         migrator_engine: Engine, admin_engine: Engine, now: dt.datetime, day: dt.date) -> None:
-    """The rules are local times, so the day of a change (a Sunday) still opens at 08:00 there,
-    although its UTC time moved by an hour from the week before."""
+    """The rules are local times, so the day of a change (a Sunday) still runs 00:00 to 23:20
+    there, although its last slot's UTC time moved by an hour from the week before."""
     _seed(migrator_engine)
     for zone in ZONES:
         free = _free(admin_engine, zone, day, now)
         local = [s.start.astimezone(ZoneInfo(zone)) for s in free]
-        assert min(local).time() == dt.time(8, 0) and max(local).time() == dt.time(16, 40)
+        assert min(local).time() == dt.time(0, 0) and max(local).time() == dt.time(23, 20)
         week_before = _free(admin_engine, zone, day - dt.timedelta(days=7), now)
-        assert min(s.start for s in free) - min(s.start for s in week_before) != \
+        assert max(s.start for s in free) - max(s.start for s in week_before) != \
             dt.timedelta(days=7)                                # the UTC offset changed
 
 
-def test_a_database_seeded_before_moves_to_clinic_hours(
+def test_a_database_seeded_before_moves_to_all_day_hours(
         migrator_engine: Engine, admin_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The earlier seeds' rows, all day in an 8-day window: a rerun moves the same rows to
-    clinic hours with no end date, adds nothing, and a second rerun changes nothing."""
+    """The earlier seeds' rows, 08:00 to 17:00 in an 8-day window: a rerun moves the same rows
+    to 00:00 to 23:59 with no end date, adds nothing, and a second rerun changes nothing."""
     monkeypatch.setattr("app.db.tests.test_seed.COUNTED", COUNTED)
     _seed(migrator_engine)
     fresh = _snapshot(admin_engine)
     with admin_engine.begin() as c:
-        c.execute(text("UPDATE admin.schedule_availability_rule SET start_time = '00:00', "
-                       "end_time = '23:59', effective_from = '2026-11-04', "
+        c.execute(text("UPDATE admin.schedule_availability_rule SET start_time = '08:00', "
+                       "end_time = '17:00', effective_from = '2026-11-04', "
                        "effective_to = '2026-11-11' WHERE id = ANY(:ids)"), {"ids": DAILY_IDS})
     _seed(migrator_engine)
     moved = _snapshot(admin_engine)
@@ -411,11 +418,8 @@ def test_a_database_seeded_before_moves_to_clinic_hours(
     with admin_engine.connect() as c:
         assert c.execute(text(
             "SELECT count(*) FROM admin.schedule_availability_rule WHERE id = ANY(:ids) AND "
-            "(start_time, end_time) = ('08:00', '17:00') AND effective_to IS NULL"),
+            "(start_time, end_time) = ('00:00', '23:59') AND effective_to IS NULL"),
             {"ids": DAILY_IDS}).scalar_one() == len(DAILY_IDS)
-        assert c.execute(text(
-            "SELECT count(*) FROM admin.schedule_availability_rule WHERE end_time = '23:59'")
-        ).scalar_one() == 0
     _seed(migrator_engine)
     assert _snapshot(admin_engine) == moved
 
@@ -654,3 +658,50 @@ def test_the_reset_check_passes_on_the_demo_data_and_names_what_is_wrong(
         "AI feature not on: chart-summary",
         f"0 visits booked on the demo day {demo.DEMO_DAY}, expected at least 6",
         f"portal account missing or on another chart: {demo.PORTAL_USERS[0][3]}"]
+
+
+# ================================================== today's visits: just after the reset
+LENGTHS = [20, 40, 20, 40, 20, 20, 20]       # Linda (FU) first, then the rest, back to back
+
+
+@pytest.mark.parametrize(("at", "first", "last"), [
+    (dt.time(6, 12), dt.time(6, 25), dt.time(9, 5)),      # a morning reset: :12 + 10, up to :25
+    (dt.time(0, 1), dt.time(0, 15), dt.time(2, 55)),      # just after midnight
+    (dt.time(4, 15), dt.time(4, 25), dt.time(7, 5)),      # exactly on a mark: + 10 is a mark
+    (dt.time(23, 50), dt.time(20, 55), dt.time(23, 35)),  # late: moved earlier, same day
+])
+def test_todays_visits_start_just_after_the_reset_and_stay_on_its_day(
+        at: dt.time, first: dt.time, last: dt.time) -> None:
+    day = dt.date(2026, 11, 17)
+    now = dt.datetime.combine(day, at, SJ)
+    starts = demo.visit_starts(now, SJ, LENGTHS)
+    assert (starts[0].time(), starts[-1].time()) == (first, last)
+    assert {s.date() for s in starts} == {day}                 # check-in is same-day only
+    assert all(s.minute % 5 == 0 for s in starts)
+    assert all(b - a == dt.timedelta(minutes=m)
+               for a, b, m in zip(starts[:-1], starts[1:], LENGTHS[:-1], strict=True))
+    end = starts[-1] + dt.timedelta(minutes=LENGTHS[-1])
+    assert end.time() <= demo.LATEST_END and end.date() == day
+    if at < dt.time(20):
+        assert starts[0] >= now + demo.FIRST_VISIT_LEAD
+
+
+def test_an_explicit_demo_day_books_from_09_00() -> None:
+    now = dt.datetime(2026, 11, 17, 6, 12, tzinfo=SJ)
+    starts = demo.visit_starts(now, SJ, LENGTHS, dt.date(2026, 11, 20))
+    assert starts[0] == dt.datetime(2026, 11, 20, 9, 0, tzinfo=SJ)
+    assert starts[-1] == dt.datetime(2026, 11, 20, 11, 40, tzinfo=SJ)
+
+
+def test_linda_is_first_and_a_rerun_never_moves_a_booked_visit(
+        migrator_engine: Engine, admin_engine: Engine) -> None:
+    _seed(migrator_engine)
+    _seed(migrator_engine, RESET_AT + dt.timedelta(hours=3))    # the additive rerun, later
+    with admin_engine.connect() as c:
+        rows = c.execute(text(
+            "SELECT a.subject_patient_id, a.start FROM clinical.appointment a "
+            "WHERE a.id = ANY(:ids) ORDER BY a.start"),
+            {"ids": [sid(demo.APPOINTMENT, n) for n in demo.VISIT_ORDER]}).all()
+    assert [r.subject_patient_id for r in rows] == [sid(demo.PATIENT, n)
+                                                    for n in demo.VISIT_ORDER]
+    assert rows[0].start == dt.datetime.combine(demo.DEMO_DAY, dt.time(6, 25), SJ)  # unmoved

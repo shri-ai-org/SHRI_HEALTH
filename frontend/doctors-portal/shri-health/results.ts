@@ -3,15 +3,15 @@
 // the tab counts.
 //   lab results     ⇐ listLabResults(patientId, { limit, cursor }): DiagnosticReport LAB, newest
 //                     first, each with its analytes (value or text, reference range, H/L flag)
-//   imaging reports ⇐ listImagingReports(patientId, { limit, cursor }): newest first, text only
-//                     (impression and full report; no images behind them)
+//   imaging reports ⇐ listImagingReports(patientId, { limit, cursor }): newest first, the impression
+//                     and full report, and any illustrative images (#393)
 // A restricted chart answers 403 break-glass-required, which goes to the route's sealed card
 // (RouteBoundary), as on the other record tabs; a role without the read answers 403
 // permission-denied, which the page says in words. Any other failure goes to RouteBoundary's
 // "This screen could not open" card: never sample data.
 import { ApiError } from '../../src/api/client'
 import { listImagingReports, listLabResults } from '../../src/api/generated/endpoints/orders/orders'
-import type { CodeableConcept, ImagingReport, LabObservation, LabResult, Quantity, ReferenceRange } from '../../src/api/generated/model'
+import type { CodeableConcept, ImagingReport, ImagingReportImage, LabObservation, LabResult, Quantity, ReferenceRange } from '../../src/api/generated/model'
 import { read } from './resource'
 
 const PAGE = 100
@@ -66,6 +66,8 @@ export interface ImagingReportRow {
   performer?: string
   impression?: string
   text?: string
+  /** Illustrative images on the report (#386, #393): read through createDownloadUrl, never diagnostic. */
+  images: ImagingReportImage[]
 }
 
 export interface ReadList<T> {
@@ -78,10 +80,13 @@ const textOf = (c: CodeableConcept, fallback: string) => c.text ?? c.codings?.[0
 
 const num = (q?: Quantity) => (q ? String(q.value) : '')
 
+/** A UCUM unit as people write it: `mL/min/{1.73_m2}` is "mL/min/1.73 m²" (as the patient portal shows it). */
+export const unitText = (unit: string): string => unit.replace(/\{([^}]*)\}/g, '$1').replace(/_m2\b/g, ' m²')
+
 function rangeText(r?: ReferenceRange): string {
   if (!r) return ''
   const unit = r.low?.unit || r.high?.unit
-  const u = unit ? ` ${unit}` : ''
+  const u = unit ? ` ${unitText(unit)}` : ''
   if (r.low && r.high) return `${num(r.low)}–${num(r.high)}${u}`
   if (r.low) return `≥ ${num(r.low)}${u}`
   if (r.high) return `≤ ${num(r.high)}${u}`
@@ -93,7 +98,7 @@ function analyte(o: LabObservation): LabAnalyte {
     id: o.id,
     name: textOf(o.code, 'Analyte'),
     value: o.value ? num(o.value) : (o.valueText ?? '—'),
-    unit: o.value?.unit || undefined,
+    unit: o.value?.unit ? unitText(o.value.unit) : undefined,
     numeric: o.value?.value,
     low: o.referenceRange?.low?.value,
     high: o.referenceRange?.high?.value,
@@ -126,6 +131,7 @@ function imagingReport(r: ImagingReport): ImagingReportRow {
     performer: r.performer,
     impression: r.impression,
     text: r.text,
+    images: r.images ?? [],
   }
 }
 
