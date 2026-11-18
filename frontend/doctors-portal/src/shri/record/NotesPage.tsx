@@ -7,14 +7,14 @@
  * earlier note opens to its four sections; closed, it is one line.
  */
 
-import { ChevronDown, ChevronRight, FileText, Mic, PenLine, Signature, Stethoscope } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, ChevronRight, FileText, History, Mic, PenLine, Signature, Stethoscope } from 'lucide-react'
+import { Suspense, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { formatDate, formatTime } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
 import type { PastNote } from '@/data/record'
-import { pastNotesFor } from '../../../shri-health/record'
+import { noteVersionsFor, pastNotesFor } from '../../../shri-health/record'
 
 import { useMayOpenPath } from '../app/landing'
 import { consultPath, noteActionLabel, useSessionNotesFor, useVoiceNotesFor } from '../logic/record'
@@ -182,6 +182,50 @@ function PastNoteRow({ note: n, first }: { note: PastNote; first: boolean }) {
           ))}
         </dl>
       )}
+      {open && REAL_API && <VersionHistory noteId={n.id} />}
     </li>
+  )
+}
+
+/** A signed note's saved versions, newest first (listNoteVersions; D8), opened on request. */
+function VersionHistory({ noteId }: { noteId: string }) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div className="px-[16px] pb-[16px] sm:pl-[44px]">
+      <button
+        type="button"
+        aria-expanded={shown}
+        onClick={() => setShown((v) => !v)}
+        className="inline-flex min-h-[44px] items-center gap-[6px] rounded-[10px] px-[8px] text-[13px] font-semibold text-sh-text-2 transition-colors duration-150 hover:bg-sh-hover"
+      >
+        <Icon icon={History} size={14} className="text-sh-text-3" />
+        Version history
+      </button>
+      {shown && (
+        <Suspense fallback={<p className="px-[8px] text-[13px] text-sh-text-3">Loading versions…</p>}>
+          <VersionList noteId={noteId} />
+        </Suspense>
+      )}
+    </div>
+  )
+}
+
+function VersionList({ noteId }: { noteId: string }) {
+  const versions = noteVersionsFor(noteId)
+  if (!versions.ok) return <p className="px-[8px] text-[13px] text-sh-text-3">The version history could not be read.</p>
+  if (versions.rows.length === 0) return <p className="px-[8px] text-[13px] text-sh-text-3">No saved versions.</p>
+  return (
+    <ol aria-label="Saved versions, newest first" className="mt-[4px] flex flex-col">
+      {versions.rows.map((v, i) => (
+        <li key={v.version} className={`flex flex-wrap items-baseline gap-x-[8px] px-[8px] py-[6px] text-[13px] ${i === 0 ? '' : 'border-t border-sh-line'}`}>
+          <span className="font-semibold tabular-nums text-sh-text">Version {v.version}</span>
+          <span className="text-sh-text-2">{v.status}</span>
+          <span className="tabular-nums text-sh-text-3">
+            {formatDate(v.at)} {formatTime(v.at)}
+            {v.by ? ` · ${v.by}` : ''}
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
