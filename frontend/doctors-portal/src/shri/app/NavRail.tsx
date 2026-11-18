@@ -5,7 +5,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, House, ListChecks, LogOut, Search, Sparkles, Stethoscope, UsersRound, Video,
+  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, House, ListChecks, LogOut, Search, Send, Sparkles, Stethoscope, UsersRound, Video,
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,12 +25,13 @@ import { useShri } from '../state/store'
 import { useMediaQuery, useOutsideClick } from '../ui/hooks'
 import { Icon } from '../ui/primitives'
 
+import { mayOpen } from './landing'
 import { canonical } from './paths'
 
 type Section = NavItem['section']
 
 interface RailItem {
-  key: Section | 'patients' | 'search' | 'more'
+  key: Section | 'patients' | 'search' | 'more' | 'referrals'
   label: string
   /** The phone tab bar's label. */
   short: string
@@ -98,7 +99,10 @@ const OFF_RAIL = new Set<Section>(['stroke', 'assistant'])
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 /** The build stamp (V_ day month - number) is for development only; the demo and staff never see it. */
 const SHOW_BUILD_STAMP = import.meta.env.DEV
-const OFF_RAIL_WITH_API = new Set<Section>(['orders', 'results', 'imaging', 'inpatients', 'discharge', 'telehealth'])
+const OFF_RAIL_WITH_API = new Set<Section>(['results', 'imaging', 'inpatients', 'discharge', 'telehealth'])
+/** With the API, orders (on the rail from the nav) and referrals open "Work in progress" until their
+ *  service lands after the demo (Thulasi; Vimal on #85, 18 Nov); never an error or a blank page. */
+const REFERRALS: RailItem = { key: 'referrals', label: 'Referrals', short: 'Referrals', icon: Send, to: '/referrals' }
 
 function useRail() {
   const persona = useSession((s) => s.persona)
@@ -107,6 +111,7 @@ function useRail() {
     const onRail = (n: NavItem) => !OFF_RAIL.has(n.section) && !(REAL_API && OFF_RAIL_WITH_API.has(n.section))
     const primary = mergePatientLists(groups.primary.filter(onRail).map((n) => railItem(n, persona)))
     const more = mergePatientLists(groups.secondary.filter(onRail).map((n) => railItem(n, persona)))
+    if (REAL_API && mayOpen(persona, 'referral.read')) more.push(REFERRALS)
     const items = [...primary.slice(0, 1), SEARCH, ...primary.slice(1), ...(more.length > 0 ? [MORE_ITEM] : [])]
     return { primary, more, items }
   }, [persona])
@@ -117,6 +122,7 @@ function useActiveKey(): RailItem['key'] | null {
   const { pathname } = useLocation()
   if (pathname === '/') return 'home'
   if (pathname.startsWith('/patient/')) return 'search'
+  if (pathname === '/referrals' || pathname.startsWith('/referrals/')) return 'referrals'
   const section = screenForPath(pathname)?.navSection ?? null
   return section && PATIENT_LISTS.has(section) ? 'patients' : section
 }

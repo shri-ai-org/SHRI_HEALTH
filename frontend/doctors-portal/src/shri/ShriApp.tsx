@@ -32,6 +32,8 @@ import { RecordPage } from './record/RecordPage'
 import { Denied } from './screens/Denied'
 import { NotFound } from './screens/NotFound'
 import { OWN_STATES, SCREEN_COMPONENTS } from './screens/registry'
+import { WorkInProgressPage } from './app/WorkInProgressPage'
+import { WORK_IN_PROGRESS_ROUTES } from './logic/workInProgress'
 import { forceState, useForcedState } from './state/ai'
 import { useShri } from './state/store'
 import { ErrorFrame } from './ui/states'
@@ -157,6 +159,9 @@ export default function ShriApp() {
                 {SHELLED.map((s) => (
                   <Route key={s.id} path={s.route!} element={<Screen spec={s} />} />
                 ))}
+                {/* SHRI_HEALTH: orders and referrals come after the demo (Thulasi): with the API their
+                    menu items and old addresses open "Work in progress", never Not found or sample data. */}
+                {REAL_API ? WORK_IN_PROGRESS_ROUTES.map(([path, feature]) => <Route key={path} path={path} element={<WorkInProgressPage feature={feature} />} />) : null}
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

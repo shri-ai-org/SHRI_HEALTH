@@ -126,8 +126,10 @@ test('15. Billing shows Work in progress', async ({ page }) => {
   await screenOk(page, '15-billing-wip')
 })
 
-test('16. Orders and referrals', async () => {
-  test.skip(true, "waits for the orders and referrals contract (PR 400) and Thulasi's screens")
+test('16. Orders and referrals show Work in progress (after the demo; checked in 3-wip.audit.ts)', async ({ page }) => {
+  await as(page, 'doctor', '/clinician/orders/sets')
+  await expect.soft(page.getByText(/This feature is work in progress/i).first(), 'orders are Work in progress').toBeVisible({ timeout: 15_000 })
+  await screenOk(page, '16-orders-wip')
 })
 
 test('17. Administration, audit trail, FHIR view, integrations (read only)', async () => {
