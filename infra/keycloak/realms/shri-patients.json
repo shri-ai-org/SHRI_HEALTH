@@ -2,6 +2,7 @@
   "realm": "shri-patients",
   "displayName": "Shri Health patient portal",
   "enabled": true,
+  "loginTheme": "shri",
   "sslRequired": "external",
   "registrationAllowed": false,
   "registrationEmailAsUsername": true,
