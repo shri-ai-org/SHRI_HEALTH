@@ -1,23 +1,21 @@
 """Refill requests (#400; inventory #128, #129): their rows, and the writes through Anand's helpers.
 
 A refill request is a MedicationRequest with intent ``proposal``: the patient as ``requester``,
-the prescription to refill as ``priorPrescription``, the patient's note as its annotation, and,
-once declined, the reason as ``statusReason``. Its FHIR status is the contract's: ``active`` is
-``requested``, ``completed`` ``approved``, ``cancelled`` ``declined``.
+the prescription to refill as ``priorPrescription``, no free text (migration 0028), and, once
+declined, the reason as ``statusReason`` (a code of ``fs.REFILL_DECLINE_REASONS`` and the words
+the patient reads). Its FHIR status is the contract's: ``active`` is ``requested``,
+``completed`` ``approved``, ``cancelled`` ``declined``.
 
 - **Writes** go through Anand's helpers in ``app.db.fhir_store`` (``create_refill_request``,
   ``respond_to_refill_request``, and ``PrescriptionIn.prior_prescription_id`` for the approved
-  draft; asked for on #85). Until they are merged, ``SqlRefillStore`` and ``draft_in`` answer
-  ``503`` (``HELPERS_MISSING``) before anything is written; ``helpers_ready()`` says whether
-  they are there.
+  draft; #424, migration 0028).
 - **Reads** are plain SQL, in the caller's session: ``shri_app`` (the clinic's rows) for the
   staff reads, ``shri_portal`` (the session patient's chart, never a draft) for the portal's.
   The portal's reads name no table ``shri_portal`` can't read (the request's annotation, the
   users): its columns are a subset of the staff's.
-- **The approved draft** is the earliest prescription (intent ``order``) with the same
-  ``priorPrescription``, written at or after the answer (``created_at >= meta_last_updated``;
-  both are the answering transaction's ``now()``). A draft is invisible to ``shri_portal``, so
-  the portal shows ``newPrescriptionId`` once the prescriber has signed it.
+- **The approved draft** is ``fs.refill_renewal_id()``'s, read in the caller's session. A
+  draft is invisible to ``shri_portal``, so the portal shows ``newPrescriptionId`` once the
+  prescriber has signed it.
 """
 
 from __future__ import annotations
@@ -32,12 +30,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ServiceUnavailable
 from app.db import fhir_store as fs
 
 from .repository import PrescriptionRow
 
-HELPERS_MISSING = "Refill requests need the database's refill helpers (Anand, #85)"
 #: The FHIR statuses a refill request can have, as the contract names them.
 STATUS = {"active": "requested", "completed": "approved", "cancelled": "declined"}
 
@@ -78,12 +74,7 @@ class RefillRow:
         return self.last_updated if self.status != "active" else None
 
 
-@dataclass(frozen=True)
-class RefillRequestIn:
-    """``fs.RefillRequestIn``'s fields (Anand's, to come)."""
-    patient_id: UUID
-    prior_prescription_id: UUID
-    note: str | None = None
+RefillRequestIn = fs.RefillRequestIn
 
 
 # ------------------------------------------------------------------------------ protocols
@@ -91,12 +82,17 @@ class RefillStore(Protocol):
     """The writes, through Anand's helpers (no commit)."""
 
     async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn
-                                    ) -> fs.Written: ...
+                                    ) -> fs.Written:
+        """In the portal session. Raises ``fs.ResourceNotFound`` (not the session patient's),
+        ``fs.RefillNotAllowed`` (``not-active`` or ``not-refillable``) and
+        ``fs.RefillAlreadyRequested``."""
+        ...
 
     async def respond_to_refill_request(self, db: AsyncSession, request_id: UUID, *,
                                         approve: bool, reason: str | None, if_version: int
                                         ) -> fs.Written:
-        """Raises ``fs.InvalidTransition`` when the request is no longer active."""
+        """Raises ``fs.InvalidTransition`` when the request is no longer active, and
+        ``fs.InvalidInput`` for a ``reason`` that isn't a key of ``fs.REFILL_DECLINE_REASONS``."""
         ...
 
 
@@ -128,65 +124,33 @@ class RefillReads(Protocol):
 _STORE = fs.SqlFhirStore()
 
 
-def helpers_ready() -> bool:
-    """Anand's refill helpers are merged (``fs.RefillRequestIn``, the store's two methods and
-    ``PrescriptionIn.prior_prescription_id``)."""
-    return (hasattr(fs, "RefillRequestIn")
-            and hasattr(fs.SqlFhirStore, "create_refill_request")
-            and hasattr(fs.SqlFhirStore, "respond_to_refill_request")
-            and "prior_prescription_id" in {f.name for f in dataclasses.fields(fs.PrescriptionIn)})
-
-
-def _helper(name: str) -> Any:
-    found = getattr(_STORE, name, None)
-    if found is None:
-        raise ServiceUnavailable(HELPERS_MISSING)
-    return found
-
-
 class SqlRefillStore:
     async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn
                                     ) -> fs.Written:
-        shape = getattr(fs, "RefillRequestIn", None)
-        create = _helper("create_refill_request")
-        if shape is None:
-            raise ServiceUnavailable(HELPERS_MISSING)
-        written: fs.Written = await create(db, shape(
-            patient_id=request.patient_id, prior_prescription_id=request.prior_prescription_id,
-            note=request.note))
-        return written
+        return await _STORE.create_refill_request(db, request)
 
     async def respond_to_refill_request(self, db: AsyncSession, request_id: UUID, *,
                                         approve: bool, reason: str | None, if_version: int
                                         ) -> fs.Written:
-        respond = _helper("respond_to_refill_request")
-        written: fs.Written = await respond(db, request_id, approve=approve, reason=reason,
-                                            if_version=if_version)
-        return written
+        return await _STORE.respond_to_refill_request(db, request_id, approve=approve,
+                                                      reason=reason, if_version=if_version)
 
 
 def draft_in(prior: PrescriptionRow, *, pharmacy_id: UUID | None, dea_schedule: str | None,
              refills: int | None) -> fs.PrescriptionIn:
     """The approved refill's draft: the prior prescription's drug, directions, quantity, days'
-    supply, refills, substitution and pharmacy, outside any visit, with ``priorPrescription``.
-    ``503`` while ``PrescriptionIn`` has no ``prior_prescription_id`` (checked before anything
-    is written)."""
-    if "prior_prescription_id" not in {f.name for f in dataclasses.fields(fs.PrescriptionIn)}:
-        raise ServiceUnavailable(HELPERS_MISSING)
+    supply, refills, substitution and pharmacy, outside any visit, with ``priorPrescription``."""
     drug = prior.drug
-    values: dict[str, Any] = {
-        "patient_id": prior.patient_id,
-        "medication": fs.Coded(system=drug.system, code=drug.code, display=drug.display,
-                               text=drug.text),
-        "dosage_text": prior.dosage_text,
-        "quantity": fs.DispenseQuantity(prior.quantity_value, prior.quantity_unit)
+    return fs.PrescriptionIn(
+        patient_id=prior.patient_id,
+        medication=fs.Coded(system=drug.system, code=drug.code, display=drug.display,
+                            text=drug.text),
+        dosage_text=prior.dosage_text,
+        quantity=fs.DispenseQuantity(prior.quantity_value, prior.quantity_unit)
         if prior.quantity_value is not None and prior.quantity_unit else None,
-        "days_supply": int(prior.days_supply) if prior.days_supply is not None else None,
-        "refills": refills, "substitution_allowed": prior.substitution_allowed,
-        "pharmacy_id": pharmacy_id, "dea_schedule": dea_schedule,
-        "prior_prescription_id": prior.id,
-    }
-    return fs.PrescriptionIn(**values)
+        days_supply=int(prior.days_supply) if prior.days_supply is not None else None,
+        refills=refills, substitution_allowed=prior.substitution_allowed,
+        pharmacy_id=pharmacy_id, dea_schedule=dea_schedule, prior_prescription_id=prior.id)
 
 
 # ------------------------------------------------------------------------------------ SQL
@@ -213,13 +177,7 @@ SELECT r.id, r.subject_patient_id, r.status, r.prior_prescription_id, r.created_
          AS display,
        (SELECT d.text FROM clinical.dosage d WHERE d.medication_request_id = p.id
          ORDER BY d.sequence NULLS LAST, d.id LIMIT 1) AS dosage_text,
-       e.ext_facility_id AS facility_id,
-       CASE WHEN r.status = 'completed' THEN (
-         SELECT o.id FROM clinical.medication_request o
-          WHERE o.intent = 'order' AND o.prior_prescription_id = r.prior_prescription_id
-            AND o.subject_patient_id = r.subject_patient_id
-            AND o.created_at >= r.meta_last_updated
-          ORDER BY o.created_at, o.id LIMIT 1) END AS new_prescription_id"""
+       e.ext_facility_id AS facility_id"""
 # Staff only: the patient's note, and who answered (the practitioner's official name, else the
 # user's display name: staff, not patient data).
 _STAFF_ONLY = """,
@@ -265,9 +223,16 @@ def _row(r: Any, *, staff: bool) -> RefillRow:
         prescription_id=r.prior_prescription_id, requested_at=r.created_at,
         last_updated=r.meta_last_updated, version=r.meta_version_id,
         decline_reason=r.decline_reason, display=r.display, dosage_text=r.dosage_text,
-        facility_id=r.facility_id, new_prescription_id=r.new_prescription_id,
+        facility_id=r.facility_id, new_prescription_id=None,
         note=r.note if staff else None, responder_id=r.responder_id if staff else None,
         responder_name=" ".join(name.split()) or None if name else None)
+
+
+async def _renewed(db: AsyncSession, rows: list[RefillRow]) -> list[RefillRow]:
+    """Each approved request with its renewal (``fs.refill_renewal_id``, as this session sees
+    it: the portal's never sees a draft)."""
+    return [dataclasses.replace(r, new_prescription_id=await fs.refill_renewal_id(db, r.id))
+            if r.status == "completed" else r for r in rows]
 
 
 class SqlRefillReads:
@@ -288,7 +253,7 @@ class SqlRefillReads:
                               ) -> list[RefillRow]:
         rows = await db.execute(_PORTAL, {"patient": patient_id, "id": request_id,
                                           "limit": limit, "offset": offset})
-        return [_row(r, staff=False) for r in rows]
+        return await _renewed(db, [_row(r, staff=False) for r in rows])
 
     async def staff_requests(self, db: AsyncSession, *, status: str,
                              facility_ids: Collection[UUID], limit: int, offset: int
@@ -296,8 +261,11 @@ class SqlRefillReads:
         rows = await db.execute(_STAFF_LIST, {"status": status,
                                               "facilities": sorted(facility_ids),
                                               "limit": limit, "offset": offset})
-        return [_row(r, staff=True) for r in rows]
+        return await _renewed(db, [_row(r, staff=True) for r in rows])
 
     async def staff_request(self, db: AsyncSession, request_id: UUID) -> RefillRow | None:
         r = (await db.execute(_STAFF_ONE, {"id": request_id})).one_or_none()
-        return _row(r, staff=True) if r is not None else None
+        if r is None:
+            return None
+        (found,) = await _renewed(db, [_row(r, staff=True)])
+        return found

@@ -3,23 +3,28 @@ prescriber's answer.
 
 - **Asking** (``request_refill``, the patient's session): only the session patient's own
   prescription (``404`` otherwise, as for one that doesn't exist; D84), active and signed
-  (``not-active``), not Schedule II (``not-refillable``; 21 CFR 1306 allows no refills) and with
-  no open request (``refill-already-requested``); each refusal is ``409
-  invalid-state-transition`` naming ``/prescriptionId``. The request and its
-  ``refill-request.received`` event commit together.
+  (``not-active``), not a controlled substance, PSY or of a schedule that can't be read
+  (``not-refillable``; migration 0028, which decides) and with no open request
+  (``refill-already-requested``); each refusal is ``409 invalid-state-transition`` naming
+  ``/prescriptionId``. A request carries no free text: a non-empty ``note`` is ``422``
+  ``/note`` ``not-allowed-value`` (Vimal, for the demo; the helper refuses one too). The
+  request and its ``refill-request.received`` event commit together.
 - **The staff list** (``list_requests``): the clinic's requests at the user's facilities (a
   prescription written outside a visit has no facility and is listed for all, as ``readable``
   lets it be read), open first, then oldest. A restricted chart the user may not open (D37) is
   listed without its clinical fields (``restricted: true``), never refused; nothing is audited
   as a refusal, since nothing was opened.
 - **The answer** (``respond``): MD and APP only (D110), checked before anything is read; then
-  the body's rules (``reason`` required to decline, refused with approve), ``404`` outside the
+  the body's rules (``reason`` required to decline, refused with approve, and one of the codes
+  of ``fs.REFILL_DECLINE_REASONS``: ``422`` ``/reason`` ``not-allowed-value`` otherwise; the
+  patient reads that code's words as ``declineReason``), ``404`` outside the
   clinic or the user's facilities, the restricted-chart check (``403 break-glass-required``)
   and ``409`` with ``currentState`` once answered. Approving writes the request
   ``completed`` and a **draft** prescription copied from the refilled one, outside any visit,
   with ``priorPrescription``; the prescriber then runs the safety check and sign-and-send on
-  it, so the fixed alerts (D99) and the outbox (D25) apply as to any prescription. Declining
-  writes it ``cancelled`` with the reason. One transaction; the caller commits.
+  it, so the fixed alerts (D99) and the outbox (D25) apply as to any prescription; the
+  response's ``newPrescriptionId`` is that draft. Declining writes it ``cancelled`` with the
+  reason's code and words. One transaction; the caller commits.
 
 Nothing here logs a note, a reason or a drug.
 """
@@ -119,24 +124,26 @@ async def request_refill(db: AsyncSession, reads: RefillReads, store: RefillStor
                          publish: Publish, patient: PortalPatient,
                          body: ps.PortalRefillRequestCreate) -> ps.PortalRefillRequest:
     """The session patient asks to refill one of their own prescriptions (no commit)."""
+    if body.note is not None and body.note.strip():
+        raise service.invalid("/note", "not-allowed-value")
     rx = await reads.prescription(db, body.prescription_id)
     if rx is None or rx.patient_id != patient.patient_id or rx.intent != "order":
         raise NotFound()  # another patient's, a reported medication, or none: the same 404
     if rx.status != "active" or not rx.signed:
         raise _refused("not-active")
-    if rx.dea_schedule == "CII":
+    if rx.dea_schedule is not None:
         raise _refused("not-refillable")
     if await reads.open_request(db, rx.id):
         raise _refused("refill-already-requested")
-    note = body.note.strip() if body.note and body.note.strip() else None
     try:
         written = await store.create_refill_request(db, RefillRequestIn(
-            patient_id=patient.patient_id, prior_prescription_id=rx.id, note=note))
+            patient_id=patient.patient_id, prior_prescription_id=rx.id))
     except fs.PatientMerged:
         raise Conflict(code="patient-merged") from None
-    except fs.InvalidTransition as refused:  # the helper's own guards, under its lock
-        raise _refused("refill-already-requested" if refused.current_state == "active"
-                       else "not-active") from None
+    except fs.RefillAlreadyRequested:  # the unique index, under a concurrent request
+        raise _refused("refill-already-requested") from None
+    except fs.RefillNotAllowed as refused:  # the database's own rule (migration 0028)
+        raise _refused(refused.current_state) from None
     except fs.ResourceNotFound:
         raise NotFound() from None
     await publish(db, RECEIVED, f"refill-request/{written.id}", {
@@ -183,8 +190,8 @@ async def respond(db: AsyncSession, reads: RefillReads, repo: MedicationReposito
         raise service.invalid("/reason", "conflicting-fields")
     if not approve and reason is None:
         raise service.invalid("/reason", "required")
-    if reason is not None and len(reason) < 3:
-        raise service.invalid("/reason", "too-short")
+    if reason is not None and reason not in fs.REFILL_DECLINE_REASONS:
+        raise service.invalid("/reason", "not-allowed-value")
     row = await reads.staff_request(db, request_id)
     if row is None:
         raise NotFound()
@@ -194,10 +201,12 @@ async def respond(db: AsyncSession, reads: RefillReads, repo: MedicationReposito
     if row.status != "active":
         raise _answered(row.status)
     await service._prescriber(db, repo, user)  # the answer is written as a practitioner's
-    draft = await _draft(db, repo, row) if approve else None  # 503 before any write
+    draft = await _draft(db, repo, row) if approve else None  # read before any write
     try:
         await store.respond_to_refill_request(db, row.id, approve=approve, reason=reason,
                                               if_version=row.version)
+    except fs.InvalidInput as refused:  # pragma: no cover - the reason is checked above
+        raise service.invalid("/reason", "not-allowed-value") from refused
     except (fs.InvalidTransition, fs.StaleVersion):
         now = await reads.staff_request(db, row.id)
         raise _answered(now.status if now is not None else "active") from None

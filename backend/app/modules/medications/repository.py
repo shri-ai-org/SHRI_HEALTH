@@ -374,7 +374,7 @@ WHERE m.subject_patient_id = :patient AND m.id <> :id
   AND m.medication_codeable_concept_system = :rxnorm
   AND m.medication_codeable_concept_code IS NOT NULL AND """ + _ON_THE_LIST + """
 ORDER BY coalesce(m.ext_signed_at, m.authored_on, m.created_at), m.id
-""")
+""")  # noqa: S608 (constants only: _ON_THE_LIST is a fixed clause; values are bound)
 _INGREDIENTS = text("""
 SELECT c.code, p.value FROM admin.concept c
 JOIN admin.code_system s ON s.id = c.code_system_id

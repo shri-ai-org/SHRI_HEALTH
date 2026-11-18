@@ -1,9 +1,11 @@
 """In-memory stand-ins for refill requests (refill_repository.py), on fakes.py's World: the reads
-and Anand's two helpers as #85 asks for them, a repository whose drafts remember their
+and Anand's two helpers as #424 writes them, a repository whose drafts remember their
 ``priorPrescription``, core's chart view and the event log. They keep the rules the API relies
 on: a clinic sees its own rows; the portal's session sees its own patient's rows and never a
-draft; an answered request refuses another answer (``InvalidTransition``), a stale version
-``StaleVersion``; one open request per prescription. Synthetic data only."""
+draft; a request takes no note; an answered request refuses another answer
+(``InvalidTransition``), a stale version ``StaleVersion``, a decline only a listed reason code
+(stored with its words); one open request per prescription (``RefillAlreadyRequested``).
+Synthetic data only."""
 
 from __future__ import annotations
 
@@ -128,10 +130,11 @@ class FakeRefills:
 
     # ----------------------------------------------------------------------------- writes
     async def create_refill_request(self, db: Any, request: RefillRequestIn) -> fs.Written:
+        if request.note is not None and request.note.strip():
+            raise fs.InvalidInput("a refill request takes no note", field="note")
         if await self.open_request(db, request.prior_prescription_id):
-            raise fs.InvalidTransition("active")
-        rid = self.refills.add(db.tenant_id, request.patient_id,
-                               request.prior_prescription_id, note=request.note)
+            raise fs.RefillAlreadyRequested
+        rid = self.refills.add(db.tenant_id, request.patient_id, request.prior_prescription_id)
         row = self.refills.row(rid)
         return fs.Written(rid, row.version, row.last_updated)
 
@@ -145,10 +148,14 @@ class FakeRefills:
             raise fs.InvalidTransition(row.status)
         if row.version != if_version:
             raise fs.StaleVersion(row.version)
+        wording = None if approve else fs.REFILL_DECLINE_REASONS.get(reason or "")
+        if not approve and wording is None:
+            raise fs.InvalidInput("a declined refill needs one of the listed reasons",
+                                  field="reason")
         now = self.world.tick()
         self.refills.rows[request_id] = (clinic, replace(
             row, status="completed" if approve else "cancelled",
-            decline_reason=None if approve else reason, last_updated=now,
+            decline_reason=wording, last_updated=now,
             version=row.version + 1))
         if db.user_id is not None:
             self.refills.updated_by[request_id] = db.user_id

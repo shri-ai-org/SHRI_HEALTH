@@ -1,13 +1,12 @@
 """Refill requests (#400) on the fakes (fakes.py, refill_fakes.py): the patient's request from the
 portal and their list, the staff list and the prescriber's answer, each with success, permission
 denied and validation errors, plus another patient's or clinic's records (404), a restricted
-chart, the facility filter, an answered request (409) and the approved draft through the safety
-check and sign-and-send. The same operations against the real tables are in
-test_refills_live.py. Synthetic data only."""
+chart, the facility filter, an answered request (409), a note (refused), the decline reason codes
+and the approved draft through the safety check and sign-and-send. The same operations against
+the real tables are in test_refills_live.py. Synthetic data only."""
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -27,10 +26,8 @@ from app.core.deps import (
     FACILITY_A,
     FACILITY_B,
 )
-from app.core.errors import ServiceUnavailable
 from app.db import fhir_store as fs
 
-from .. import refill_repository
 from .fakes import World
 from .refill_fakes import Refills
 from .test_medications_api import _check, _draft, _etag, _sign
@@ -39,19 +36,7 @@ Client = Callable[[str], TestClient]
 API = "/api/v1"
 MINE = f"{API}/portal/me/refill-requests"
 STAFF = f"{API}/refill-requests"
-HAS_PRIOR = "prior_prescription_id" in {f.name for f in dataclasses.fields(fs.PrescriptionIn)}
-
-
-@dataclasses.dataclass(frozen=True)
-class _PrescriptionIn(fs.PrescriptionIn):
-    """``fs.PrescriptionIn`` with the field Anand adds (#85), for the fakes."""
-    prior_prescription_id: UUID | None = None
-
-
-@pytest.fixture
-def with_prior(monkeypatch: pytest.MonkeyPatch) -> None:
-    if not HAS_PRIOR:
-        monkeypatch.setattr(fs, "PrescriptionIn", _PrescriptionIn)
+VISIT = "needs-visit"  # a decline reason code (fs.REFILL_DECLINE_REASONS)
 
 
 def _key() -> dict[str, str]:
@@ -87,7 +72,7 @@ def _requested(app: FastAPI, as_user: Client, world: World, patient: UUID | None
                **kw: Any) -> tuple[UUID, str, str]:
     patient = patient or world.patient(CLINIC_A)
     rx = _signed(as_user, world, patient, **kw)
-    asked = _ask(app, patient, rx, note="Down to my last week of capsules.")
+    asked = _ask(app, patient, rx)
     assert asked.status_code == 201, asked.text
     return patient, rx, asked.json()["id"]
 
@@ -101,7 +86,7 @@ def test_a_patient_asks_to_refill_their_own_prescription(app: FastAPI, as_user: 
                                                          world: World, refills: Refills) -> None:
     patient = world.patient(CLINIC_A)
     rx = _signed(as_user, world, patient)
-    asked = _ask(app, patient, rx, note="  Down to my last week of capsules.  ")
+    asked = _ask(app, patient, rx, note="   ")  # blank: no note
     assert asked.status_code == 201, asked.text
     assert asked.headers["Location"] == MINE
     body = asked.json()
@@ -111,7 +96,7 @@ def test_a_patient_asks_to_refill_their_own_prescription(app: FastAPI, as_user: 
     assert body["requestedAt"] and "respondedAt" not in body and "newPrescriptionId" not in body
     stored = refills.row(UUID(body["id"]))
     assert (stored.patient_id, stored.status) == (patient, "active")
-    assert refills.notes[stored.id] == "Down to my last week of capsules."
+    assert refills.notes[stored.id] is None
     assert refills.events == [(
         "refill-request.received", f"refill-request/{body['id']}",
         {"refillRequestId": body["id"], "prescriptionId": rx, "patientId": str(patient),
@@ -145,11 +130,12 @@ def test_asking_refuses_what_cant_be_refilled(app: FastAPI, as_user: Client, wor
     assert finished.json()["code"] == "invalid-state-transition"
     assert _errors(finished) == [("/prescriptionId", "not-active")]
 
-    world.schedules["308191"] = "CII"  # Schedule II: no refills (21 CFR 1306)
-    controlled = _signed(as_user, world, patient)
-    refused = _ask(app, patient, controlled)
-    assert refused.status_code == 409 and _errors(refused) == [("/prescriptionId",
-                                                                "not-refillable")]
+    for schedule in ("CII", "CIV"):  # no controlled substance from the portal (0028)
+        world.schedules["308191"] = schedule
+        controlled = _signed(as_user, world, patient)
+        refused = _ask(app, patient, controlled)
+        assert refused.status_code == 409 and _errors(refused) == [("/prescriptionId",
+                                                                    "not-refillable")]
     del world.schedules["308191"]
 
     open_rx = _signed(as_user, world, patient)
@@ -158,6 +144,17 @@ def test_asking_refuses_what_cant_be_refilled(app: FastAPI, as_user: Client, wor
     assert again.status_code == 409 and _errors(again) == [("/prescriptionId",
                                                             "refill-already-requested")]
     assert len(refills.rows) == 1 and len(refills.events) == 1
+
+
+def test_asking_with_a_note_is_refused(app: FastAPI, as_user: Client, world: World,
+                                       refills: Refills) -> None:
+    patient = world.patient(CLINIC_A)
+    rx = _signed(as_user, world, patient)
+    refused = _ask(app, patient, rx, note="Down to my last week of capsules.")
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "validation-failed"
+    assert _errors(refused) == [("/note", "not-allowed-value")]
+    assert refills.rows == {} and refills.events == []
 
 
 @pytest.mark.parametrize("body", [{}, {"prescriptionId": "not-a-uuid"},
@@ -229,7 +226,7 @@ def test_the_staff_list_open_first_oldest_first_at_the_users_facilities(
                                                                       False)
     assert first["patientId"] == first["patient"]["id"] == str(kaia)
     assert first["display"] == "amoxicillin 500 MG Oral Capsule"
-    assert first["note"] == "Down to my last week of capsules."
+    assert "note" not in first  # a request carries no free text (0028)
     assert "respondedAt" not in first and "respondedBy" not in first
     assert world.audited[-1] == [kaia, UUID(items[1]["patientId"])]  # every patient returned
     page = as_user("md").get(STAFF, params={"limit": 1}).json()
@@ -250,7 +247,7 @@ def test_the_staff_list_leaves_a_restricted_charts_clinical_fields_out(
     assert world.audited[-1] == [patient]
     world.grants.add((DEV_USERS["ma"].id, patient))
     (opened,) = as_user("ma").get(STAFF).json()["items"]
-    assert opened["restricted"] is False and opened["note"] and opened["patient"]
+    assert opened["restricted"] is False and opened["display"] and opened["patient"]
 
 
 def test_the_staff_list_refuses(as_user: Client) -> None:
@@ -268,8 +265,7 @@ def _respond(as_user: Client, request_id: str, user: str = "md", **body: Any) ->
 
 
 def test_approving_writes_a_draft_the_prescriber_checks_signs_and_sends(
-        app: FastAPI, as_user: Client, world: World, refills: Refills,
-        with_prior: None) -> None:
+        app: FastAPI, as_user: Client, world: World, refills: Refills) -> None:
     patient, rx, request_id = _requested(app, as_user, world)
     approved = _respond(as_user, request_id, decision="approve")
     assert approved.status_code == 200, approved.text
@@ -307,7 +303,7 @@ def test_approving_writes_a_draft_the_prescriber_checks_signs_and_sends(
 
 
 def test_approving_keeps_the_draft_within_its_schedule_and_drops_a_closed_pharmacy(
-        app: FastAPI, as_user: Client, world: World, with_prior: None) -> None:
+        app: FastAPI, as_user: Client, world: World) -> None:
     _, rx, request_id = _requested(app, as_user, world, refills=8)
     world.schedules["308191"] = "CIII"  # rescheduled since: at most 5 refills
     world.pharmacies[world.row(UUID(rx)).pharmacy_id] = False  # type: ignore[index]
@@ -319,9 +315,9 @@ def test_approving_keeps_the_draft_within_its_schedule_and_drops_a_closed_pharma
 def test_declining_stores_the_reason_the_patient_sees(app: FastAPI, as_user: Client,
                                                       world: World, refills: Refills) -> None:
     patient, _, request_id = _requested(app, as_user, world)
-    reason = "Please book a visit first; this needs a recheck."
+    reason = fs.REFILL_DECLINE_REASONS[VISIT]  # the code's words, never the clinician's
     declined = _respond(as_user, request_id, user="app", decision="decline",
-                        reason=f"  {reason} ")
+                        reason=f"  {VISIT} ")
     assert declined.status_code == 200, declined.text
     body = declined.json()
     assert (body["status"], body["declineReason"]) == ("declined", reason)
@@ -338,8 +334,8 @@ def test_declining_stores_the_reason_the_patient_sees(app: FastAPI, as_user: Cli
 def test_an_answered_request_is_409_with_its_state(app: FastAPI, as_user: Client,
                                                    world: World) -> None:
     _, _, request_id = _requested(app, as_user, world)
-    assert _respond(as_user, request_id, decision="decline", reason="Not now.").status_code == 200
-    again = _respond(as_user, request_id, decision="decline", reason="Still not.")
+    assert _respond(as_user, request_id, decision="decline", reason=VISIT).status_code == 200
+    again = _respond(as_user, request_id, decision="decline", reason="contact-the-office")
     assert again.status_code == 409
     assert again.json()["code"] == "invalid-state-transition"
     assert again.json()["currentState"] == "declined"
@@ -349,7 +345,7 @@ def test_only_md_and_app_may_answer(app: FastAPI, as_user: Client, world: World,
                                     refills: Refills) -> None:
     patient, _, request_id = _requested(app, as_user, world)
     for user in ("rn", "ma", "fd"):
-        refused = _respond(as_user, request_id, user=user, decision="decline", reason="No.!")
+        refused = _respond(as_user, request_id, user=user, decision="decline", reason=VISIT)
         assert refused.status_code == 403, user
         assert refused.json()["code"] == "permission-denied"
     # D110 comes first: RN is refused before anything is read, even for no such request.
@@ -362,8 +358,11 @@ def test_only_md_and_app_may_answer(app: FastAPI, as_user: Client, world: World,
 
 @pytest.mark.parametrize(("body", "pointer", "code"), [
     ({"decision": "decline"}, "/reason", "required"),
-    ({"decision": "decline", "reason": "   no  "}, "/reason", "too-short"),
-    ({"decision": "approve", "reason": "Fine by me."}, "/reason", "conflicting-fields"),
+    ({"decision": "decline", "reason": "   no  "}, "/reason", "not-allowed-value"),
+    ({"decision": "decline", "reason": "Please book a visit first."}, "/reason",
+     "not-allowed-value"),  # free text: only the listed codes (fs.REFILL_DECLINE_REASONS)
+    ({"decision": "decline", "reason": "NEEDS-VISIT"}, "/reason", "not-allowed-value"),
+    ({"decision": "approve", "reason": VISIT}, "/reason", "conflicting-fields"),
 ])
 def test_answering_checks_the_reason(app: FastAPI, as_user: Client, world: World,
                                      body: dict[str, Any], pointer: str, code: str) -> None:
@@ -388,34 +387,13 @@ def test_answering_finds_only_the_users_requests(app: FastAPI, as_user: Client, 
                                                  refills: Refills) -> None:
     _, _, request_id = _requested(app, as_user, world)
     for user, target in (("md", str(uuid4())), ("md-b", request_id)):
-        refused = _respond(as_user, target, user=user, decision="decline", reason="No thanks.")
+        refused = _respond(as_user, target, user=user, decision="decline", reason=VISIT)
         assert refused.status_code == 404 and refused.json()["code"] == "not-found"
     _, _, elsewhere = _requested(app, as_user, world, facility=FACILITY_B)
     assert _respond(as_user, elsewhere, decision="decline",
-                    reason="Not ours.").status_code == 404
+                    reason=VISIT).status_code == 404
     patient, _, restricted = _requested(app, as_user, world)
     world.restricted.add(patient)
-    refused = _respond(as_user, restricted, decision="decline", reason="Not now.")
+    refused = _respond(as_user, restricted, decision="decline", reason=VISIT)
     assert refused.status_code == 403 and refused.json()["code"] == "break-glass-required"
     assert {r.status for _, r in refills.rows.values()} == {"active"}
-
-
-@pytest.mark.skipif(HAS_PRIOR, reason="PrescriptionIn has prior_prescription_id (#85)")
-def test_approving_is_503_until_the_draft_can_name_its_prior(app: FastAPI, as_user: Client,
-                                                             world: World,
-                                                             refills: Refills) -> None:
-    _, _, request_id = _requested(app, as_user, world)
-    refused = _respond(as_user, request_id, decision="approve")
-    assert refused.status_code == 503 and refused.json()["code"] == "service-unavailable"
-    assert refills.row(UUID(request_id)).status == "active"  # nothing was written
-
-
-@pytest.mark.skipif(refill_repository.helpers_ready(), reason="Anand's helpers are merged")
-async def test_the_store_is_503_until_anands_helpers_land() -> None:
-    store = refill_repository.SqlRefillStore()
-    with pytest.raises(ServiceUnavailable):
-        await store.create_refill_request(None, refill_repository.RefillRequestIn(  # type: ignore[arg-type]
-            patient_id=uuid4(), prior_prescription_id=uuid4()))
-    with pytest.raises(ServiceUnavailable):
-        await store.respond_to_refill_request(None, uuid4(), approve=False,  # type: ignore[arg-type]
-                                              reason="Not now.", if_version=1)
