@@ -61,7 +61,7 @@ export interface RefillRequest {
   /** Who approved or declined it. */
   respondedBy?: ClinicianRef;
   /**
-     * Why it was declined; the patient sees it.
+     * Why it was declined, in the fixed patient wording of the decline code; the patient sees it.
      * @maxLength 500
      */
   declineReason?: string;

@@ -4307,7 +4307,7 @@ components:
         declineReason:
           type: string
           maxLength: 500
-          description: Why it was declined.
+          description: Why it was declined, in the fixed wording of the practice's decline code (never clinician free text).
           x-phi: clinical
         newPrescriptionId:
           $ref: ../components/schemas/Id.yaml
