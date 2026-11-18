@@ -12,9 +12,9 @@ import { useClinical } from './clinical'
 import { encounterOfToday } from './opd'
 import { clinicDate, clinicNow } from './format'
 import { read } from './resource'
-import { getNote, listEncounterNotes, listPatientEncounters } from '../../src/api/generated/endpoints/encounters/encounters'
+import { getNote, listEncounterNotes, listNoteVersions, listPatientEncounters } from '../../src/api/generated/endpoints/encounters/encounters'
 import { listAppointments } from '../../src/api/generated/endpoints/scheduling/scheduling'
-import type { AppointmentSummary } from '../../src/api/generated/model'
+import type { AppointmentSummary, NoteStatus } from '../../src/api/generated/model'
 
 const NONE: AddedProblem[] = []
 
@@ -85,6 +85,52 @@ async function loadPastNotes(patientId: string): Promise<PastNote[]> {
 export function pastNotesFor(patientId: string): PastNote[] {
   if (!UUID_RE.test(patientId)) return mockPastNotesFor(patientId)
   return read(`pastnotes:${patientId}`, () => loadPastNotes(patientId))
+}
+
+// ---- A signed note's version history ---------------------------------------------------------
+// Every saved version of a note, newest first (GET /notes/{noteId}/versions, listNoteVersions; D8:
+// signing keeps every version in _history). Field mapping, NoteVersionRow ⇐ NoteVersion:
+// version ⇐ versionId; at ⇐ recordedAt; by ⇐ recordedBy (absent for a system save); status ⇐ status.
+// Real API notes only: a mock note has no history.
+
+export interface NoteVersionRow {
+  version: number
+  at: Date
+  by: string | null
+  status: string
+}
+
+export type NoteVersions = { ok: true; rows: NoteVersionRow[] } | { ok: false }
+
+const VERSION_STATUS: Record<NoteStatus, string> = {
+  preliminary: 'Draft',
+  final: 'Signed',
+  amended: 'Amended',
+  'entered-in-error': 'Entered in error',
+}
+
+export async function loadNoteVersions(noteId: string): Promise<NoteVersions> {
+  try {
+    const res = await listNoteVersions(noteId, { limit: 100 })
+    if (res.status !== 200) return { ok: false }
+    return {
+      ok: true,
+      rows: res.data.items.map((v) => ({
+        version: v.versionId,
+        at: clinicDate(v.recordedAt),
+        by: v.recordedBy?.displayName ?? null,
+        status: VERSION_STATUS[v.status] ?? v.status,
+      })),
+    }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/** A note's saved versions, newest first; `{ ok: false }` when they can't be read. Suspends while loading. */
+export function noteVersionsFor(noteId: string): NoteVersions {
+  if (!UUID_RE.test(noteId)) return { ok: true, rows: [] }
+  return read(`noteversions:${noteId}`, () => loadNoteVersions(noteId))
 }
 
 // ---- A patient's appointments ----------------------------------------------------------------
