@@ -198,7 +198,8 @@ GUARDS = {
                      ("lifted", "BEFORE UPDATE", "shri_release_hold_guard()")],
     # Migration 0011 (ADR-0013 §5): who an account or invitation is for never changes.
     "portal_account": [("fixed", "BEFORE UPDATE",
-                        "shri_fixed_columns('keycloak_user_id', 'patient_id')")],
+                        "shri_fixed_columns('keycloak_user_id', 'patient_id', "
+                        "'sign_in_method')")],
     "portal_invitation": [("fixed", "BEFORE UPDATE", "shri_fixed_columns('patient_id', "
                            "'code_hmac', 'issued_by_user_id', 'expires_at')")],
     "encounter_follow_up": [("fixed", "BEFORE UPDATE",
