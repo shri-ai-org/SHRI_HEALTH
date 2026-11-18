@@ -22,7 +22,13 @@ export default async function signIn(config: FullConfig): Promise<void> {
       const context = await browser.newContext({ baseURL, ignoreHTTPSErrors })
       const page = await context.newPage()
       await page.goto(account.start)
-      await page.locator('#username').fill(account.username)
+      // With the demo sign-in on (D121, SHRI_DEMO_SIGN_IN), the portal stays on its own sign-in page
+      // instead of leaving for Keycloak; its "Sign in" button (the existing-account path) leads there.
+      const keycloak = page.locator('#username')
+      const portalSignIn = page.getByRole('button', { name: 'Sign in', exact: true })
+      await keycloak.or(portalSignIn).first().waitFor({ timeout: 30_000 })
+      if (!(await keycloak.isVisible())) await portalSignIn.click()
+      await keycloak.fill(account.username)
       await page.locator('#password').fill(password)
       await page.locator('#kc-login').click()
       await page.waitForURL((url) => !url.pathname.startsWith('/kc/'), { timeout: 30_000 })
