@@ -1,6 +1,7 @@
 """The patient portal's sign-in routes (contract operations startPortalLogin, completePortalLogin,
 getPortalSession, refreshPortalSession, signOutOfPortal and enrollInPortal; x-owner thulasi).
-The rules are in portal_sign_in.py.
+The rules are in portal_sign_in.py. The demo server's signInToPortalForDemo (D121) is registered
+only when its switch is on; its rules are in portal_demo_sign_in.py.
 
 They audit themselves as security events (operations.SELF_AUDITED), with the patient as the
 actor once known, and a clinic-less `access-denied` row for a refused enrolment (A47).
@@ -13,10 +14,11 @@ from datetime import UTC, date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core import audit, cookies
+from app.core import portal_demo_sign_in as demo
 from app.core import portal_sign_in as portal
 from app.core import sign_in_restart as restart
 from app.core.config import Settings
@@ -27,6 +29,8 @@ from app.core.routing import API_PREFIX
 from app.core.session import KeycloakRefused
 
 router = APIRouter(tags=["portal"])
+# Included only when PORTAL_DEMO_SIGN_IN is on (D121); otherwise the path is a plain 404.
+demo_router = APIRouter(tags=["portal"])
 Patient = Annotated[PortalPatient, Depends(require_patient("authenticated"))]
 
 
@@ -165,5 +169,34 @@ async def enroll_in_portal(request: Request, body: EnrollmentRequest) -> Respons
     return Response(status_code=204)
 
 
+class DemoSignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mobile_number: str = Field(alias="mobileNumber", min_length=10, max_length=25,
+                               pattern=r"^\+?[0-9 ().-]{10,25}$")
+    birth_date: date = Field(alias="birthDate")
+
+
+@demo_router.post("/portal/auth/demo-sign-in", operation_id="signInToPortalForDemo")
+async def sign_in_to_portal_for_demo(request: Request, body: DemoSignInRequest) -> Response:
+    """D121, demo servers only: the mobile number and date of birth, from the portal host only;
+    rate-limited per IP and per number; every refusal the same 422, audited without the number
+    or the date of birth. A match gets a new portal session (cookie) and the session's body."""
+    require_portal_origin(request)
+    guard: demo.DemoSignInGuard = request.app.state.demo_sign_in_guard
+    guard.attempt(audit._client_ip(request) or "unknown", body.mobile_number)
+    try:
+        found = await demo.sign_in(request, body.mobile_number, body.birth_date)
+    except ValidationFailed:
+        await demo.audit_refused(request)
+        raise
+    response = JSONResponse(await _session_body(request, found))  # no-store: the middleware
+    portal.set_session_cookie(response, request.app.state.settings, found.token)
+    return response
+
+
 def register(app: FastAPI, settings: Settings) -> None:
     app.include_router(router, prefix=API_PREFIX)
+    if settings.portal_demo_sign_in:  # Settings refuses it outside a demo server (D121)
+        app.state.demo_sign_in_guard = demo.guard_for(settings)
+        app.include_router(demo_router, prefix=API_PREFIX)

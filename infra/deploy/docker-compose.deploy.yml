@@ -119,6 +119,10 @@ services:
       # A demo server's AI is on: a feature never set counts as on, after every reset too; the
       # admin's AI settings switch still turns it off (D118). The API ignores it in production.
       SHRI_AI_ON_BY_DEFAULT: ${SHRI_DEMO:-false}
+      # The portal's demo sign-in (D121): on only with SHRI_DEMO_SIGN_IN=true on a demo host
+      # (deploy.sh); the API refuses to start with it on unless SHRI_DEMO=true outside production.
+      SHRI_DEMO: ${SHRI_DEMO:-false}
+      PORTAL_DEMO_SIGN_IN: ${SHRI_API_DEMO_SIGN_IN:-false}
       # No access log from uvicorn: it writes the whole URL, so the sign-in callback's code and
       # state would be logged (D13, D105). Our Nginx logs every request already, without the
       # query string (shri.conf.template, log_format no_query). Uvicorn reads UVICORN_* (click).
