@@ -21,7 +21,7 @@ import { useNavigate } from 'react-router-dom'
 import { trendPointsFor, type ResultRow } from '@/data/clinical'
 import type { VitalSeries } from '@/data/vitals-history'
 
-import { axisDay } from '../logic/labTrends'
+import { axisDay, spacedLabels } from '../logic/labTrends'
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, Pill } from '../ui/primitives'
@@ -375,10 +375,11 @@ function TrendChart({ r, points: pts, fmt, when }: { r: ResultRow; points: Point
         )}
       </div>
       <div className="relative mt-[6px] h-[12px] text-[10px]/none tabular-nums text-sh-text-3" aria-hidden="true">
+        {/* Only labels that fit side by side: always the first and last date (audit issue 3, at 390). */}
         {w > 0 &&
-          pts.map((pt, i) => (
-            <span key={pt.at.getTime()} className={cn('absolute top-0 whitespace-nowrap', X_LABEL[i === 0 ? 'first' : i === last ? 'last' : 'mid'])} style={{ left: x(i) }}>
-              {when(pt.at)}
+          spacedLabels(xs, 60).map((i) => (
+            <span key={pts[i]!.at.getTime()} className={cn('absolute top-0 whitespace-nowrap', X_LABEL[i === 0 ? 'first' : i === last ? 'last' : 'mid'])} style={{ left: x(i) }}>
+              {when(pts[i]!.at)}
             </span>
           ))}
       </div>

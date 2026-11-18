@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LabAnalyte, LabReport } from '../../../shri-health/results'
-import { labSeries, rangeLine, trendSummary, axisDay } from './labTrends'
+import { labSeries, rangeLine, trendSummary, axisDay, spacedLabels } from './labTrends'
 import { unitText } from '../../../shri-health/results'
 
 // Synthetic values only, shaped as shri-health/results.ts gives them (newest report first).
@@ -99,5 +99,14 @@ describe('units as people write them (audit issue 4)', () => {
   it('turns UCUM annotations into plain text', () => {
     expect(unitText('mL/min/{1.73_m2}')).toBe('mL/min/1.73 m²')
     expect(unitText('mg/dL')).toBe('mg/dL')
+  })
+})
+
+describe('x-axis labels that fit (audit issue 3, at 390)', () => {
+  it('keeps the first and last, and a middle label only with room on both sides', () => {
+    expect(spacedLabels([0, 50, 100, 150, 200, 250, 300], 60)).toEqual([0, 2, 4, 6])
+    expect(spacedLabels([0, 20, 40, 60, 80, 100, 120], 60)).toEqual([0, 3, 6])
+    expect(spacedLabels([0, 300], 60)).toEqual([0, 1])
+    expect(spacedLabels([0], 60)).toEqual([0])
   })
 })

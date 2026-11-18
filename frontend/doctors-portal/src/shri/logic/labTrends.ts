@@ -129,3 +129,19 @@ export function axisDay(d: Date, long: boolean, realApi: boolean = REAL_API): st
   if (realApi) return new Intl.DateTimeFormat('en-US', long ? { month: 'short', year: 'numeric' } : { month: 'short', day: 'numeric' }).format(d)
   return long ? formatDate(d).slice(3) : formatDate(d).replace(/-\d{4}$/, '')
 }
+
+/**
+ * Which x-axis labels to draw so none overlap on a narrow chart: always the first and the last, and a
+ * middle one only when it stands at least `minGap` pixels from its neighbours that are drawn.
+ */
+export function spacedLabels(xs: number[], minGap: number): number[] {
+  const n = xs.length
+  if (n <= 2) return xs.map((_, i) => i)
+  const last = n - 1
+  const kept = [0]
+  for (let i = 1; i < last; i++) {
+    if (xs[i]! - xs[kept[kept.length - 1]!]! >= minGap && xs[last]! - xs[i]! >= minGap) kept.push(i)
+  }
+  if (xs[last]! - xs[0]! >= minGap) kept.push(last)
+  return kept
+}
