@@ -45,7 +45,7 @@ def test_a_clinic_table_without_row_security_and_a_superuser_fail(admin_engine: 
 
 def test_a_service_role_or_public_able_to_create_in_a_named_schema_fails(
         admin_engine: Engine) -> None:
-    """0027's writing definer functions pin search_path to clinical, admin, audit, public: only
+    """0028's writing definer functions pin search_path to clinical, admin, audit, public: only
     their owner may create there, never another service role or PUBLIC."""
     name = "only shri_migrator may create in clinical, admin, audit and public"
     for grant in ("GRANT CREATE ON SCHEMA admin TO shri_portal",

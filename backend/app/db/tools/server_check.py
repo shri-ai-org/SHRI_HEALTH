@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0027"
+HEAD = "0028"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -60,7 +60,7 @@ UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.re
 
 
 # Who may create objects in the schemas the writing SECURITY DEFINER functions name in their
-# search_path (clinical, admin, audit, public, pg_temp; 0027): only their owner, shri_migrator.
+# search_path (clinical, admin, audit, public, pg_temp; 0028): only their owner, shri_migrator.
 # Any other service role, or PUBLIC, with CREATE there could shadow a table a trigger names
 # unqualified, so each (schema, role) pair counts, and PUBLIC counts as one.
 SCHEMA_CREATORS = (

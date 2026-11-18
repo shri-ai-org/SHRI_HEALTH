@@ -189,7 +189,7 @@ class CoverageOrderTaken(InvalidInput):
 
 
 class RefillNotAllowed(InvalidTransition):
-    """A refill request the prescription doesn't allow (migration 0027): ``current_state`` is
+    """A refill request the prescription doesn't allow (migration 0028): ``current_state`` is
     ``not-active`` (not active, or not signed) or ``not-refillable`` (PSY, a controlled
     substance, or one whose schedule can't be read): the API's ``409 invalid-state-transition``
     with that code at ``/prescriptionId``."""
@@ -200,7 +200,7 @@ class RefillNotAllowed(InvalidTransition):
 
 class RefillAlreadyRequested(InvalidTransition):
     """The prescription already has an open refill request (``uq_medication_request_open_refill``,
-    migration 0027): the API's ``409 refill-already-requested``."""
+    migration 0028): the API's ``409 refill-already-requested``."""
 
     def __init__(self) -> None:
         super().__init__("refill-already-requested")
@@ -738,7 +738,7 @@ class PrescriptionIn:
 
 @dataclass(frozen=True)
 class RefillRequestIn:
-    """The patient's refill request (#400, migration 0027). Built from the prescription only:
+    """The patient's refill request (#400, migration 0028). Built from the prescription only:
     ``note`` must be empty, since a request carries no free text."""
     patient_id: uuid.UUID  # the portal session's patient
     prior_prescription_id: uuid.UUID  # the prescription to refill
@@ -1065,7 +1065,7 @@ class FhirStore(Protocol):
         nothing. Doesn't change the prescription, which is signed and frozen."""
         ...
 
-    # Refill requests: MedicationRequest, intent proposal (#400, migration 0027)
+    # Refill requests: MedicationRequest, intent proposal (#400, migration 0028)
     async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn) -> Written:
         """The patient's request, in the portal session (``admin.portal_request_refill``): built
         from the prescription, active at once, with the patient's Provenance. ``ResourceNotFound``

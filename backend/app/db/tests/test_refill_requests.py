@@ -1,4 +1,4 @@
-"""Migration 0027 and the refill helpers (#400, #415): the patient asks, as shri_portal, through
+"""Migration 0028 and the refill helpers (#400, #415): the patient asks, as shri_portal, through
 admin.portal_request_refill(); the clinician answers, as shri_app, through
 respond_to_refill_request(). A request is built from the prescription only, refused for anything
 but the patient's own active, signed, non-controlled prescription (fail closed when its schedule
