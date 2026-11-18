@@ -73,7 +73,7 @@ export function AppShell() {
           <NavRail />
           {/* Room at the foot for the fixed assistant bubble (62px, 30px up; above the tab bar on a phone),
               so the page's last line scrolls clear of it. Only where the bubble shows. */}
-          <main className={roomForBubble(AI_ASSISTANT_ON, aiOn, assistantOfferedAt(pathname)) ? 'min-w-0 pb-[108px] max-sm:pb-[78px]' : 'min-w-0'}>
+          <main className={roomForBubble(AI_ASSISTANT_ON, aiOn, assistantOfferedAt(pathname)) ? 'min-w-0 pb-[68px] max-sm:pb-[54px]' : 'min-w-0'}>
             <RouteBoundary resetKey={pathname}>
               <Outlet />
             </RouteBoundary>
