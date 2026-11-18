@@ -51,14 +51,13 @@ CHECK_OUT_PENDING = frozenset(operation for operation, permission in PENDING_PER
                               if not is_known_permission(permission))
 
 
-# The patient portal's visit summaries (B8a, D89). The PDF link waits for a patient-session
-# download route (D105; Anand's contract item 2).
+# The patient portal's visit summaries (B8a, D89), and the PDF link (D105, with #409 and #416).
 PORTAL_B8A = frozenset({
     "listPortalVisitSummaries",
     "getPortalVisitSummary",
     "getPortalVisitSummaryDownloadUrl",
 })
-PORTAL_PENDING = frozenset({"getPortalVisitSummaryDownloadUrl"})
+PORTAL_PENDING: frozenset[str] = frozenset()
 
 
 def test_rooming_notes_and_check_out_operations_are_built_or_pending() -> None:

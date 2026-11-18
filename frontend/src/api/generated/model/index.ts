@@ -221,6 +221,7 @@ export * from './decideAiSuggestionHeaders';
 export * from './decideSuggestedCodeHeaders';
 export * from './decideVisitSummaryHeaders';
 export * from './declineFollowUpRequestHeaders';
+export * from './demoSignInRequest';
 export * from './diagnosisCreate';
 export * from './diagnosisCreateVerificationStatus';
 export * from './diagnosisEnteredInError';

@@ -80,10 +80,13 @@ const textOf = (c: CodeableConcept, fallback: string) => c.text ?? c.codings?.[0
 
 const num = (q?: Quantity) => (q ? String(q.value) : '')
 
+/** A UCUM unit as people write it: `mL/min/{1.73_m2}` is "mL/min/1.73 m²" (as the patient portal shows it). */
+export const unitText = (unit: string): string => unit.replace(/\{([^}]*)\}/g, '$1').replace(/_m2\b/g, ' m²')
+
 function rangeText(r?: ReferenceRange): string {
   if (!r) return ''
   const unit = r.low?.unit || r.high?.unit
-  const u = unit ? ` ${unit}` : ''
+  const u = unit ? ` ${unitText(unit)}` : ''
   if (r.low && r.high) return `${num(r.low)}–${num(r.high)}${u}`
   if (r.low) return `≥ ${num(r.low)}${u}`
   if (r.high) return `≤ ${num(r.high)}${u}`
@@ -95,7 +98,7 @@ function analyte(o: LabObservation): LabAnalyte {
     id: o.id,
     name: textOf(o.code, 'Analyte'),
     value: o.value ? num(o.value) : (o.valueText ?? '—'),
-    unit: o.value?.unit || undefined,
+    unit: o.value?.unit ? unitText(o.value.unit) : undefined,
     numeric: o.value?.value,
     low: o.referenceRange?.low?.value,
     high: o.referenceRange?.high?.value,

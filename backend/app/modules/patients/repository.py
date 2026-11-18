@@ -320,6 +320,7 @@ class SqlPatientRepository:
         general_practitioner = (await db.execute(_GENERAL_PRACTITIONER, {"id": patient_id})
                                 ).scalar_one_or_none()
         mrn = next((i.value for i in identifiers if i.type == "MR"), "")
+        pharmacy = await fhir_store.preferred_pharmacy(db, patient_id)  # D50, on the read too
         patient = schemas.Patient(
             id=row["id"], mrn=mrn,
             name=_name(official) if official else schemas.HumanName(family=""),
@@ -338,6 +339,12 @@ class SqlPatientRepository:
             employer=_employer(employers[0]) if employers else None,
             general_practitioner_id=general_practitioner,
             identifiers=identifiers,
+            preferred_pharmacy=schemas.PharmacyRef(
+                id=pharmacy.pharmacy_id, name=pharmacy.name,
+                address=schemas.PharmacyAddress(line=pharmacy.address_line, city=pharmacy.city,
+                                                 state=pharmacy.state,
+                                                 postal_code=pharmacy.postal_code))
+            if pharmacy is not None else None,
             restricted=bool(RESTRICTED_LABELS & set(row["meta_security"] or [])),
             active=row["active"], merged_into_id=row["merged_into_id"],
             created_at=row["created_at"], updated_at=row["meta_last_updated"])

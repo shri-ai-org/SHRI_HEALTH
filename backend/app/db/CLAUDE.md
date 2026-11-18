@@ -387,6 +387,18 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
       the fifth revokes the invitation.
   - **Invitations:** the code is stored only as its HMAC, and a patient has at most one open
     invitation: revoke the old one before issuing a new one, in the same transaction.
+  - **The demo server's sign-in (migration 0027, `SHRI_DEMO` only; real sign-in after the
+    demo):** `SELECT * FROM admin.demo_portal_patient(:phone_digits, :birth_date)` as
+    `shri_app`, with no clinic set, gives `(tenant_id, patient_id)` only in the demo seed's
+    clinic (`CLINIC_A`; a database the seed never ran on has none, so it finds nobody), and only
+    when exactly one active patient there has that date of birth and a current phone or sms
+    number with those digits (E.164 without the `+`; a stored 10-digit number counts as `1`
+    plus its digits), and that chart is
+    not restricted and has no disabled or suspended account; otherwise nothing. Two charts
+    sharing both are never told apart. The account it opens has `sign_in_method` `demo-phone`
+    and no `keycloak_user_id`; its sessions have `sign_in_method` `demo-phone` and no Keycloak
+    tokens or session ID. Every other account and session is `keycloak` (the default) and keeps
+    its Keycloak user and tokens. The method never changes.
   - **Accounts:** one per patient and Keycloak user.
     - `disabled` needs `disabled_at` and a reason.
     - `suspended` (a merged chart) needs `status_before_suspension` (pending-setup or active)
@@ -569,8 +581,10 @@ pin in `terminology/fetch.py`, in a reviewed PR.
   `keycloak`. On a Docker host, `PG_DUMP`, `PG_RESTORE` and `PSQL` run the tools in the database
   container. Scheduling them, and copying the dumps off the server encrypted, is infra's job
   (Thulasi). RDS has its own backups (D30).
-- `demo_dry_run` books from 08:00 facility time, the start of the demo seed's clinic hours
-  (08:00 to 17:00 every day); after 16:40 there it stops with "no free time left today".
+- `demo_dry_run` books today's first free time at least 5 minutes ahead, at the first facility
+  with one left (the demo providers are bookable 00:00 to 23:59 every day; the last free time is
+  23:20, and the two facilities are three hours apart, so it passes at any hour); the revisit is
+  booked from 08:00 there.
 
 ## The demo seed's fixed IDs (`app/db/seed`)
 

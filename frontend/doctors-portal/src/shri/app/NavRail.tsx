@@ -96,6 +96,8 @@ const OFF_RAIL = new Set<Section>(['stroke', 'assistant'])
  *  Thulasi; imaging, inpatients, discharge and telehealth: not in the U.S. demo), so no rail item opens
  *  sample data. Home, the queue (Patients) and search stay. */
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+/** The build stamp (V_ day month - number) is for development only; the demo and staff never see it. */
+const SHOW_BUILD_STAMP = import.meta.env.DEV
 const OFF_RAIL_WITH_API = new Set<Section>(['orders', 'results', 'imaging', 'inpatients', 'discharge', 'telehealth'])
 
 function useRail() {
@@ -258,13 +260,15 @@ export function NavRail() {
           })}
         </ul>
       </motion.nav>
-      {/* Which version this is, at the bottom left: V_ day month - that day's number (India time); its commit on hover. */}
+      {/* Which version this is, at the bottom left: V_ day month - that day's number (India time); its commit on hover. Development only. */}
+      {SHOW_BUILD_STAMP && (
       <p
         className="fixed bottom-[10px] left-[64px] z-10 -translate-x-1/2 text-center text-[10px]/[13px] font-medium tabular-nums text-sh-text-3 max-sm:hidden"
         title={`Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}
       >
         <span className="whitespace-nowrap">{__BUILD_STAMP__}</span>
       </p>
+      )}
     </>
   )
 }
@@ -351,9 +355,11 @@ export function NavTabBar() {
                 </button>
               )
             })}
-            <p className="px-[12px] pt-[6px] text-[11px] tabular-nums text-sh-text-3" title={`Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}>
-              {__BUILD_STAMP__}
-            </p>
+            {SHOW_BUILD_STAMP && (
+              <p className="px-[12px] pt-[6px] text-[11px] tabular-nums text-sh-text-3" title={`Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`}>
+                {__BUILD_STAMP__}
+              </p>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

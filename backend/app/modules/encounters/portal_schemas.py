@@ -31,3 +31,9 @@ class PortalVisitSummary(Out):
 class PortalVisitSummaryList(Out):
     items: list[PortalVisitSummary]
     next_cursor: str | None = None
+
+
+class PortalDownloadUrl(Out):
+    """A one-minute, single-use link to the summary's PDF for this portal session (D105)."""
+    url: str
+    expires_at: dt.datetime

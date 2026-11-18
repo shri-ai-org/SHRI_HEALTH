@@ -143,6 +143,20 @@ class PatientCreate(Closed):
     consents: Annotated[list[ConsentCreate], Field(max_length=10)] = []
 
 
+class PharmacyAddress(Out):
+    line: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+
+
+class PharmacyRef(Out):
+    """The patient's preferred pharmacy on the Patient read (D50; contract PharmacyRef)."""
+    id: UUID
+    name: str
+    address: PharmacyAddress | None = None
+
+
 class Patient(Out):
     id: UUID
     mrn: str
@@ -167,6 +181,7 @@ class Patient(Out):
     employer: Employer | None = None
     general_practitioner_id: UUID | None = None
     identifiers: list[PatientIdentifier] = []
+    preferred_pharmacy: PharmacyRef | None = None
     restricted: bool
     active: bool
     merged_into_id: UUID | None = None

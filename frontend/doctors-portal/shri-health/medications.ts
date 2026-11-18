@@ -9,6 +9,7 @@ import type { Medication } from '../../src/api/generated/model'
 
 import { clinicDate } from './format'
 import { read } from './resource'
+import { useEffect, useState } from 'react'
 
 export type CurrentMedicine = RxItem & { since: Date; by: string }
 
@@ -55,6 +56,27 @@ async function load(patientId: string): Promise<MedicationList> {
 }
 
 /** The patient's medication list. */
+/**
+ * How many medications the patient takes now, for the record's Prescriptions tab: read once in the
+ * background (it never holds up the page); undefined until read, and when the read is refused or
+ * fails, so the tab shows no count rather than a wrong one.
+ */
+export function useActiveMedicationCount(patientId: string): number | undefined {
+  const [count, setCount] = useState<{ patientId: string; n: number } | null>(null)
+  useEffect(() => {
+    if (!patientId) return
+    let live = true
+    load(patientId).then(
+      (list) => live && setCount({ patientId, n: list.current.length }),
+      () => undefined,
+    )
+    return () => {
+      live = false
+    }
+  }, [patientId])
+  return count && count.patientId === patientId ? count.n : undefined
+}
+
 export function medicationsFor(patientId: string): MedicationList {
   return read(`medications:${patientId}`, () => load(patientId))
 }

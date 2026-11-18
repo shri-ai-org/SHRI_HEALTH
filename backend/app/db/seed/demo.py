@@ -15,9 +15,11 @@ user ID, and a ``user_role`` row at the main office for its role, against migrat
 platform roles) and the demo patient's active portal account (``keycloak_user_id``), linked to
 the patient with the demo visit. No password is stored or seeded: they live in Keycloak.
 
-Every demo provider is also bookable in clinic hours, 08:00 to 17:00 every day of the week
-(``_daily_schedules``): weekly recurring rules with no end date, so a rehearsal on any day, the
-demo or a revisit weeks ahead has free times. The seed's environment guard is unchanged.
+Every demo provider is also bookable all day, 00:00 to 23:59 every day of the week
+(``_daily_schedules``): weekly recurring rules with no end date, so a rehearsal at any hour, the
+demo or a revisit weeks ahead has free times. Today's visits start just after the reset, Linda
+Thompson first (``visit_starts``), or from 09:00 when SHRI_DEMO_DAY names the day. The seed's
+environment guard is unchanged.
 """
 from __future__ import annotations
 
@@ -26,6 +28,7 @@ import os
 import random
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -77,6 +80,50 @@ def _demo_day(now: dt.datetime | None = None) -> dt.date:
 
 #: The day the demo patients are booked, at the main office.
 DEMO_DAY = _demo_day()
+
+
+#: Today's demo visits, in booking order (Vimal on #85, 17 Nov): Linda Thompson first, then the
+#: others in their earlier order, back to back, each as long as its visit type.
+VISIT_ORDER = (3, 1, 2, 4, 5, 6, 7)
+#: The first visit starts at the next 5-minute mark at least this long after the reset...
+FIRST_VISIT_LEAD = dt.timedelta(minutes=10)
+#: ...unless SHRI_DEMO_DAY names the day: then at fixed clock times from 09:00 (relative times
+#: make no sense for another day).
+FIXED_DAY_START = dt.time(9, 0)
+#: Every visit stays on the day: the last ends by 23:55 (availability ends at 23:59).
+LATEST_END = dt.time(23, 55)
+
+
+def visit_starts(now: dt.datetime, zone: ZoneInfo, minutes: Sequence[int],
+                 day: dt.date | None = None) -> list[dt.datetime]:
+    """Each visit's start, back to back, in ``zone`` (wall-clock arithmetic, so a DST change
+    doesn't shift them). Without ``day``: on ``now``'s day there, the first at the next 5-minute
+    mark at least ``FIRST_VISIT_LEAD`` after ``now``, and if the last would end after
+    ``LATEST_END``, the whole run moves earlier on the same day (check-in is same-day only). With
+    ``day``: from ``FIXED_DAY_START`` on that day."""
+    if day is not None:
+        first = dt.datetime.combine(day, FIXED_DAY_START)
+    else:
+        local = now.astimezone(zone).replace(tzinfo=None)
+        day = local.date()
+        earliest = local + FIRST_VISIT_LEAD
+        first = earliest.replace(second=0, microsecond=0)
+        if first < earliest:
+            first += dt.timedelta(minutes=1)
+        first += dt.timedelta(minutes=-first.minute % 5)    # up to the next 5-minute mark
+        latest = dt.datetime.combine(day, LATEST_END)
+        if first + dt.timedelta(minutes=sum(minutes)) > latest:
+            first = latest - dt.timedelta(minutes=sum(minutes))
+    starts, at = [], first
+    for length in minutes:
+        starts.append(at.replace(tzinfo=zone))
+        at += dt.timedelta(minutes=length)
+    return starts
+
+
+def _explicit_demo_day() -> dt.date | None:
+    """SHRI_DEMO_DAY's day when it is set, else None (the reset day, with relative times)."""
+    return DEMO_DAY if os.environ.get(DEMO_DAY_SETTING, "").strip() else None
 #: The pharmacy the prescription goes to (Thulasi's simulated pharmacy answers for it).
 PHARMACY_ID = sid(PHARMACY, 1)
 
@@ -459,12 +506,31 @@ def _online_booking(db: Session, visits: dict[str, uuid.UUID]) -> None:
                 facility_id=FACILITY_A, appointment_type_id=visits[code])
 
 
-def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> None:
+def _visit_minutes(p: DemoPatient) -> int:
+    code = p.visit[1] if p.visit is not None else None
+    return next(m for c, _, m, _, _, _ in starter.VISIT_TYPES if c == code)
+
+
+def _todays_starts(now: dt.datetime | None) -> dict[int, dt.datetime]:
+    """Each demo patient's visit start today, by patient number (``visit_starts``)."""
+    booked = {p.n: p for p in PATIENTS if p.visit is not None}
+    order = [booked[n] for n in VISIT_ORDER]
+    explicit = _explicit_demo_day()
+    now = now or dt.datetime.now(dt.UTC)
+    if explicit is None and now.astimezone(CLINIC_ZONE).date() != DEMO_DAY:
+        explicit = DEMO_DAY                     # the day turned since import: keep DEMO_DAY
+    starts = visit_starts(now, CLINIC_ZONE, [_visit_minutes(p) for p in order], explicit)
+    return {p.n: start for p, start in zip(order, starts, strict=True)}
+
+
+def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID],
+                 starts: dict[int, dt.datetime]) -> None:
+    """Today's visit, once: a rerun never moves an appointment already booked."""
     if p.visit is None or db.get(M["appointment"], sid(APPOINTMENT, p.n)) is not None:
         return
-    at, code, provider = p.visit
-    minutes = next(m for c, _, m, _, _, _ in starter.VISIT_TYPES if c == code)
-    start = dt.datetime.combine(DEMO_DAY, at, CLINIC_ZONE).astimezone(dt.UTC)
+    _, code, provider = p.visit
+    minutes = _visit_minutes(p)
+    start = starts[p.n].astimezone(dt.UTC)
     n = provider * 10 + 1                               # the provider's main-office schedule
     appt = M["appointment"](
         id=sid(APPOINTMENT, p.n), tenant_id=CLINIC_A, status="booked",
@@ -489,15 +555,15 @@ def _appointment(db: Session, p: DemoPatient, visits: dict[str, uuid.UUID]) -> N
     db.flush()
 
 
-#: Every demo provider is bookable in clinic hours, 08:00 to 17:00 every day of the week, in each
-#: facility's own time zone (Vimal's A3 on #85, 13 Nov: the all-day hours of 2 and 5 Nov made the
-#: first free time 05:20 AM; weekends too, his review of #347, so a weekend redeploy, audit or
-#: rehearsal can book today). One weekly rule per day, on top of the starter's weekday 09:00 to
-#: 17:00 (free times are keyed by start and provider, so the two never double up). The rules start
-#: with the starter's and have no end date, so a revisit weeks ahead has free times. They keep the
-#: IDs of the earlier all-day rules, so a database seeded before is moved to clinic hours, with
-#: nothing left over.
-CLINIC_HOURS = (dt.time(8, 0), dt.time(17, 0))
+#: Every demo provider is bookable all day, 00:00 to 23:59 every day of the week, in each
+#: facility's own time zone (Vimal on #85, 17 Nov: the clinic is open 24 hours for the demo, so a
+#: reset, rehearsal or call at any hour has free times; the column is a time, so 23:59 is the
+#: latest end and, with 20-minute slots, 23:20 the last free time). One weekly rule per day, on
+#: top of the starter's weekday 09:00 to 17:00 (free times are keyed by start and provider, so the
+#: two never double up). The rules start with the starter's and have no end date, so a revisit
+#: weeks ahead has free times. They keep their IDs, so a database seeded before is moved to the new
+#: hours by a reset (the additive seed never changes a row it finds).
+CLINIC_HOURS = (dt.time(0, 0), dt.time(23, 59))
 DAILY_SLOT_MINUTES = 20
 DAYS_OF_WEEK = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -542,18 +608,20 @@ def _ai_features(db: Session) -> None:
                 feature=feature, is_enabled=True)
 
 
-def load_demo(db: Session) -> None:
-    """Loads the starter layer, then the demo layer, in the session's transaction."""
+def load_demo(db: Session, now: dt.datetime | None = None) -> None:
+    """Loads the starter layer, then the demo layer, in the session's transaction. ``now`` (the
+    reset's time; the clock when None) places today's visits."""
     starter.load_starter(db)                    # checks the environment first
     _payers(db)
     _consent_requirements(db)
     visits = {code: sid(VISIT, i) for i, (code, *_) in enumerate(starter.VISIT_TYPES, start=1)}
+    starts = _todays_starts(now)
     for p in PATIENTS + population():
         _patient(db, p)
         _coverage(db, p)
         _ensure(db, "patient_pharmacy", sid(P_PHARMACY, p.n), tenant_id=CLINIC_A,
                 patient_id=sid(PATIENT, p.n), pharmacy_id=PHARMACY_ID, is_default=True)
-        _appointment(db, p, visits)
+        _appointment(db, p, visits, starts)
     _demo_users(db)
     _online_booking(db, visits)
     _ai_features(db)

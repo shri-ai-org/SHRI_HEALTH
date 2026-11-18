@@ -14,11 +14,13 @@
 import { FileText, ImageOff, RotateCcw, ScanLine } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { ApiError } from '../../../../../src/api/client'
+
 import { formatClinicDateTime } from '../../../../shri-health/format'
 import { patient } from '../../../../shri-health/kit'
 import { usePatientImagingReports, type ImagingReportRow } from '../../../../shri-health/results'
 import { ScreenFrame } from '../../app/ScreenFrame'
-import { ILLUSTRATIVE, illustrativeSeries, loadImages, type LoadedImage } from '../../logic/imagingImages'
+import { ILLUSTRATIVE, illustrativeSeries, imageProblem, loadImages, type LoadedImage } from '../../logic/imagingImages'
 import { EmptyState } from '../../ui/EmptyState'
 import { Card, Pill, PillTag } from '../../ui/primitives'
 
@@ -42,24 +44,32 @@ export function ApiImageStudy({ patientId, reportId }: { patientId: string; repo
   return <ReportImages key={report.id} patient={p} report={report} />
 }
 
-type Load = { state: 'loading' } | { state: 'error' } | { state: 'ready'; loaded: LoadedImage[] }
+type Load = { state: 'loading' } | { state: 'error'; status?: number } | { state: 'ready'; loaded: LoadedImage[] }
 
 function ReportImages({ patient: p, report: r }: { patient: ReturnType<typeof patient>; report: ImagingReportRow }) {
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [slice, setSlice] = useState(1)
+  /** A one-time link works once: when the image fails to load, fresh links are asked for once, quietly. */
+  const [retried, setRetried] = useState(false)
 
   useEffect(() => {
     let live = true
     setLoad({ state: 'loading' })
     loadImages(r.images).then(
       (loaded) => live && setLoad({ state: 'ready', loaded }),
-      () => live && setLoad({ state: 'error' }),
+      (error: unknown) => live && setLoad({ state: 'error', ...(error instanceof ApiError ? { status: error.status } : {}) }),
     )
     return () => {
       live = false
     }
   }, [r.images, attempt])
+
+  function onImageError() {
+    if (retried) return setLoad({ state: 'error' })
+    setRetried(true)
+    setAttempt((a) => a + 1)
+  }
 
   return (
     <ScreenFrame
@@ -76,16 +86,24 @@ function ReportImages({ patient: p, report: r }: { patient: ReturnType<typeof pa
         <div className="min-w-0">
           {load.state === 'ready' ? (
             <>
-              <Workstation series={illustrativeSeries(r.id, r.name, load.loaded)} studyId={`illustrative:${r.id}`} slice={slice} onSlice={setSlice} marks={false} onImageError={() => setLoad({ state: 'error' })} />
+              <Workstation series={illustrativeSeries(r.id, r.name, load.loaded)} studyId={`illustrative:${r.id}`} slice={slice} onSlice={setSlice} marks={false} onImageError={onImageError} />
               <p className="mt-[10px] text-[13px] text-sh-text-2">
                 <span className="font-semibold text-sh-text">{ILLUSTRATIVE}</span> · {load.loaded[slice - 1]?.image.caption}
               </p>
             </>
           ) : load.state === 'error' ? (
             <Card>
-              <EmptyState icon={ImageOff} why="Couldn't load the image. The link may have expired." />
+              <EmptyState icon={ImageOff} why={imageProblem(load.status)} />
               <div className="mt-[12px] flex justify-center">
-                <Pill variant="primary" size="md" icon={RotateCcw} onClick={() => setAttempt((a) => a + 1)}>
+                <Pill
+                  variant="primary"
+                  size="md"
+                  icon={RotateCcw}
+                  onClick={() => {
+                    setRetried(false)
+                    setAttempt((a) => a + 1)
+                  }}
+                >
                   Try again
                 </Pill>
               </div>

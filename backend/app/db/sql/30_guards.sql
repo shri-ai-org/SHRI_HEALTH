@@ -25,7 +25,7 @@ CREATE TRIGGER trg_medication_request_guard BEFORE UPDATE ON clinical.medication
 CREATE TRIGGER trg_mrn_counter_guard BEFORE UPDATE ON admin.mrn_counter FOR EACH ROW EXECUTE FUNCTION shri_mrn_counter_guard();
 CREATE TRIGGER trg_observation_guard BEFORE UPDATE ON clinical.observation FOR EACH ROW EXECUTE FUNCTION shri_final_result_guard();
 CREATE TRIGGER trg_patient_merge_guard BEFORE UPDATE ON admin.patient_merge FOR EACH ROW EXECUTE FUNCTION shri_patient_merge_guard();
-CREATE TRIGGER trg_portal_account_fixed BEFORE UPDATE ON admin.portal_account FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('keycloak_user_id', 'patient_id');
+CREATE TRIGGER trg_portal_account_fixed BEFORE UPDATE ON admin.portal_account FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('keycloak_user_id', 'patient_id', 'sign_in_method');
 CREATE TRIGGER trg_portal_change_request_fixed BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'changes', 'note');
 CREATE TRIGGER trg_portal_change_request_decided BEFORE UPDATE ON admin.portal_change_request FOR EACH ROW EXECUTE FUNCTION shri_final_once_decided();
 CREATE TRIGGER trg_portal_invitation_fixed BEFORE UPDATE ON admin.portal_invitation FOR EACH ROW EXECUTE FUNCTION shri_fixed_columns('patient_id', 'code_hmac', 'issued_by_user_id', 'expires_at');
