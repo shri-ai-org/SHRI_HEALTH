@@ -12,7 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { encounterForPatient } from '@/data/clinical'
 import { formatDate, formatTime } from '@/data/format'
-import { clinicDate, formatTime as clinicTime } from '../../../shri-health/format'
+import { formatTime as clinicTime } from '../../../shri-health/format'
 import type { Patient } from '@/data/kit'
 import { activeMedicines, prescriptionsFor, type RxItem } from '@/data/record'
 import { useClinical } from '@/store/clinical'
@@ -26,13 +26,18 @@ import { Card, Chip, CountBubble, Icon, Pill } from '../ui/primitives'
 import { RecordFrame } from './RecordFrame'
 import { medicationsFor } from '../../../shri-health/medications'
 import { encounterOfToday } from '../../../shri-health/opd'
+import { usePrescriberNames } from '../../../shri-health/prescribers'
+import { prescriberText, sinceText } from '../logic/medicationDisplay'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
-/** A day in the clinic's zone, U.S. style ("Nov 13, 2026"), with the API; the sample screens keep their own. */
-function sinceDay(at: Date | string): string {
-  return REAL_API ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(clinicDate(at)) : formatDate(typeof at === 'string' ? new Date(at) : at)
+/** A day in the clinic's calendar, U.S. style ("Nov 13, 2026"), with the API; the sample screens keep their own. */
+function sinceDay(at: Date): string {
+  return REAL_API ? sinceText(at) : formatDate(at)
 }
+
+/** Which prescription a medicine came from (the API's list only); the sample's have none. */
+const prescriptionOf = (m: object): string | undefined => ('prescriptionId' in m && typeof m.prescriptionId === 'string' ? m.prescriptionId : undefined)
 
 const STATUS_TONE: Record<RxItem['status'], Tone> = { Active: 'norm', Stopped: 'neu', Completed: 'neu' }
 
@@ -66,12 +71,21 @@ export function PrescriptionsPage() {
 
 function Prescriptions({ patient: p }: { patient: Patient }) {
   const rxStore = useClinical((s) => s.prescriptions)
-  const enc = encounterForPatient(p.id)
-  const today = enc ? rxStore[enc.id] : undefined
+  // SHRI_HEALTH: with the API, today's visit is the one on the clinic's board; the banner shows only
+  // when the store holds that visit's prescription as signed.
+  const encounterId = REAL_API ? encounterOfToday(p.id) : encounterForPatient(p.id)?.id
+  const today = encounterId ? rxStore[encounterId] : undefined
   // SHRI_HEALTH: with the API, the patient's medication list (listMedications); no sample prescriptions.
   const list = REAL_API ? medicationsFor(p.id) : undefined
   const active = list ? list.current : activeMedicines(p.id)
   const history = list ? list.history : prescriptionsFor(p.id)
+  // Each signed medicine's prescriber, read together and filled in as they arrive (getPrescription).
+  const names = usePrescriberNames(REAL_API ? [...active, ...history].map(prescriptionOf).filter((id): id is string => Boolean(id)) : [])
+  /** "by …": the prescriber with the API (a quiet placeholder while it is read); the sample's own otherwise. */
+  const byText = (m: { by: string }) => {
+    if (!REAL_API) return m.by
+    return prescriberText({ by: m.by, prescriptionId: prescriptionOf(m) }, names) ?? 'Finding the prescriber…'
+  }
 
   return (
     <>
@@ -93,7 +107,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
         }
       >
         {active.length === 0 ? (
-          <EmptyState icon={PillIcon} why={`Nothing is currently prescribed for ${p.name}.`} />
+          <EmptyState icon={PillIcon} why={REAL_API ? 'No medications on this record yet.' : `Nothing is currently prescribed for ${p.name}.`} />
         ) : (
           <ul className="flex flex-col">
             {active.map((m, i) => (
@@ -110,8 +124,9 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                   </span>
                   {m.note && <span className="block text-[12px] text-sh-text-3">{m.note}</span>}
                 </span>
-                <span className="text-[12px] tabular-nums text-sh-text-3">
-                  since {sinceDay(m.since)} · {m.by}
+                <span className="flex flex-wrap items-center gap-[8px] text-[12px] tabular-nums text-sh-text-3">
+                  {REAL_API && <Chip word={m.status} tone={STATUS_TONE[m.status]} />}
+                  since {sinceDay(m.since)} · {byText(m)}
                 </span>
               </li>
             ))}
@@ -137,7 +152,7 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                 <p className="flex flex-wrap items-center justify-between gap-[8px]">
                   <span className="text-[14px] font-semibold text-sh-text">{r.context}</span>
                   <span className="text-[12px] tabular-nums text-sh-text-3">
-                    {formatDate(r.at)} {formatTime(r.at)} · {r.by}
+                    {REAL_API ? `${sinceText(r.at)} ${clinicTime(r.at)}` : `${formatDate(r.at)} ${formatTime(r.at)}`} · {byText(r)}
                   </span>
                 </p>
                 <ul className="mt-[8px] flex flex-col gap-[6px]">
