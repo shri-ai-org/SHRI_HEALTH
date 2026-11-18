@@ -21,6 +21,7 @@ import type {
   ConflictResponse,
   CreatePortalMessageHeaders,
   CreatePortalRefillRequestHeaders,
+  DemoSignInRequest,
   DownloadPortalFileContentParams,
   EnrollInPortalHeaders,
   EnrollmentRequest,
@@ -457,6 +458,93 @@ return apiFetch<enrollInPortalResponse>(getEnrollInPortalUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(enrollmentRequest)
+  }
+);}
+
+
+export type signInToPortalForDemoResponse200 = {
+  data: PortalSession
+  status: 200
+}
+
+export type signInToPortalForDemoResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type signInToPortalForDemoResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type signInToPortalForDemoResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type signInToPortalForDemoResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type signInToPortalForDemoResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type signInToPortalForDemoResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type signInToPortalForDemoResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type signInToPortalForDemoResponseSuccess = (signInToPortalForDemoResponse200) & {
+  headers: Headers;
+};
+export type signInToPortalForDemoResponseError = (signInToPortalForDemoResponse400 | signInToPortalForDemoResponse403 | signInToPortalForDemoResponse404 | signInToPortalForDemoResponse422 | signInToPortalForDemoResponse429 | signInToPortalForDemoResponse500 | signInToPortalForDemoResponse503) & {
+  headers: Headers;
+};
+
+export type signInToPortalForDemoResponse = (signInToPortalForDemoResponseSuccess | signInToPortalForDemoResponseError)
+
+export const getSignInToPortalForDemoUrl = () => {
+
+
+
+
+  return `/portal/auth/demo-sign-in`
+}
+
+/**
+ * **Demo servers only (D121): synthetic patients, never real ones.** A patient signs in with the mobile number on her chart and her date of birth; no code, no password and no patient realm account. The server checks both against the chart and, when exactly one patient in any clinic matches, opens a portal session (`__Host-shri_portal`) directly and returns it, as `completePortalLogin` does after the realm. Restricted charts (D37), merged or inactive patients and patients whose portal account is disabled or suspended never match. **Off everywhere else:** the server answers `404` unless it runs with `SHRI_DEMO=true` and the demo sign-in switched on, and the API refuses to start with the switch on without `SHRI_DEMO=true` or in production. Every failure gives the same `422`, so charts can't be probed; rate-limited per mobile number and per address. Every attempt is audited (`security`): a sign-in names the patient, a refusal names no one. The number and date of birth are never logged. Public: there is no session yet, so the `Origin` header must be the portal host instead of a CSRF token (ADR-0013 §5). The real sign-in (ADR-0013, D85) returns after the demo.
+ * @summary Demo sign-in with mobile number and date of birth
+ */
+export const signInToPortalForDemo = async (demoSignInRequest: DemoSignInRequest, options?: Parameters<typeof apiFetch>[1]): Promise<signInToPortalForDemoResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<signInToPortalForDemoResponse>(getSignInToPortalForDemoUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(demoSignInRequest)
   }
 );}
 

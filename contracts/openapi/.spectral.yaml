@@ -103,7 +103,7 @@ rules:
           match: "^(public|authenticated|partner-signed|[a-z][a-z-]*:[a-z][a-z-]*)$"
 
   shri-public-allowlist:
-    description: x-permission "public" only on /auth/login, /auth/callback, /health and the portal's /portal/auth/login, /portal/auth/callback and /portal/enrollments (SECURITY_MODEL §1).
+    description: x-permission "public" only on /auth/login, /auth/callback, /health and the portal's /portal/auth/login, /portal/auth/callback and /portal/enrollments, and the demo-only /portal/auth/demo-sign-in (D121) (SECURITY_MODEL §1).
     message: "{{error}}"
     severity: error
     given: "$"
