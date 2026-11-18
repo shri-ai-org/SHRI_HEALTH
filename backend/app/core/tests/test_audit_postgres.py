@@ -54,9 +54,16 @@ def _router() -> APIRouter:
 
     @router.patch("/patients/{patientId}", operation_id="updatePatient")
     async def update_patient(patientId: UUID,  # noqa: N803
+                             savepoint: bool = False,
                              user: CurrentUser = Depends(require("patients:update")),
                              session: AsyncSession = DB) -> dict[str, Any]:
-        await session.execute(DEACTIVATE, {"p": patientId})
+        if savepoint:  # as a store helper that names a refused constraint, then more writes
+            async with session.begin_nested():
+                await session.execute(DEACTIVATE, {"p": patientId})
+            await session.execute(text("UPDATE clinical.patient SET gender = 'male' "
+                                       "WHERE id = :p"), {"p": patientId})
+        else:
+            await session.execute(DEACTIVATE, {"p": patientId})
         await session.commit()
         return {}
 
@@ -161,6 +168,18 @@ def test_a_write_and_its_audit_row_commit_together(
     (row,) = _audit_rows(admin_engine, chart["tenant"])
     assert (row.action, row.patient_id) == ("update", pt)
     assert not _active(admin_engine, pt)
+
+
+def test_a_savepoint_is_not_the_commit(
+        client: TestClient, chart: dict[str, Any], admin_engine: Engine) -> None:  # noqa: F811
+    """A SAVEPOINT released mid-request fires SQLAlchemy's commit events too: the audit row is
+    still written once, with the real commit, and writes after the savepoint are saved."""
+    pt = chart["patient"]
+    r = client.patch(f"{API_PREFIX}/patients/{pt}", params={"savepoint": "true"}, json={})
+    assert r.status_code == 200, r.text
+    (row,) = _audit_rows(admin_engine, chart["tenant"])
+    assert (row.action, row.patient_id) == ("update", pt)
+    assert not _active(admin_engine, pt) and _gender(admin_engine, pt) == "male"
 
 
 def test_a_write_whose_audit_fails_is_not_saved(
