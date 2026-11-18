@@ -38,9 +38,12 @@ import {
   addInfoErrors,
   basicInfoErrors,
   choicesErrors,
+  consentProblem,
+  consentWording,
   emptyRegistration,
   formatUsPhone,
   hasErrors,
+  loadConsentRequirements,
   loadPayers,
   loadProviders,
   newSubmission,
@@ -49,6 +52,7 @@ import {
   todayIso,
 } from '../../../shri-health/registration'
 import type { Option, RegistrationForm, Submission } from '../../../shri-health/registration'
+import type { ConsentRequirement } from '../../../../src/api/generated/model'
 import { loadCandidates } from '../../../shri-health/patients'
 import { problemMessage } from '../../../shri-health/client'
 import type { Patient } from '../../types/patient'
@@ -90,6 +94,9 @@ export function RegisterFromPortalPage() {
   const [payers, setPayers] = useState<Option[]>([])
   const [payersError, setPayersError] = useState<string | null>(null)
   const [providers, setProviders] = useState<Option[]>([])
+  // The required consents the checkbox covers (null while they load); Register waits for them.
+  const [consentRequirements, setConsentRequirements] = useState<ConsentRequirement[] | null>(null)
+  const [consentsError, setConsentsError] = useState<string | null>(null)
 
   const [submission, setSubmission] = useState<Submission>(newSubmission)
   const [submitting, setSubmitting] = useState(false)
@@ -110,10 +117,23 @@ export function RegisterFromPortalPage() {
     loadProviders()
       .then((list) => live && setProviders(list))
       .catch(() => undefined)
+    loadConsentRequirements()
+      .then((list) => live && setConsentRequirements(list))
+      .catch((error: unknown) => live && setConsentsError(problemMessage(error)))
     return () => {
       live = false
     }
   }, [])
+
+  function retryConsents() {
+    setConsentsError(null)
+    loadConsentRequirements()
+      .then(setConsentRequirements)
+      .catch((error: unknown) => setConsentsError(problemMessage(error)))
+  }
+
+  // Register is blocked until the required consents are read and the patient agrees to them.
+  const consentError = consentProblem(consentRequirements, consentsError, form.consent)
 
   const today = todayIso()
   const errors = {
@@ -145,6 +165,7 @@ export function RegisterFromPortalPage() {
     6: errors.socialHistoryForm,
     7: errors.SurgicalHistory,
     8: errors.Hospitalization,
+    9: { consent: consentError },
   }
 
   function set<G extends Group, K extends keyof RegistrationForm[G]>(group: G, key: K, value: RegistrationForm[G][K]) {
@@ -181,9 +202,14 @@ export function RegisterFromPortalPage() {
       go(0)
       return
     }
+    if (consentError || !consentRequirements) {
+      setAttempted((current) => ({ ...current, 9: true }))
+      go(9)
+      return
+    }
     setSubmitting(true)
     setSubmitError(null)
-    const result = await submitRegistration(form, submission, override)
+    const result = await submitRegistration(form, submission, override, consentRequirements)
     setSubmission(result.submission)
     setSubmitting(false)
     if (result.kind === 'done') {
@@ -509,7 +535,6 @@ export function RegisterFromPortalPage() {
         ) : null}
 
         {page === 9 ? (
-          // TODO(stage 2): mock — agreeing is not recorded; needs recordConsent and a consent requirement.
           <Section title="Financial Policy">
             <div className="flex flex-col gap-3 text-sm leading-relaxed text-ink">
               <p>
@@ -518,9 +543,14 @@ export function RegisterFromPortalPage() {
               <p>
                 Claims are filed on behalf of our patients for services performed in the office to the primary insurance company. Secondary insurance is the patient’s responsibility. To assist in filing your secondary claim, we will give you a complete statement of services from our office. Insurance benefits belong to you, and it is up to you to ensure that you are receiving appropriate reimbursement under the terms of your plan. There is no guarantee of benefits from the insurance company until a claim is received and processed by the insurance company. Therefore, benefits quoted to you are only an estimate provided by the insurance company.
               </p>
-              <Checkbox id="reg-consent" checked={form.consent} onChange={(checked) => setForm((current) => ({ ...current, consent: checked }))}>
-                I agree to the above mentioned information
-              </Checkbox>
+              <ConsentAgreement
+                requirements={consentRequirements}
+                readError={consentsError}
+                agreed={form.consent}
+                onAgree={(checked) => setForm((current) => ({ ...current, consent: checked }))}
+                onRetry={retryConsents}
+                error={attempted[9] ? consentError : undefined}
+              />
             </div>
           </Section>
         ) : null}
@@ -771,5 +801,45 @@ function ReviewCard({ title, onEdit, children }: { title: string; onEdit: () => 
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">{children}</dl>
       </CardBody>
     </Card>
+  )
+}
+
+/**
+ * The one consent checkbox on the Financial Policy page. Its wording comes from the practice's
+ * required consent requirements; when they can't be read there is no checkbox, only the message.
+ */
+export function ConsentAgreement({
+  requirements,
+  readError,
+  agreed,
+  onAgree,
+  onRetry,
+  error,
+}: {
+  requirements: ConsentRequirement[] | null
+  readError: string | null
+  agreed: boolean
+  onAgree: (checked: boolean) => void
+  onRetry: () => void
+  error?: string
+}) {
+  if (readError) {
+    return (
+      <Alert tone="critical">
+        <p>The consents could not be read, so the patient cannot be registered yet. {readError}</p>
+        <Button type="button" variant="outline" className="mt-2" onClick={onRetry}>
+          Try again
+        </Button>
+      </Alert>
+    )
+  }
+  if (!requirements) return <p className="text-ink-muted">Loading the consents…</p>
+  if (requirements.length === 0) {
+    return <Alert tone="critical">The practice has no required consents set up, so the patient cannot be registered yet.</Alert>
+  }
+  return (
+    <Checkbox id="reg-consent" checked={agreed} onChange={onAgree} error={error}>
+      {consentWording(requirements)}
+    </Checkbox>
   )
 }

@@ -70,6 +70,20 @@ export default defineConfig({
           css: false,
         },
       },
+      {
+        // The front office's own unit tests (registration first), with its router alias and the real-API build flag.
+        root: './front-office',
+        resolve: { alias: { 'react-router-dom': 'react-router' } },
+        define: { __SHRI_REAL_API__: 'true', __BUILD_STAMP__: '"test"', __BUILD_COMMIT__: '"test"' },
+        test: {
+          name: 'front-office',
+          environment: 'jsdom',
+          globals: true,
+          setupFiles: ['../src/test/setup.ts'],
+          include: ['shri-health/**/*.test.ts', 'src/pages/register/**/*.test.tsx'],
+          css: false,
+        },
+      },
     ],
   },
 })
