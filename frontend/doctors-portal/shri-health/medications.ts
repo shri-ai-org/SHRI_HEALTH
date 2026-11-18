@@ -11,11 +11,12 @@ import { clinicDate } from './format'
 import { read } from './resource'
 import { useEffect, useState } from 'react'
 
-export type CurrentMedicine = RxItem & { since: Date; by: string }
+/** `prescriptionId`: our prescription, whose prescriber the page reads (getPrescription). */
+export type CurrentMedicine = RxItem & { id: string; since: Date; by: string; prescriptionId?: string }
 
 export interface MedicationList {
   current: CurrentMedicine[]
-  history: PrescriptionRecord[]
+  history: (PrescriptionRecord & { prescriptionId?: string })[]
 }
 
 const STATUS: Record<string, RxItem['status'] | undefined> = { active: 'Active', completed: 'Completed', stopped: 'Stopped' }
@@ -36,7 +37,7 @@ function itemOf(m: Medication): RxItem {
   }
 }
 
-async function load(patientId: string): Promise<MedicationList> {
+export async function loadMedications(patientId: string): Promise<MedicationList> {
   const all: Medication[] = []
   let cursor: string | undefined
   for (let page = 0; page < 10; page += 1) {
@@ -48,14 +49,15 @@ async function load(patientId: string): Promise<MedicationList> {
   }
   const kept = all.filter((m) => m.status !== 'entered-in-error').sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
   return {
-    current: kept.filter((m) => m.status === 'active').map((m) => ({ ...itemOf(m), since: clinicDate(m.recordedAt), by: byOf(m) })),
+    current: kept
+      .filter((m) => m.status === 'active')
+      .map((m) => ({ ...itemOf(m), id: m.id, since: clinicDate(m.recordedAt), by: byOf(m), prescriptionId: m.prescriptionId })),
     history: kept
       .filter((m) => m.status !== 'active')
-      .map((m) => ({ id: m.id, patientId, at: clinicDate(m.recordedAt), by: byOf(m), context: 'Medication list', items: [itemOf(m)] })),
+      .map((m) => ({ id: m.id, patientId, at: clinicDate(m.recordedAt), by: byOf(m), context: 'Medication list', items: [itemOf(m)], prescriptionId: m.prescriptionId })),
   }
 }
 
-/** The patient's medication list. */
 /**
  * How many medications the patient takes now, for the record's Prescriptions tab: read once in the
  * background (it never holds up the page); undefined until read, and when the read is refused or
@@ -66,7 +68,7 @@ export function useActiveMedicationCount(patientId: string): number | undefined 
   useEffect(() => {
     if (!patientId) return
     let live = true
-    load(patientId).then(
+    loadMedications(patientId).then(
       (list) => live && setCount({ patientId, n: list.current.length }),
       () => undefined,
     )
@@ -77,6 +79,7 @@ export function useActiveMedicationCount(patientId: string): number | undefined 
   return count && count.patientId === patientId ? count.n : undefined
 }
 
+/** The patient's medication list. */
 export function medicationsFor(patientId: string): MedicationList {
-  return read(`medications:${patientId}`, () => load(patientId))
+  return read(`medications:${patientId}`, () => loadMedications(patientId))
 }
