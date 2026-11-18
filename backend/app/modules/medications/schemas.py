@@ -83,6 +83,7 @@ class Medication(Out):
     note: str | None = None
     recorded_at: datetime
     recorded_by: UUID | None = None
+    prescriber_display_name: str | None = Field(default=None, max_length=200)
 
 
 class MedicationList(Out):
@@ -192,6 +193,7 @@ class Prescription(Out):
     refills: int | None = None
     substitution_allowed: bool | None = None
     pharmacy_id: UUID | None = None
+    pharmacy_name: str | None = Field(default=None, max_length=200)
     note_to_pharmacy: str | None = None
     prescriber_id: UUID | None = None
     prescriber_display_name: str | None = Field(default=None, max_length=200)

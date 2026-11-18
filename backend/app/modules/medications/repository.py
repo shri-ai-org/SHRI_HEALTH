@@ -74,6 +74,7 @@ class MedicationRow:
     note: str | None
     recorded_at: datetime
     recorded_by: UUID | None
+    signer_name: str | None = None  # the prescriber's name, signed prescriptions only
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ class PrescriptionRow:
     alerts: tuple[AlertRow, ...]
     transmission: TransmissionRow | None
     signer_name: str | None = None  # the signer's name for screens (T2), once signed
+    pharmacy_name: str | None = None  # admin.pharmacy's name for pharmacy_id
 
 
 @dataclass(frozen=True)
@@ -254,6 +256,17 @@ _KNOWN = text("""
 SELECT EXISTS (SELECT 1 FROM admin.concept c JOIN admin.code_system s ON s.id = c.code_system_id
                WHERE s.uri = :rxnorm AND c.code = :code AND c.is_active)
 """)
+# The signer's name as notes show their signers: the practitioner's official name, else the
+# user's display name (staff, not patient data). Only once signed. One expression in the row's own
+# statement, shared by the prescription read and the medication list (no query per item).
+_SIGNER_NAME = """CASE WHEN m.ext_signed_by_user_id IS NOT NULL THEN coalesce(
+         (SELECT nullif(concat_ws(' ', array_to_string(n.prefix, ' '),
+                                  array_to_string(n.given, ' '), n.family,
+                                  array_to_string(n.suffix, ' ')), '')
+            FROM clinical.human_name n WHERE n.practitioner_id = m.ext_signed_by_practitioner_id
+           ORDER BY (n.use = 'official') DESC, n.created_at, n.id LIMIT 1),
+         (SELECT u.display_name FROM admin.app_user u WHERE u.id = m.ext_signed_by_user_id))
+       END"""
 _LIST_COLUMNS = """
 SELECT m.id, m.subject_patient_id, m.intent, m.status,
        m.medication_codeable_concept_system AS system, m.medication_codeable_concept_code AS code,
@@ -265,9 +278,11 @@ SELECT m.id, m.subject_patient_id, m.intent, m.status,
        (SELECT d.text FROM clinical.dosage d WHERE d.medication_request_id = m.id
          ORDER BY d.sequence NULLS LAST, d.id LIMIT 1) AS dosage_text,
        (SELECT n.text FROM clinical.annotation n WHERE n.medication_request_id = m.id
-         ORDER BY n.time DESC NULLS LAST, n.id LIMIT 1) AS note
+         ORDER BY n.time DESC NULLS LAST, n.id LIMIT 1) AS note,
+       -- The prescriber's name, for a signed prescription only (never a reported medicine).
+       CASE WHEN m.intent = 'order' THEN """ + _SIGNER_NAME + """ END AS signer_name
 FROM clinical.medication_request m
-"""
+"""  # noqa: S608 (joins this module's constant _SIGNER_NAME; no input, the values are bound)
 # On the list (D28): what the patient reported (intent plan) and what was prescribed and signed
 # here (intent order); drafts, unsigned orders and entered-in-error entries never.
 _ON_THE_LIST = """((m.intent = 'plan' AND m.reported_boolean)
@@ -292,26 +307,19 @@ SELECT m.id, m.subject_patient_id, m.encounter_id, e.ext_facility_id AS facility
        m.dispense_request_number_of_repeats_allowed AS refills,
        m.substitution_allowed_boolean AS substitution_allowed,
        m.dispense_request_performer_pharmacy_id AS pharmacy_id,
+       ph.name AS pharmacy_name,
        m.ext_note_to_pharmacist AS note_to_pharmacy, m.ext_dea_schedule AS dea_schedule,
        m.ext_signed_by_user_id AS signed_by, m.ext_signed_at AS signed_at,
-       -- The signer's name as notes show their signers: the practitioner's official name, else
-       -- the user's display name (staff, not patient data). Only once signed.
-       CASE WHEN m.ext_signed_by_user_id IS NOT NULL THEN coalesce(
-         (SELECT nullif(concat_ws(' ', array_to_string(n.prefix, ' '),
-                                  array_to_string(n.given, ' '), n.family,
-                                  array_to_string(n.suffix, ' ')), '')
-            FROM clinical.human_name n WHERE n.practitioner_id = m.ext_signed_by_practitioner_id
-           ORDER BY (n.use = 'official') DESC, n.created_at, n.id LIMIT 1),
-         (SELECT u.display_name FROM admin.app_user u WHERE u.id = m.ext_signed_by_user_id))
-       END AS signer_name,
+       """ + _SIGNER_NAME + """ AS signer_name,
        m.meta_version_id AS version, m.ext_safety_checked_at,
        CASE WHEN m.ext_safety_checked_version = m.meta_version_id
             THEN m.ext_safety_checked_at END AS safety_checked_at,
        m.created_at, m.updated_at
 FROM clinical.medication_request m
 LEFT JOIN clinical.encounter e ON e.id = m.encounter_id
+LEFT JOIN admin.pharmacy ph ON ph.id = m.dispense_request_performer_pharmacy_id
 WHERE m.id = :id AND m.intent = 'order'
-""")
+""")  # noqa: S608 (joins this module's constant _SIGNER_NAME; no input, the values are bound)
 #: A visit's prescriptions, drafts included, oldest first (listEncounterPrescriptions, gap 82).
 _ENCOUNTER_PRESCRIPTIONS = text("""
 SELECT m.id FROM clinical.medication_request m
@@ -435,10 +443,16 @@ def _drug(r: Any) -> Drug:
     return Drug(system=r.system, code=r.code, display=r.display, text=r.text)
 
 
+def _name(value: str | None) -> str | None:
+    """A display name with its whitespace collapsed, or None."""
+    return " ".join(value.split()) or None if value else None
+
+
 def _entry(r: Any) -> MedicationRow:
     return MedicationRow(id=r.id, patient_id=r.subject_patient_id, intent=r.intent,
                          status=r.status, drug=_drug(r), dosage_text=r.dosage_text, note=r.note,
-                         recorded_at=r.recorded_at, recorded_by=r.recorded_by)
+                         recorded_at=r.recorded_at, recorded_by=r.recorded_by,
+                         signer_name=_name(r.signer_name))
 
 
 async def ingredients(db: AsyncSession, codes: Iterable[str]) -> dict[str, frozenset[str]]:
@@ -577,7 +591,7 @@ class SqlMedicationRepository:
             updated_at=r.updated_at, alerts=alerts,
             transmission=TransmissionRow(t.status, t.updated_at, t.error_message)
             if t is not None else None,
-            signer_name=" ".join(r.signer_name.split()) or None if r.signer_name else None)
+            signer_name=_name(r.signer_name), pharmacy_name=_name(r.pharmacy_name))
 
     async def encounter_prescriptions(self, db: AsyncSession, encounter_id: UUID, *,
                                       limit: int, offset: int) -> list[UUID]:

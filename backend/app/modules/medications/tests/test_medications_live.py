@@ -244,6 +244,8 @@ def test_draft_check_override_sign_and_send(client: Any, practice: Practice,
     # The signer's name for the banner (T2): the linked practitioner's official name.
     assert body["prescriberDisplayName"] == "Avery401 Lindqvist58"
     assert "prescriberDisplayName" not in draft
+    # The pharmacy's display name for the screens (Prescriptions tab), from admin.pharmacy.
+    assert body["pharmacyName"] == "Test Pharmacy (synthetic)"
     assert signed.headers["ETag"] == '"2"'
     again = _sign(client, draft["id"], '"1"', key)  # the same key: the stored answer, once
     assert again.status_code == 200 and again.json() == body
@@ -267,6 +269,10 @@ def test_draft_check_override_sign_and_send(client: Any, practice: Practice,
     listed = client("ma").get(f"{API}/patients/{kaia}/medications").json()["items"]
     mine = next(i for i in listed if i["id"] == draft["id"])
     assert (mine["source"], mine["prescriptionId"]) == ("prescription", draft["id"])
+    # The prescriber's name on the list: a signed prescription has it, a reported medicine never.
+    assert mine["prescriberDisplayName"] == "Avery401 Lindqvist58"
+    told = next(i for i in listed if i["id"] == reported["id"])
+    assert told["source"] == "reported" and "prescriberDisplayName" not in told
     assert {r.patient_id for r in _audited(practice, "sign")} == {kaia}
 
     # The adapter builds the NewRx from the tables, in the clinic's session.
@@ -293,6 +299,22 @@ def test_draft_check_override_sign_and_send(client: Any, practice: Practice,
         assert _in_clinic(practice, again).duplicate
     final = client("md").get(f"{API}/prescriptions/{draft['id']}").json()["transmission"]
     assert final["status"] == "accepted" and "message" not in final
+
+
+def test_no_pharmacy_name_without_a_pharmacy_and_none_for_another_clinic(
+        client: Any, practice: Practice, rx: Rx) -> None:
+    """pharmacyName is absent while the draft names no pharmacy; another clinic's user sees
+    neither the prescription nor the list (404), so no name crosses clinics."""
+    body = {"patientId": str(practice.patients["kaia"]), "encounterId": rx.encounter,
+            "medication": AMOXICILLIN, "dosageText": "1 capsule by mouth three times daily"}
+    created = client("md").post(f"{API}/prescriptions", json=body, headers=_key())
+    assert created.status_code == 201, created.text
+    url = f"{API}/prescriptions/{created.json()['id']}"
+    assert "pharmacyName" not in created.json() and "pharmacyName" not in client("md").get(
+        url).json()
+    assert client("md-b").get(url).status_code == 404
+    assert client("md-b").get(
+        f"{API}/patients/{practice.patients['kaia']}/medications").status_code == 404
 
 
 def test_a_rejected_prescription_shows_the_pharmacys_reason(
