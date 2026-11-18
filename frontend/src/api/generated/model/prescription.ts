@@ -60,6 +60,11 @@ export interface Prescription {
   /** The pharmacy (`GET /pharmacies`); defaults to the patient's preferred pharmacy. Required to sign. */
   pharmacyId?: Id;
   /**
+     * The display name of the pharmacy for `pharmacyId`; the same source as the portal's prescriptions (#414).
+     * @maxLength 200
+     */
+  readonly pharmacyName?: string;
+  /**
      * A note for the pharmacist.
      * @maxLength 210
      */
