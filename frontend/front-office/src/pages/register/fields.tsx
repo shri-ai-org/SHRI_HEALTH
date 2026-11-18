@@ -243,12 +243,35 @@ export function CheckboxList({
   )
 }
 
-export function Checkbox({ id, checked, onChange, children }: { id: string; checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
+export function Checkbox({
+  id,
+  checked,
+  onChange,
+  children,
+  error,
+}: {
+  id: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+  children: ReactNode
+  error?: string
+}) {
   return (
-    <label htmlFor={id} className="flex items-start gap-2.5 text-sm text-ink">
-      <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className={checkboxClass} />
-      <span>{children}</span>
-    </label>
+    <div>
+      <label htmlFor={id} className="flex items-start gap-2.5 text-sm text-ink">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={checkboxClass}
+        />
+        <span>{children}</span>
+      </label>
+      <FieldError id={`${id}-error`} message={error ?? null} />
+    </div>
   )
 }
 

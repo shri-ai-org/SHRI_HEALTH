@@ -28,10 +28,15 @@ import {
   addRelatedPerson as apiAddRelatedPerson,
   registerPatient as apiRegisterPatient,
 } from '../../src/api/generated/endpoints/patients/patients'
-import { listPayers as apiListPayers } from '../../src/api/generated/endpoints/practice-setup/practice-setup'
+import {
+  listConsentRequirements as apiListConsentRequirements,
+  listPayers as apiListPayers,
+} from '../../src/api/generated/endpoints/practice-setup/practice-setup'
 import { listBookableProviders as apiListBookableProviders } from '../../src/api/generated/endpoints/scheduling/scheduling'
 import type {
   CodedValue,
+  ConsentCreate,
+  ConsentRequirement,
   CoverageCreate,
   CoverageCreateRelationshipToSubscriber,
   PatientCreate,
@@ -329,6 +334,43 @@ export async function loadPayers(): Promise<Option[]> {
 }
 
 /**
+ * The consents the patient agrees to at registration: the practice's active, required consent
+ * requirements (`listConsentRequirements`). Optional ones (telehealth, recording) are asked for
+ * elsewhere. Throws when they can't be read, so the page can block Register rather than guess.
+ */
+export async function loadConsentRequirements(): Promise<ConsentRequirement[]> {
+  const res = await apiListConsentRequirements({ limit: 100 })
+  if (res.status !== 200) throw new Error('Consent requirements could not be read')
+  return res.data.items.filter((requirement) => requirement.active && requirement.required)
+}
+
+/** The checkbox's wording, built from the requirements' own titles (never hard-coded consents). */
+export function consentWording(requirements: ConsentRequirement[]): string {
+  const titles = requirements.map((requirement) => requirement.title.charAt(0).toLowerCase() + requirement.title.slice(1))
+  return `The patient agrees to: ${titles.join('; ')}`
+}
+
+/**
+ * Why Register is blocked on the consents, or undefined when it may go ahead: the required
+ * requirements must have been read (and exist), and the patient must have agreed to them.
+ */
+export function consentProblem(requirements: ConsentRequirement[] | null, readError: string | null, agreed: boolean): string | undefined {
+  if (readError || !requirements || requirements.length === 0) return 'The consents could not be read, so the patient cannot be registered yet.'
+  return agreed ? undefined : 'The patient must agree to the consents before registering.'
+}
+
+/** One permitted, electronically signed consent per required requirement, at its policy version. */
+export function toConsents(requirements: ConsentRequirement[], signedAt: string): ConsentCreate[] {
+  return requirements.map((requirement) => ({
+    kind: requirement.kind,
+    decision: 'permit',
+    signatureMethod: 'electronic',
+    signedAt,
+    policyVersion: requirement.policyVersion,
+  }))
+}
+
+/**
  * Providers for the Provider select: `GET /booking/providers` (D49), which the front desk can read
  * (Vimal on #85, 2026-11-03). The choice is sent as `generalPractitionerId` (#212, built in #225).
  */
@@ -460,8 +502,11 @@ export function hasErrors(errors: Record<string, string | undefined>): boolean {
 
 // ---- To the contract ---------------------------------------------------------------------------
 
-/** `overrideReason`: the desk registers despite a `409 possible-duplicate`, with its reason (recorded). */
-export function toPatientCreate(form: RegistrationForm, overrideReason?: string): PatientCreate {
+/**
+ * `overrideReason`: the desk registers despite a `409 possible-duplicate`, with its reason (recorded).
+ * `consents`: sent only when the consent checkbox is ticked.
+ */
+export function toPatientCreate(form: RegistrationForm, overrideReason?: string, consents: ConsentCreate[] = []): PatientCreate {
   const b = form.basicInfo
   const c = form.choicesForm
   const given = [b.firstName.trim(), b.middleName.trim()].filter(Boolean)
@@ -477,6 +522,7 @@ export function toPatientCreate(form: RegistrationForm, overrideReason?: string)
     ...(b.email.trim() ? { emails: [{ address: b.email.trim(), use: 'home' }] } : {}),
     address: { lines: [b.address.trim()], city: b.city.trim(), state: b.state, postalCode: b.zip.trim(), country: 'US' },
     ...(overrideReason?.trim() ? { duplicateCheck: 'override', duplicateOverrideReason: overrideReason.trim() } : {}),
+    ...(form.consent && consents.length > 0 ? { consents } : {}),
   }
 }
 
@@ -521,6 +567,8 @@ export interface Submission {
   keys: { patient: string; contact: string; coverage: string }
   patientId?: string
   mrn?: string
+  /** When the consents were signed: fixed once, so a retry sends the same body under the same key. */
+  consentSignedAt?: string
   contactDone: boolean
   coverageDone: boolean
 }
@@ -538,11 +586,18 @@ export type SubmitResult =
   | { kind: 'duplicate'; candidateIds: string[]; submission: Submission }
   | { kind: 'failed'; step: 'patient' | 'contact' | 'coverage'; error: unknown; submission: Submission }
 
-export async function submitRegistration(form: RegistrationForm, current: Submission, overrideReason?: string): Promise<SubmitResult> {
+export async function submitRegistration(
+  form: RegistrationForm,
+  current: Submission,
+  overrideReason?: string,
+  consentRequirements: ConsentRequirement[] = [],
+): Promise<SubmitResult> {
   const submission = { ...current }
   if (!submission.patientId) {
+    submission.consentSignedAt ??= new Date().toISOString()
+    const consents = toConsents(consentRequirements, submission.consentSignedAt)
     try {
-      const res = await apiRegisterPatient(toPatientCreate(form, overrideReason), { 'Idempotency-Key': submission.keys.patient })
+      const res = await apiRegisterPatient(toPatientCreate(form, overrideReason, consents), { 'Idempotency-Key': submission.keys.patient })
       if (res.status !== 201) throw new Error('Registration did not complete')
       submission.patientId = res.data.id
       submission.mrn = res.data.mrn
