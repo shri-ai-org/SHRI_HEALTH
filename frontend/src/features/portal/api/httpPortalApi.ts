@@ -24,6 +24,7 @@ import {
   refreshPortalSession,
   requestPortalChange,
   reschedulePortalAppointment,
+  signInToPortalForDemo,
   signOutOfPortal,
 } from '../../../api/generated/endpoints/portal/portal'
 import { allPages } from '../../scheduling/reference'
@@ -65,6 +66,7 @@ export function createHttpPortalApi(later: PortalLaterApi): PortalApi {
     enroll: async (input, idempotencyKey) => {
       await ok(enrollInPortal(input, { 'Idempotency-Key': idempotencyKey }), 204)
     },
+    demoSignIn: (input) => ok(signInToPortalForDemo(input), 200),
     accountSecurityUrl: ACCOUNT_SECURITY_URL,
 
     getProfile: () => ok(getPortalProfile(), 200),

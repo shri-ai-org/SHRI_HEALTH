@@ -22,6 +22,8 @@ ARG VITE_FEATURE_AI_CHART_SUMMARY=off
 ARG VITE_FEATURE_AI_ASSISTANT=off
 ARG VITE_FEATURE_AI_MORNING_BRIEF=off
 ARG VITE_FEATURE_AI_DIFFERENTIAL=off
+# The patient portal's demo sign-in (D121): "on" only for SHRI_DEMO_SIGN_IN=true on a demo host.
+ARG VITE_FEATURE_DEMO_SIGN_IN=off
 WORKDIR /web
 COPY package.json package-lock.json .npmrc tsconfig.json tsconfig.app.json tsconfig.node.json ./
 # The apps import the shared session code (src/api) and the dev proxy's types (dev/).
