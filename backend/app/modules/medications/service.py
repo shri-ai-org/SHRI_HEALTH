@@ -210,7 +210,8 @@ def to_medication(row: repository.MedicationRow) -> schemas.Medication:
         dosage_text=row.dosage_text, status=row.status,
         source="prescription" if prescribed else "reported",
         prescription_id=row.id if prescribed else None, note=row.note,
-        recorded_at=row.recorded_at, recorded_by=row.recorded_by)
+        recorded_at=row.recorded_at, recorded_by=row.recorded_by,
+        prescriber_display_name=row.signer_name[:200] if prescribed and row.signer_name else None)
 
 
 def to_alert(a: repository.AlertRow) -> schemas.SafetyAlert:
@@ -233,7 +234,9 @@ def to_prescription(row: PrescriptionRow) -> schemas.Prescription:
         if row.quantity_value is not None and row.quantity_unit is not None else None,
         days_supply=int(row.days_supply) if row.days_supply is not None else None,
         refills=row.refills, substitution_allowed=row.substitution_allowed,
-        pharmacy_id=row.pharmacy_id, note_to_pharmacy=row.note_to_pharmacy,
+        pharmacy_id=row.pharmacy_id,
+        pharmacy_name=row.pharmacy_name[:200] if row.pharmacy_name else None,
+        note_to_pharmacy=row.note_to_pharmacy,
         prescriber_id=row.signed_by,
         prescriber_display_name=row.signer_name[:200] if row.signer_name else None,
         signed_at=row.signed_at,
