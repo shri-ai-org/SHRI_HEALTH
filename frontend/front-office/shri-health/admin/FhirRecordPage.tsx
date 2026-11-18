@@ -10,6 +10,7 @@ import type { PatientFhirRecord } from '../../../src/api/generated/model'
 import { Alert } from '../../src/components/ui/Alert'
 import { Button } from '../../src/components/ui/Button'
 import { Card, CardBody, CardHeader } from '../../src/components/ui/Card'
+import { TextField } from '../../src/pages/register/fields'
 import type { Patient } from '../../src/types/patient'
 import { planSearch, searchPatientsOnServer } from '../patients'
 import { readFailure, when } from './format'
@@ -72,10 +73,9 @@ export function FhirRecordPage() {
         <CardHeader icon={Search} title="Find the patient" subtitle="A name, an MRN or a 10-digit mobile number." />
         <CardBody className="space-y-3">
           <form onSubmit={(e) => void search(e)} className="flex flex-wrap items-end gap-3">
-            <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-sm text-ink-muted">
-              Patient
-              <input value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" className="min-h-11 rounded-lg border border-border bg-surface-1 px-3 text-ink" />
-            </label>
+            <div className="min-w-[16rem] flex-1">
+              <TextField id="fhir-patient" name="patient" label="Patient" value={query} onChange={setQuery} maxLength={100} />
+            </div>
             <Button type="submit" variant="secondary" loading={busy && !chosen}>
               Search
             </Button>
