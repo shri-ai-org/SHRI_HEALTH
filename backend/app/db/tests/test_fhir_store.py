@@ -532,3 +532,36 @@ async def test_a_new_consent_of_the_same_kind_retires_the_earlier_one(
     status = {r.id: r.status for r in _rows(admin_engine, "SELECT id, status FROM clinical."
                                             "consent WHERE patient_id = :p", p=patient.id)}
     assert status == {old.id: "inactive", other.id: "active", new.id: "active"}
+
+
+async def test_consents_on_file_give_the_one_in_force_per_kind_and_who_recorded_it(
+        database: Database, clinic: dict[str, Any], admin_engine: Engine) -> None:
+    """For the patient's consents (Vimal's consent field, #85): consented, when, who recorded."""
+    patient = await _create(database, clinic)
+
+    def consent(kind: str, version: str, status: str = "active") -> fs.ConsentIn:
+        return fs.ConsentIn(patient_id=patient.id, kind=kind, status=status, date_time=b.NOW,
+                            policy_version=version, provision_type="permit",
+                            signature_method="written")
+
+    async with session(database, clinic) as s:
+        assert await fs.consents_on_file(s, patient.id) == []
+        await STORE.create_consent(s, consent("privacy-notice", "2025-01"))
+        treatment = await STORE.create_consent(s, consent("treatment", "2025-01"))
+        await STORE.create_consent(s, consent("research", "2025-01", status="rejected"))
+        await s.commit()
+    async with session(database, clinic) as s:
+        privacy = await STORE.create_consent(s, consent("privacy-notice", "2026-01"))
+        await s.commit()
+    async with session(database, clinic) as s:
+        found = await fs.consents_on_file(s, patient.id)
+        with pytest.raises(fs.ResourceNotFound):
+            await fs.consents_on_file(s, uuid.uuid4())
+    name = _rows(admin_engine, "SELECT display_name FROM admin.app_user WHERE id = :u",
+                 u=clinic["user"])[0].display_name
+    assert [(c.consent_id, c.kind, c.status, c.policy_version, c.recorded_by_user_id,
+             c.recorded_by_name) for c in found] == [
+        (privacy.id, "privacy-notice", "active", "2026-01", clinic["user"], name),
+        (treatment.id, "treatment", "active", "2025-01", clinic["user"], name)]
+    assert all(c.date_time == b.NOW and c.recorded_at is not None and c.decision == "permit"
+               for c in found)

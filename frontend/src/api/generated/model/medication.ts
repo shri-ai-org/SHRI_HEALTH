@@ -50,4 +50,9 @@ export interface Medication {
   recordedAt: Timestamp;
   /** Who recorded it. */
   recordedBy?: Id;
+  /**
+     * The signer's display name; only for signed prescriptions (`source: prescription`). Never set for patient-reported medicines.
+     * @maxLength 200
+     */
+  readonly prescriberDisplayName?: string;
 }

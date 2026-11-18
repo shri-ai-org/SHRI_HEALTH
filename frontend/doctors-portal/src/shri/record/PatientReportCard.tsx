@@ -37,8 +37,9 @@ const STATUS_ICON: Record<ConditionStatus, LucideIcon> = {
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
 /** A day in the clinic's zone, U.S. style ("Nov 13, 2026"), with the API; the sample screens keep their own. */
-function sinceDay(at: Date | string): string {
-  return REAL_API ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(clinicDate(at)) : formatDate(typeof at === 'string' ? new Date(at) : at)
+export function sinceDay(at: Date | string): string {
+  // A Date here is already clinic time (clinicDate in the loader): converting it again put it a day early.
+  return REAL_API ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(typeof at === 'string' ? clinicDate(at) : at) : formatDate(typeof at === 'string' ? new Date(at) : at)
 }
 
 export function PatientReportCard({ patient: p, className }: { patient: Patient; className?: string }) {

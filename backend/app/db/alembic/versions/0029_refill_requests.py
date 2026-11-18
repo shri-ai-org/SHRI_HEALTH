@@ -32,16 +32,16 @@ medication: every list and rule that reads medications reads intent `plan` and `
   portal_fhir_no_refill_request
       A RESTRICTIVE policy for shri_fhir_reader: /fhir never serves a proposal.
 
-Revision ID: 0028
-Revises: 0027
+Revision ID: 0029
+Revises: 0028
 Create Date: 2026-11-17
 """
 from __future__ import annotations
 
 from alembic import op
 
-revision = "0028"
-down_revision = "0027"
+revision = "0029"
+down_revision = "0028"
 branch_labels = None
 depends_on = None
 
@@ -163,7 +163,7 @@ def downgrade() -> None:
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM clinical.medication_request WHERE intent = 'proposal'
                 AND status NOT IN ('draft', 'cancelled', 'entered-in-error')) THEN
-    RAISE EXCEPTION 'refill requests exist; 0028 cannot be downgraded';
+    RAISE EXCEPTION 'refill requests exist; 0029 cannot be downgraded';
   END IF;
 END $$;""")
     op.execute(DROP_REFILLS)

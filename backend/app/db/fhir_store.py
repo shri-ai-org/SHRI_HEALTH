@@ -189,7 +189,7 @@ class CoverageOrderTaken(InvalidInput):
 
 
 class RefillNotAllowed(InvalidTransition):
-    """A refill request the prescription doesn't allow (migration 0028): ``current_state`` is
+    """A refill request the prescription doesn't allow (migration 0029): ``current_state`` is
     ``not-active`` (not active, or not signed) or ``not-refillable`` (PSY, a controlled
     substance, or one whose schedule can't be read): the API's ``409 invalid-state-transition``
     with that code at ``/prescriptionId``."""
@@ -200,7 +200,7 @@ class RefillNotAllowed(InvalidTransition):
 
 class RefillAlreadyRequested(InvalidTransition):
     """The prescription already has an open refill request (``uq_medication_request_open_refill``,
-    migration 0028): the API's ``409 refill-already-requested``."""
+    migration 0029): the API's ``409 refill-already-requested``."""
 
     def __init__(self) -> None:
         super().__init__("refill-already-requested")
@@ -693,6 +693,23 @@ class DispenseQuantity:
 
 
 @dataclass(frozen=True)
+class ConsentOnFile:
+    """A consent in force on the patient (the latest active one of its kind, D59): what the
+    patient's consents show, with who recorded it (the consent row's ``created_by_user_id``) and
+    when. ``recorded_by_name`` is the staff user's display name, or None for one recorded with
+    no user (an import)."""
+    consent_id: uuid.UUID
+    kind: str
+    status: str
+    decision: str | None  # permit or deny (the contract's ``decision``)
+    date_time: datetime | None
+    policy_version: str | None
+    recorded_at: datetime
+    recorded_by_user_id: uuid.UUID | None
+    recorded_by_name: str | None
+
+
+@dataclass(frozen=True)
 class PreferredPharmacy:
     """The patient's default pharmacy (D50): what ``PreferredPharmacy`` and ``Patient``'s
     ``preferredPharmacy`` show. ``updated_at`` is when it was chosen."""
@@ -738,7 +755,7 @@ class PrescriptionIn:
 
 @dataclass(frozen=True)
 class RefillRequestIn:
-    """The patient's refill request (#400, migration 0028). Built from the prescription only:
+    """The patient's refill request (#400, migration 0029). Built from the prescription only:
     ``note`` must be empty, since a request carries no free text."""
     patient_id: uuid.UUID  # the portal session's patient
     prior_prescription_id: uuid.UUID  # the prescription to refill
@@ -1065,7 +1082,7 @@ class FhirStore(Protocol):
         nothing. Doesn't change the prescription, which is signed and frozen."""
         ...
 
-    # Refill requests: MedicationRequest, intent proposal (#400, migration 0028)
+    # Refill requests: MedicationRequest, intent proposal (#400, migration 0029)
     async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn) -> Written:
         """The patient's request, in the portal session (``admin.portal_request_refill``): built
         from the prescription, active at once, with the patient's Provenance. ``ResourceNotFound``
@@ -2838,6 +2855,24 @@ async def preferred_pharmacy(db: AsyncSession, patient_id: uuid.UUID
         .join(PatientPharmacy, PatientPharmacy.pharmacy_id == Pharmacy.id)
         .where(PatientPharmacy.patient_id == patient_id, PatientPharmacy.is_default))).first()
     return PreferredPharmacy(*row) if row is not None else None
+
+
+async def consents_on_file(db: AsyncSession, patient_id: uuid.UUID) -> list[ConsentOnFile]:
+    """The patient's consents in force, one per kind (``create_consent`` keeps one active per
+    kind), by kind, with who recorded each. ``ResourceNotFound`` for a patient the session
+    can't see. A read only: the caller audits it as a chart read."""
+    if (await db.execute(select(Patient.id).where(Patient.id == patient_id))
+            ).scalar_one_or_none() is None:
+        raise ResourceNotFound
+    rows = (await db.execute(
+        select(Consent.id, Consent.ext_kind, Consent.status, Consent.provision_type,
+               Consent.date_time,
+               Consent.ext_policy_version, Consent.created_at, Consent.created_by_user_id,
+               AppUser.display_name)
+        .outerjoin(AppUser, AppUser.id == Consent.created_by_user_id)
+        .where(Consent.patient_id == patient_id, Consent.status == "active")
+        .order_by(Consent.ext_kind, Consent.created_at.desc(), Consent.id))).all()
+    return [ConsentOnFile(*r) for r in rows]
 
 
 async def prescription_alert_ids(db: AsyncSession, prescription_id: uuid.UUID

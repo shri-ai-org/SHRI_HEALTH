@@ -6,6 +6,11 @@ post-logout URLs in realms/*.json are fixed at the first start. When the public 
 admin API on the host's loopback. Only those two settings of these two clients change; a realm
 that doesn't exist yet (shri-patients, #148) is skipped.
 
+It also sets each existing realm's login theme to ours (LOGIN_THEME, infra/keycloak/themes/shri:
+the stock theme without the "Sign in to your account" heading), for the same reason: a realm
+imported before the theme existed keeps the stock one. Only that one realm setting changes, and
+only when it differs, so running it again changes nothing.
+
     KC_URL=http://127.0.0.1:8081/kc KC_ADMIN=admin KC_ADMIN_PASSWORD=... PUBLIC_URL=https://... \
         python3 -I infra/keycloak/sync-client-urls.py
 
@@ -54,8 +59,28 @@ def _call(token: str, method: str, path: str, body: Any = None) -> Any:
         return json.loads(raw) if raw else None
 
 
+LOGIN_THEME = "shri"
+
+
+def _sync_theme(token: str, realm: str) -> None:
+    """The realm's login theme to ours (idempotent); a realm that doesn't exist is skipped."""
+    try:
+        current = _call(token, "GET", realm)
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            return
+        raise
+    if current.get("loginTheme") == LOGIN_THEME:
+        print(f"{realm}: login theme already {LOGIN_THEME}")
+        return
+    _call(token, "PUT", realm, {"realm": realm, "loginTheme": LOGIN_THEME})
+    print(f"{realm}: login theme now {LOGIN_THEME}")
+
+
 def main() -> int:
     token = _token()
+    for realm in dict.fromkeys(r for r, *_ in CLIENTS):
+        _sync_theme(token, realm)
     for realm, client_id, redirect, post_logout in CLIENTS:
         try:
             found = _call(token, "GET", f"{realm}/clients?clientId={client_id}")
