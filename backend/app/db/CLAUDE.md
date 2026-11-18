@@ -380,9 +380,11 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     invitation: revoke the old one before issuing a new one, in the same transaction.
   - **The demo server's sign-in (migration 0027, `SHRI_DEMO` only; real sign-in after the
     demo):** `SELECT * FROM admin.demo_portal_patient(:phone_digits, :birth_date)` as
-    `shri_app`, with no clinic set, gives `(tenant_id, patient_id)` only when exactly one active
-    patient has that date of birth and a current phone or sms number with those digits (E.164
-    without the `+`; a stored 10-digit number counts as `1` plus its digits), and that chart is
+    `shri_app`, with no clinic set, gives `(tenant_id, patient_id)` only in the demo seed's
+    clinic (`CLINIC_A`; a database the seed never ran on has none, so it finds nobody), and only
+    when exactly one active patient there has that date of birth and a current phone or sms
+    number with those digits (E.164 without the `+`; a stored 10-digit number counts as `1`
+    plus its digits), and that chart is
     not restricted and has no disabled or suspended account; otherwise nothing. Two charts
     sharing both are never told apart. The account it opens has `sign_in_method` `demo-phone`
     and no `keycloak_user_id`; its sessions have `sign_in_method` `demo-phone` and no Keycloak

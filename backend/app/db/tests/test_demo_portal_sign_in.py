@@ -1,7 +1,8 @@
 """Migration 0027: the demo server's portal sign-in by mobile number and date of birth (Vimal on
 #85, 18 Nov). admin.demo_portal_patient() is called as shri_app with no clinic set, as core calls
-it before a patient is known; demo-phone accounts and sessions are written as shri_app in their
-clinic, with the tables' triggers firing. Synthetic data only: fictional numbers and dates."""
+it before a patient is known, and answers only in the demo seed's clinic; demo-phone accounts
+and sessions are written as shri_app in their clinic, with the tables' triggers firing.
+Synthetic data only: fictional numbers and dates."""
 from __future__ import annotations
 
 import datetime as dt
@@ -12,13 +13,27 @@ import pytest
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
+from app.db.seed.starter import PRACTICES
 from app.db.tests.conftest import SKIP_WITHOUT_DATABASE, make_tenant
 from app.db.tests.test_core_runtime import token_hash, with_clinic
-from app.db.tests.test_portal_sign_in import DOB, _patient, app_conn_engine
+from app.db.tests.test_portal_sign_in import _patient, app_conn_engine
 
 __all__ = ["app_conn_engine"]                 # a fixture, used by name
 LOOKUP = text("SELECT * FROM admin.demo_portal_patient(:digits, :dob)")
 CIPHER = "vault:v1:c2ltdWxhdGVk"
+DOB = dt.date(1937, 5, 21)                    # no other test patient's date of birth
+DEMO = PRACTICES[0]                           # the demo seed's clinic, Riverbend
+CLINIC_A = DEMO.tenant_id
+
+
+def _demo_clinic(admin_engine: Engine) -> uuid.UUID:
+    """The demo seed's clinic, the only one the lookup answers for, as the seed makes it (the
+    seed never changes an existing tenant, so this must match it)."""
+    with admin_engine.begin() as c:
+        c.execute(text("INSERT INTO admin.tenant (id, slug, name, timezone) VALUES (:i, :s, :n, "
+                       ":z) ON CONFLICT DO NOTHING"),
+                  {"i": CLINIC_A, "s": DEMO.slug, "n": DEMO.name, "z": DEMO.timezone})
+    return CLINIC_A
 
 
 def _number() -> tuple[str, str]:
@@ -50,16 +65,15 @@ def _lookup(engine: Engine, digits: str | None, dob: dt.date | None) -> list[tup
 
 @pytest.mark.db
 @SKIP_WITHOUT_DATABASE
-def test_the_one_chart_with_the_number_and_date_of_birth_is_found_across_clinics(
+def test_the_one_chart_with_the_number_and_date_of_birth_is_found(
         app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine) -> None:
-    first, second = make_tenant(admin_engine), make_tenant(admin_engine)
+    clinic = _demo_clinic(admin_engine)
     stored, digits = _number()
-    patient = _phoned(admin_engine, app_engine, first, stored)
-    assert _lookup(app_conn_engine, digits, DOB) == [(first, patient)]
-    # an 11-digit number stored with its +1, in another clinic
-    stored_2, digits_2 = _number()
-    other = _phoned(admin_engine, app_engine, second, "+1 " + stored_2)
-    assert _lookup(app_conn_engine, digits_2, DOB) == [(second, other)]
+    patient = _phoned(admin_engine, app_engine, clinic, stored)
+    assert _lookup(app_conn_engine, digits, DOB) == [(clinic, patient)]
+    stored_2, digits_2 = _number()                   # 11 digits, stored with its +1
+    other = _phoned(admin_engine, app_engine, clinic, "+1 " + stored_2)
+    assert _lookup(app_conn_engine, digits_2, DOB) == [(clinic, other)]
     for wrong in ((digits, DOB + dt.timedelta(days=1)), (digits[1:], DOB), ("+" + digits, DOB),
                   ("0" + digits[1:], DOB), ("", DOB), (None, DOB), (digits, None),
                   ("19995550000", DOB)):
@@ -68,9 +82,29 @@ def test_the_one_chart_with_the_number_and_date_of_birth_is_found_across_clinics
 
 @pytest.mark.db
 @SKIP_WITHOUT_DATABASE
+def test_outside_the_demo_seeds_clinic_nobody_is_ever_found(
+        app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine) -> None:
+    """The production-like case: a clinic that isn't the demo seed's, as every clinic of a
+    database the seed never ran on. Its chart is never found, and never makes the demo clinic's
+    chart with the same number ambiguous."""
+    stored, digits = _number()
+    elsewhere = make_tenant(admin_engine)
+    _phoned(admin_engine, app_engine, elsewhere, stored)
+    assert _lookup(app_conn_engine, digits, DOB) == []
+    clinic = _demo_clinic(admin_engine)
+    patient = _phoned(admin_engine, app_engine, clinic, stored)
+    assert _lookup(app_conn_engine, digits, DOB) == [(clinic, patient)]
+    with admin_engine.connect() as c:                    # the migration names the seed's clinic
+        body = c.execute(text("SELECT pg_get_functiondef("
+                              "'admin.demo_portal_patient'::regproc)")).scalar_one()
+    assert f"'{CLINIC_A}'::uuid" in body
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
 def test_two_charts_with_the_number_and_date_of_birth_open_nothing(
         app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine) -> None:
-    first, second = make_tenant(admin_engine), make_tenant(admin_engine)
+    first = second = _demo_clinic(admin_engine)
     stored, digits = _number()
     one = _phoned(admin_engine, app_engine, first, stored)
     two = _phoned(admin_engine, app_engine, second, stored)
@@ -91,7 +125,7 @@ def test_two_charts_with_the_number_and_date_of_birth_open_nothing(
 @pytest.mark.parametrize("why", ["restricted", "very-restricted", "inactive", "disabled-account"])
 def test_restricted_inactive_and_disabled_charts_are_never_found(
         app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine, why: str) -> None:
-    tenant = make_tenant(admin_engine)
+    tenant = _demo_clinic(admin_engine)
     stored, digits = _number()
     patient = _phoned(admin_engine, app_engine, tenant, stored)
     with app_conn_engine.connect() as c:                 # a live account doesn't stop it
@@ -113,17 +147,26 @@ def test_restricted_inactive_and_disabled_charts_are_never_found(
 
 @pytest.mark.db
 @SKIP_WITHOUT_DATABASE
-def test_the_lookup_sees_nothing_once_it_returns(
-        app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine) -> None:
-    tenant = make_tenant(admin_engine)
+@pytest.mark.parametrize("case", ["found", "unknown", "ambiguous", "restricted", "elsewhere"])
+def test_the_lookup_clears_its_setting_before_every_return(
+        app_conn_engine: Engine, admin_engine: Engine, app_engine: Engine, case: str) -> None:
+    clinic = _demo_clinic(admin_engine)
     stored, digits = _number()
-    _phoned(admin_engine, app_engine, tenant, stored)
+    if case != "unknown":
+        patient = _phoned(admin_engine, app_engine,
+                          make_tenant(admin_engine) if case == "elsewhere" else clinic, stored)
+    if case == "ambiguous":
+        _phoned(admin_engine, app_engine, clinic, stored)
+    if case == "restricted":
+        with admin_engine.begin() as c:
+            c.execute(text("UPDATE clinical.patient SET meta_security = ARRAY['R'] "
+                           "WHERE id = :p"), {"p": patient})
     with app_conn_engine.connect() as c:
-        assert len(c.execute(LOOKUP, {"digits": digits, "dob": DOB}).all()) == 1
+        found = c.execute(LOOKUP, {"digits": digits, "dob": DOB}).all()
+        assert len(found) == (1 if case == "found" else 0)
         # Same transaction: the function cleared its setting, so its policies are shut.
         assert c.execute(text("SELECT coalesce(current_setting('app.demo_portal_phone', true), "
                               "'')")).scalar_one() == ""
-        assert c.execute(text("SELECT count(*) FROM clinical.patient")).scalar_one() == 0
 
 
 def _demo_account(c: Connection, tenant: uuid.UUID, patient: uuid.UUID) -> uuid.UUID:

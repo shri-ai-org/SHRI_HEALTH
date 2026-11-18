@@ -1,11 +1,14 @@
 """The demo server's portal sign-in with a mobile number and date of birth (Vimal's decision on
 #85, 18 Nov: "Demo-only mobile + date-of-birth sign-in to the patient portal (SHRI_DEMO only);
 real sign-in after the demo"). Core refuses to start with it on outside a demo server, audits
-every attempt and rate-limits by number; this is only the database part.
+every attempt and rate-limits by number; this is only the database part, and it fails closed
+on its own: it answers only for the demo seed's clinic, which a production database never has
+(the seed never runs there).
 
   admin.demo_portal_patient(p_phone_digits text, p_birth_date date)
       RETURNS (tenant_id, patient_id)
-      Before a clinic is known, across clinics. p_phone_digits is the E.164 number's digits
+      Before a clinic is known, but only in the demo seed's clinic (DEMO_CLINIC, the seed's
+      CLINIC_A, Riverbend Family Medicine (synthetic)). p_phone_digits is the E.164 number's digits
       without the '+'; a stored 10-digit U.S. number counts as 1 plus its 10 digits. It counts
       the active (so unmerged: a merge makes the merged chart inactive, D103) patients with that
       date of birth and a current phone or sms contact point with those digits, and answers
@@ -54,8 +57,12 @@ down_revision = "0026"
 branch_labels = None
 depends_on = None
 
+#: The demo seed's clinic (app.db.seed.starter's CLINIC_A; a test keeps them equal). The lookup
+#: and its policies see nothing else, so on a database without the demo seed it finds nobody.
+DEMO_CLINIC = "0a000000-0000-4000-8000-00000000000a"
+
 #: A contact point (alias cp) that is a current phone or sms number with the looked-up digits.
-_PHONE_MATCH = """cp.system IN ('phone', 'sms')
+_PHONE_MATCH = """cp.tenant_id = 'DEMO_CLINIC'::uuid AND cp.system IN ('phone', 'sms')
        AND (cp.period_end IS NULL OR cp.period_end > now())
        AND CASE WHEN length(regexp_replace(cp.value, '[^0-9]', '', 'g')) = 10
                 THEN '1' || regexp_replace(cp.value, '[^0-9]', '', 'g')
@@ -95,14 +102,15 @@ CREATE POLICY migrator_demo_portal_phone ON clinical.contact_point FOR SELECT TO
   USING (patient_id IS NOT NULL AND PHONE_MATCH_HERE);
 CREATE POLICY migrator_demo_portal_patient ON clinical.patient FOR SELECT TO shri_migrator
   USING (EXISTS (SELECT 1 FROM clinical.contact_point cp
-                  WHERE cp.patient_id = patient.id AND PHONE_MATCH));
+                  WHERE cp.patient_id = patient.id AND PHONE_MATCH)
+         AND tenant_id = 'DEMO_CLINIC'::uuid);
 CREATE POLICY migrator_demo_portal_account ON admin.portal_account FOR SELECT TO shri_migrator
-  USING (status IN ('disabled', 'suspended') AND EXISTS (
+  USING (tenant_id = 'DEMO_CLINIC'::uuid AND status IN ('disabled', 'suspended') AND EXISTS (
     SELECT 1 FROM clinical.contact_point cp
      WHERE cp.patient_id = portal_account.patient_id AND PHONE_MATCH));
 
 -- The demo sign-in's lookup (SHRI_DEMO only; core refuses to start with it on elsewhere): one
--- chart by mobile number and date of birth, or nothing.
+-- chart of the demo seed's clinic by mobile number and date of birth, or nothing.
 CREATE FUNCTION admin.demo_portal_patient(p_phone_digits text, p_birth_date date)
 RETURNS TABLE (tenant_id uuid, patient_id uuid)
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -118,7 +126,7 @@ BEGIN
   SELECT count(*), min(p.tenant_id::text)::uuid, min(p.id::text)::uuid
     INTO matches, m_tenant, m_patient
     FROM clinical.patient p
-   WHERE p.active AND p.birth_date = p_birth_date
+   WHERE p.tenant_id = 'DEMO_CLINIC'::uuid AND p.active AND p.birth_date = p_birth_date
      AND EXISTS (SELECT 1 FROM clinical.contact_point cp
                   WHERE cp.patient_id = p.id AND PHONE_MATCH);
   IF matches = 1 THEN
@@ -140,7 +148,7 @@ REVOKE ALL ON FUNCTION admin.demo_portal_patient(text, date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin.demo_portal_patient(text, date) TO shri_app;
 """
 LOOKUP = (_LOOKUP.replace("PHONE_MATCH_HERE", _PHONE_MATCH.replace("cp.", "contact_point."))
-          .replace("PHONE_MATCH", _PHONE_MATCH))
+          .replace("PHONE_MATCH", _PHONE_MATCH).replace("DEMO_CLINIC", DEMO_CLINIC))
 
 DROP = """
 DROP FUNCTION admin.demo_portal_patient(text, date);
