@@ -191,6 +191,13 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
               "AND status = 'active')", "3", fix=RESET),
+        # Her medications as signed prescriptions (seed/linda.py, #403): naproxen,
+        # cyclobenzaprine, acetaminophen and the omeprazole. The history's old reported entries
+        # (intent plan, never signed) don't count, so a server seeded before #403 fails here.
+        Check("Linda Thompson has at least 4 signed prescriptions",
+              "SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
+              f"'{sid(demo.PATIENT, 3)}' AND intent = 'order' AND ext_signed_at IS NOT NULL "
+              "AND status NOT IN ('draft', 'entered-in-error')", "4", at_least=True, fix=RESET),
     ]
 
 

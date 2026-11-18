@@ -83,6 +83,42 @@ def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
     assert "both AI features on in the demo clinic" in off
 
 
+def test_lindas_prescriptions_fail_when_they_are_the_old_reported_ones(
+        admin_engine: Engine, migrator_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A server seeded before #403 has Linda's medications as reported ones (intent plan, never
+    signed): her prescriptions line fails there and passes on today's seed."""
+    from sqlalchemy.orm import Session
+
+    from app.db.seed import demo
+    from app.db.seed.starter import sid
+    from app.db.tests.test_seed_linda import load_linda
+    from app.db.tests.test_seed_results import _load
+
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    _load()
+    load_linda()
+    [line] = [c for c in sc.demo_checks(demo.DEMO_DAY)
+              if c.name == "Linda Thompson has at least 4 signed prescriptions"]
+    with admin_engine.connect() as conn:
+        [(_, got)] = sc.run(conn, [line])
+        assert line.passes(got), got
+        # As the history recorded them before #403. Triggers off: a signed prescription can't
+        # be changed, and this only rewinds the data, inside a transaction that is rolled back.
+        conn.execute(text("SET LOCAL session_replication_role = replica"))
+        conn.execute(text("UPDATE clinical.medication_request SET intent = 'plan', "
+                          "reported_boolean = true, ext_signed_at = NULL "
+                          "WHERE subject_patient_id = :p AND intent = 'order'"),
+                     {"p": sid(demo.PATIENT, 3)})
+        [(_, old)] = sc.run(conn, [line])
+        conn.rollback()                                     # nothing is kept
+    assert old == "0" and not line.passes(old)
+    assert sc.line(line, old).startswith(
+        "FAIL  Linda Thompson has at least 4 signed prescriptions: 0 (expected at least 4); "
+        "reset needed")
+
+
 def test_an_at_least_check_takes_more_but_not_fewer() -> None:
     check = sc.Check("visits", "SELECT 1", "6", at_least=True)
     assert check.passes("7") and check.passes("6")
