@@ -142,7 +142,7 @@ test('17. Administration: users and roles, FHIR view, partner messages (read onl
   await expect.soft(page.getByText('Partner messages').first(), 'partner messages open').toBeVisible({ timeout: 15_000 })
   await screenOk(page, '17-admin-integrations')
   await as(page, 'admin', '/admin/fhir')
-  await page.getByLabel('Patient').fill('Thomp')
+  await page.getByLabel('Patient', { exact: true }).fill('Thomp')
   await page.getByRole('button', { name: 'Search' }).click()
   await page.getByRole('button', { name: /Thompson/ }).first().click()
   await expect.soft(page.getByText(/FHIR R4 record/).first(), "Linda's FHIR record opens").toBeVisible({ timeout: 15_000 })
