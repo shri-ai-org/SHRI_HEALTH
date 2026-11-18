@@ -80,16 +80,27 @@ describe('The visit summary with the real API', () => {
     expect(screen.queryByRole('button', { name: 'Open visit summary' })).toBeNull()
   })
 
-  it('opens the one-time link in a new tab, and never keeps it', async () => {
+  it('downloads in the same tab from a fresh one-time link on every click, and never keeps it', async () => {
     const user = userEvent.setup()
-    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
+    let links = 0
     renderWith(
-      { getVisitSummary: () => Promise.resolve(summary()), getVisitSummaryDownloadUrl: () => Promise.resolve({ url: '/api/v1/portal/me/files/f1/content?token=t', expiresAt: '2026-09-29T18:00:00Z' } as never) },
+      {
+        getVisitSummary: () => Promise.resolve(summary()),
+        getVisitSummaryDownloadUrl: () => {
+          links += 1
+          return Promise.resolve({ url: `/api/v1/portal/me/files/f1/content?token=t${links}`, expiresAt: '2026-09-29T18:00:00Z' } as never)
+        },
+      },
       <VisitSummaryPage visitSummaryId={SUMMARY_ID} />,
     )
-    await user.click(await screen.findByRole('button', { name: 'Open visit summary' }))
-    expect(open).toHaveBeenCalledWith('/api/v1/portal/me/files/f1/content?token=t', '_blank', 'noopener,noreferrer')
-    open.mockRestore()
+    const button = await screen.findByRole('button', { name: 'Open visit summary' })
+    await user.click(button)
+    await user.click(button)
+    expect(assign).toHaveBeenNthCalledWith(1, '/api/v1/portal/me/files/f1/content?token=t1')
+    expect(assign).toHaveBeenNthCalledWith(2, '/api/v1/portal/me/files/f1/content?token=t2')
+    vi.unstubAllGlobals()
   })
 
   it('says plainly that the summary cannot be downloaded yet when there is no link (404), not that the record is missing', async () => {

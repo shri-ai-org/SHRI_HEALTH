@@ -259,9 +259,11 @@ export function VisitSummaryPage({ visitSummaryId }: { visitSummaryId: string })
     setOpening(true)
     setFailure(null)
     try {
-      // A short-lived link, opened at once and never kept (D86).
+      // A short-lived, single-use link, asked for again on every click, opened at once and never kept
+      // (D86). Same tab: the file comes as an attachment, so the browser downloads it and stays on
+      // this page (a new tab would be left empty; Anand's review of #420).
       const { url } = await api.getVisitSummaryDownloadUrl(visitSummaryId)
-      window.open(url, '_blank', 'noopener,noreferrer')
+      window.location.assign(url)
     } catch (err) {
       const problem = toProblem(err)
       // A 404 is either no download yet (the link isn't served) or a summary that is gone: the

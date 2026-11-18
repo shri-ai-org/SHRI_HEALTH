@@ -217,11 +217,13 @@ describe('health records (B8a)', () => {
   })
 
   it('opens an available visit summary through a short-lived link, and shows a held one as held (D86)', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    // Same tab: the file is an attachment, so the browser downloads it and stays on the page.
     const { user } = setup(`/portal/visit-summaries/${IDS.summary}`)
+    const assign = vi.fn()
+    vi.stubGlobal('location', { ...window.location, assign })
     await user.click(await screen.findByRole('button', { name: 'Open visit summary' }))
-    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringContaining(`/visit-summary/${IDS.summary}`), '_blank', 'noopener,noreferrer'))
-    open.mockRestore()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(expect.stringContaining(`/visit-summary/${IDS.summary}`)))
+    vi.unstubAllGlobals()
   })
 
   it('shows a held visit summary without an open button', async () => {
