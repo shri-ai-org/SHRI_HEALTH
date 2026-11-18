@@ -18,7 +18,7 @@ BUILT = frozenset({
     "listFacilitys", "listProviders", "listAppointmentTypes", "listProviderSchedules",
     "listPayers", "listPracticePayers", "listNoteTemplates", "getNoteTemplate",
     "getPracticeSettings", "updatePracticeSettings", "getFacility", "updateFacility",
-    "createProvider", "createProviderSchedule",
+    "createProvider", "createProviderSchedule", "listConsentRequirements",
 })
 
 

@@ -110,6 +110,10 @@ class SetupRepository(Protocol):
                                   active: bool | None, after: Position | None, limit: int
                                   ) -> Page[schemas.NoteTemplate]: ...
 
+    async def list_consent_requirements(self, db: AsyncSession, *, kind: str | None,
+                                        active: bool | None, after: Position | None, limit: int
+                                        ) -> Page[schemas.ConsentRequirement]: ...
+
     async def get_note_template(self, db: AsyncSession, note_template_id: UUID
                                 ) -> schemas.NoteTemplate | None: ...
 
@@ -298,6 +302,20 @@ WHERE (CAST(:active AS boolean) IS NULL OR pp.is_active = :active)
   AND (CAST(:after_key AS text) IS NULL
        OR (p.name, pp.id) > (CAST(:after_key AS text), CAST(:after_id AS uuid)))
 ORDER BY p.name, pp.id
+LIMIT :limit
+""")
+# By kind, then policy version (the contract's order). The sort key joins the two with '/', which
+# sorts as the pair does: no kind is a prefix of another, and the collation is C (D33).
+_CONSENT_REQUIREMENTS = text("""
+SELECT id, kind, title, policy_version, is_required, form_file_id, effective_date, is_active,
+       created_at, updated_at, kind || '/' || policy_version AS sort_key
+FROM admin.consent_requirement
+WHERE (CAST(:kind AS text) IS NULL OR kind = :kind)
+  AND (CAST(:active AS boolean) IS NULL OR is_active = :active)
+  AND (CAST(:after_key AS text) IS NULL
+       OR (kind || '/' || policy_version, id) > (CAST(:after_key AS text),
+                                                 CAST(:after_id AS uuid)))
+ORDER BY sort_key, id
 LIMIT :limit
 """)
 _ENROLLMENTS = text("""
@@ -585,6 +603,18 @@ class SqlSetupRepository:
             **_keyset(after, limit)})).all()
         rows, next_position = _cut(found, limit, "note-templates", "name")
         return Page(await _note_templates(db, rows), next_position)
+
+    async def list_consent_requirements(self, db: AsyncSession, *, kind: str | None,
+                                        active: bool | None, after: Position | None, limit: int
+                                        ) -> Page[schemas.ConsentRequirement]:
+        found = (await db.execute(_CONSENT_REQUIREMENTS, {
+            "kind": kind, "active": active, **_keyset(after, limit)})).all()
+        rows, next_position = _cut(found, limit, "consent-requirements", "sort_key")
+        return Page([schemas.ConsentRequirement(
+            id=r.id, kind=r.kind, title=r.title, policy_version=r.policy_version,
+            required=r.is_required, form_file_id=r.form_file_id,
+            effective_date=r.effective_date, active=r.is_active, created_at=r.created_at,
+            updated_at=r.updated_at) for r in rows], next_position)
 
     async def get_note_template(self, db: AsyncSession, note_template_id: UUID
                                 ) -> schemas.NoteTemplate | None:

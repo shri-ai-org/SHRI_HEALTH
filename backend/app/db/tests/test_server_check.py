@@ -81,6 +81,12 @@ def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
         off = {c.name for c, v in sc.run(conn, sc.demo_checks(demo.DEMO_DAY)) if not c.passes(v)}
         conn.rollback()                                     # nothing is kept
     assert "both AI features on in the demo clinic" in off
+    with admin_engine.connect() as conn:                    # no requirements: registration's
+        conn.execute(text("UPDATE admin.consent_requirement SET is_active = false "  # checkbox
+                          "WHERE tenant_id = :t"), {"t": CLINIC_A})       # would be empty
+        none = {c.name for c, v in sc.run(conn, sc.demo_checks(demo.DEMO_DAY)) if not c.passes(v)}
+        conn.rollback()                                     # nothing is kept
+    assert "the demo clinic's active consent requirements" in none
 
 
 def test_an_at_least_check_takes_more_but_not_fewer() -> None:
