@@ -138,6 +138,11 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"a.tenant_id = {clinic} AND a.id::text LIKE '{str(sid(demo.APPOINTMENT, 0))[:9]}%' "
               f"AND (a.start AT TIME ZONE '{zone}')::date = {today} "
               "ORDER BY a.start, a.id LIMIT 1", str(sid(demo.PATIENT, 3)), fix=RESET),
+        # What registration's consent checkbox lists (listConsentRequirements, D59): the
+        # seed's requirements, required and optional. An admin may add more in a rehearsal.
+        Check("the demo clinic's active consent requirements",
+              "SELECT count(*) FROM admin.consent_requirement WHERE tenant_id = "
+              f"{clinic} AND is_active", str(len(demo.CONSENTS)), at_least=True, fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
               str(len(demo.SHOWN_PATIENTS)), fix=RESET),

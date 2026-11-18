@@ -1,11 +1,12 @@
-"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the six list reads, the
+"""Practice setup API (contracts/openapi/modules/practice-setup.yaml): the seven list reads, the
 note-template reads, the practice settings (read and JSON Merge Patch, A49), one facility's
 read and JSON Merge Patch, and creating a provider or a provider schedule (201, with
 `Location`).
 
 Each route's operation_id is the contract's operationId, with require() on its x-permission
 (`payers:read` for the payer directory, `note-templates:read` for the note templates (D73, A54),
-`practice-setup:read` for the rest) and tenant_db, which
+`consent-requirements:read` for the consent requirements (D59), `practice-setup:read` for the
+rest) and tenant_db, which
 also writes the operation's x-audit rows and refuses a `facilityId` that is not one of the
 user's facilities (404). The permission is the first dependency, so a caller without it gets
 401 or 403 before anything else is resolved, an invalid cursor included.
@@ -65,6 +66,8 @@ IfMatch = Annotated[str | None, Header(alias="If-Match")]
 FacilityPathId = Annotated[UUID, Path(alias="facilityId")]
 PayersRead = Annotated[CurrentUser, Depends(require("payers:read"))]
 TemplatesRead = Annotated[CurrentUser, Depends(require("note-templates:read"))]
+ConsentsRead = Annotated[CurrentUser, Depends(require("consent-requirements:read"))]
+ConsentKindQuery = Annotated[schemas.ConsentKind | None, Query()]
 Limit = Annotated[int, Query(ge=1, le=100)]
 Cursor = Annotated[str | None, Query(max_length=512, pattern=r"^[A-Za-z0-9_-]+$")]
 Active = Annotated[bool | None, Query()]
@@ -135,6 +138,16 @@ async def list_practice_payers(user: SetupRead, db: DB, repo: Repo, active: Acti
                                ) -> schemas.PracticePayerList:
     return await service.list_practice_payers(db, repo, active=active, cursor_value=cursor,
                                               limit=limit)
+
+
+@router.get("/consent-requirements", operation_id="listConsentRequirements",
+            response_model=schemas.ConsentRequirementList, response_model_exclude_none=True)
+async def list_consent_requirements(user: ConsentsRead, db: DB, repo: Repo,
+                                    kind: ConsentKindQuery = None, active: bool = True,
+                                    limit: Limit = DEFAULT_LIMIT, cursor: Cursor = None
+                                    ) -> schemas.ConsentRequirementList:
+    return await service.list_consent_requirements(db, repo, kind=kind, active=active,
+                                                   cursor_value=cursor, limit=limit)
 
 
 @router.get("/note-templates", operation_id="listNoteTemplates",
