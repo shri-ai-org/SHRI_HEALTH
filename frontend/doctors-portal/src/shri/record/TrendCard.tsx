@@ -19,9 +19,9 @@ import { useId, useLayoutEffect, useRef, useState, type PointerEvent } from 'rea
 import { useNavigate } from 'react-router-dom'
 
 import { trendPointsFor, type ResultRow } from '@/data/clinical'
-import { formatDate } from '@/data/format'
 import type { VitalSeries } from '@/data/vitals-history'
 
+import { axisDay } from '../logic/labTrends'
 import { cn } from '../lib/cn'
 import { EmptyState } from '../ui/EmptyState'
 import { Card, Icon, Pill } from '../ui/primitives'
@@ -101,7 +101,7 @@ export function TrendCard({
   const fmt = (n: number) => n.toFixed(decimals)
   // Over a year or more, the axis names the month and year; otherwise the day.
   const long = points.length > 1 && points[points.length - 1].at.getTime() - points[0].at.getTime() > 300 * 86_400_000
-  const when = (d: Date) => (long ? formatDate(d).slice(3) : formatDate(d).replace(/-\d{4}$/, ''))
+  const when = (d: Date) => axisDay(d, long)
   const range = r.refLow !== undefined && r.refHigh !== undefined ? `reference ${fmt(r.refLow)}–${fmt(r.refHigh)}` : 'no reference range'
 
   return (

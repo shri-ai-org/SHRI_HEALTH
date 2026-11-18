@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createDownloadUrl } from '../../../../src/api/generated/endpoints/files/files'
 import type { ImagingReportImage } from '../../../../src/api/generated/model'
-import { canView, ILLUSTRATIVE, illustrativeSeries, loadImages, viewerPath } from './imagingImages'
+import { canView, ILLUSTRATIVE, illustrativeSeries, imageProblem, loadImages, viewerPath } from './imagingImages'
 
 vi.mock('../../../../src/api/generated/endpoints/files/files', () => ({ createDownloadUrl: vi.fn() }))
 
@@ -69,5 +69,16 @@ describe('the viewer series', () => {
     expect(s.alt(1)).toBe(`${ILLUSTRATIVE}: Synthetic test image 1`)
     expect(s.topRight).toEqual([ILLUSTRATIVE])
     expect(s.frameNote?.(2)).toBe('Synthetic test image 2')
+  })
+})
+
+describe("the viewer's messages (Anand's review of #417)", () => {
+  it('says what went wrong in one plain line per refusal', () => {
+    expect(imageProblem(403)).toBe("You don't have access to this report's images.")
+    expect(imageProblem(404)).toBe("This image isn't available. Try again.")
+    expect(imageProblem(409)).toBe('The image link expired. Try again.')
+    expect(imageProblem(410)).toBe('The image link expired. Try again.')
+    expect(imageProblem(undefined)).toBe("Couldn't load the image. The link may have expired.")
+    expect(imageProblem(503)).toBe("Couldn't load the image. The link may have expired.")
   })
 })
