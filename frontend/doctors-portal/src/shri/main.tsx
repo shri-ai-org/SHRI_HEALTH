@@ -15,6 +15,11 @@ import './theme/index.css'
 const root = document.getElementById('root')
 if (!root) throw new Error('#root is missing from index.html')
 
+// Which build this is, for support and the deploy kit's release check (deploy.sh greps the bundle
+// for "commit <release>"): kept on <html> as data-build, never shown on screen (the visible stamp
+// is development-only since #429).
+document.documentElement.dataset.build = `Version ${__BUILD_STAMP__} · commit ${__BUILD_COMMIT__}`
+
 // SHRI_API=real: the clinic's time zone first, so the first screen already shows the clinic's time
 // (D40). If the server can't be reached the app opens anyway, in the browser's time.
 const ready = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__ ? loadClinic().catch((err: unknown) => console.error('[clinic]', err)) : Promise.resolve()
