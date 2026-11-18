@@ -245,3 +245,25 @@ def test_only_shri_app_may_look_up(admin_engine: Engine) -> None:
             "SELECT p.prosecdef AND 'search_path=pg_catalog, pg_temp' = ANY (p.proconfig) "
             "AND pg_get_userbyid(p.proowner) = 'shri_migrator' FROM pg_proc p WHERE p.oid = "
             "'admin.demo_portal_patient'::regproc")).scalar()
+
+
+@pytest.mark.db
+@SKIP_WITHOUT_DATABASE
+def test_a_number_with_no_digits_never_matches_the_cleared_setting(
+        admin_engine: Engine, app_engine: Engine) -> None:
+    """Migration 0028: the phone format allows a value made only of separators, whose digits are
+    ''. Once the lookup has cleared app.demo_portal_phone to '', its migrator policies must not
+    match such a number; with a real number set, they match only that number."""
+    clinic = _demo_clinic(admin_engine)
+    blank = _phoned(admin_engine, app_engine, clinic, "(((((((")
+    stored, digits = _number()
+    numbered = _phoned(admin_engine, app_engine, clinic, stored)
+    seen = text("SELECT patient_id FROM clinical.contact_point "
+                "WHERE patient_id = ANY(CAST(:p AS uuid[]))")
+    with admin_engine.connect() as c:                    # as the role the policies are for
+        c.execute(text("SET LOCAL ROLE shri_migrator"))
+        for value, expected in (("", set()), (digits, {numbered})):
+            c.execute(text("SELECT set_config('app.demo_portal_phone', :v, true)"),
+                      {"v": value})
+            assert set(c.execute(seen, {"p": [blank, numbered]}).scalars()) == expected
+        c.rollback()
