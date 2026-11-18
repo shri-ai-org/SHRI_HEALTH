@@ -8,7 +8,8 @@ import { useNavBadges } from '../../hooks/useNavBadges'
 import { TONE_HEX } from '../../utils/toneHex'
 import { LANGUAGES, setLanguage, useLanguage } from '../../hooks/useLanguage'
 import type { LanguageCode } from '../../hooks/useLanguage'
-import { NAV_ITEMS, isActivePath } from './navigation'
+import { isActivePath, navGroupsFor } from './navigation'
+import { useAdminAccess } from '../../../shri-health/admin/access'
 import { REAL_API } from '../../../shri-health/client'
 
 /**
@@ -20,6 +21,7 @@ import { REAL_API } from '../../../shri-health/client'
  */
 export function MobileNavRow() {
   const { pathname } = useLocation()
+  const { isAdmin } = useAdminAccess()
   const row = useRef<HTMLUListElement>(null)
   const [edges, setEdges] = useState({ start: false, end: true })
   const languageCode = useLanguage()
@@ -59,7 +61,7 @@ export function MobileNavRow() {
         style={{ WebkitMaskImage: fade, maskImage: fade } as CSSProperties}
         className="scrollbar-hide flex snap-x scroll-px-4 items-center gap-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 py-2"
       >
-        {NAV_ITEMS.map(({ path, label, icon: Icon, end, hue }) => {
+        {navGroupsFor(isAdmin).flatMap((g) => g.items).map(({ path, label, icon: Icon, end, hue }) => {
           const active = isActivePath({ path, end }, pathname)
           const badge = badges[path]
           return (

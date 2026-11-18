@@ -132,6 +132,25 @@ test('16. Orders and referrals show Work in progress (after the demo; checked in
   await screenOk(page, '16-orders-wip')
 })
 
-test('17. Administration, audit trail, FHIR view, integrations (read only)', async () => {
-  test.skip(true, "waits for Thulasi's admin screens (backend merged: PR 392, PR 402)")
+test('17. Administration: users and roles, FHIR view, partner messages (read only)', async ({ page }) => {
+  await as(page, 'admin', '/')
+  await expect(page.getByRole('link', { name: 'Administration' }).first(), 'Administration is in the menu').toBeVisible({ timeout: 15_000 })
+  await as(page, 'admin', '/admin/users')
+  await expect.soft(page.getByText('Front desk').first(), 'the roles are listed').toBeVisible({ timeout: 15_000 })
+  await screenOk(page, '17-admin-users')
+  await as(page, 'admin', '/admin/integrations')
+  await expect.soft(page.getByText('Partner messages').first(), 'partner messages open').toBeVisible({ timeout: 15_000 })
+  await screenOk(page, '17-admin-integrations')
+  await as(page, 'admin', '/admin/fhir')
+  await page.getByLabel('Patient').fill('Thomp')
+  await page.getByRole('button', { name: 'Search' }).click()
+  await page.getByRole('button', { name: /Thompson/ }).first().click()
+  await expect.soft(page.getByText(/FHIR R4 record/).first(), "Linda's FHIR record opens").toBeVisible({ timeout: 15_000 })
+  await expect.soft(page.getByLabel('Resources by type').getByText(/Patient/), 'it holds her Patient resource').toBeVisible()
+  await screenOk(page, '17-admin-fhir')
+})
+
+test('17b. The front desk has no Administration entry', async ({ page }) => {
+  await as(page, 'frontdesk', '/')
+  await expect(page.getByRole('link', { name: 'Administration' })).toHaveCount(0)
 })

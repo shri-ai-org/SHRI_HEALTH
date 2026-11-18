@@ -4,7 +4,8 @@ import { cn } from '../../utils/cn'
 import { TONE_HEX } from '../../utils/toneHex'
 import { useSidebar } from '../../hooks/useSidebar'
 import { BrandMark } from './BrandMark'
-import { NAV_GROUPS } from './navigation'
+import { navGroupsFor } from './navigation'
+import { useAdminAccess } from '../../../shri-health/admin/access'
 import { NavCount } from './NavCount'
 import { useNavBadges } from '../../hooks/useNavBadges'
 
@@ -22,6 +23,7 @@ import { useNavBadges } from '../../hooks/useNavBadges'
 export function Sidebar() {
   const { expanded, isDesktop, toggle } = useSidebar()
   const badges = useNavBadges()
+  const { isAdmin } = useAdminAccess()
 
   return (
     <aside
@@ -62,7 +64,7 @@ export function Sidebar() {
       ) : null}
 
       <nav aria-label="Main navigation" className={cn('scrollbar-hide flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-3', expanded ? 'px-2.5' : 'px-2')}>
-        {NAV_GROUPS.map((group, index) => (
+        {navGroupsFor(isAdmin).map((group, index) => (
           <div key={group.label ?? `places-${index}`}>
             {group.label ? (
               expanded ? (

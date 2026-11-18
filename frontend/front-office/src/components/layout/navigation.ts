@@ -2,6 +2,7 @@ import { REAL_API } from '../../../shri-health/client'
 import type { LucideIcon } from 'lucide-react'
 import {
   ChartNoAxesCombined,
+  ShieldCheck,
   FileWarning,
   IdCard,
   LayoutGrid,
@@ -26,6 +27,8 @@ export interface NavItem {
   description: string
   /** The destination's own hue: its glyph, tile and headings use it. */
   hue: IconTone
+  /** SHRI_HEALTH: shown only to the administrator (role ADM; useNavGroups). */
+  adminOnly?: boolean
 }
 
 export interface NavGroup {
@@ -64,6 +67,17 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)
 
+/** SHRI_HEALTH: the Administration area (Vimal on #85, 18 Nov), for the administrator only. */
+export const ADMIN_GROUP: NavGroup = {
+  label: 'Administration',
+  items: [{ label: 'Administration', path: '/admin', icon: ShieldCheck, hue: 'indigo', adminOnly: true, description: 'Users and roles, audit trail, FHIR view and partner messages (read only)' }],
+}
+
+/** The groups this user sees: the Administration group only for the administrator, with the API. */
+export function navGroupsFor(isAdmin: boolean): NavGroup[] {
+  return REAL_API && isAdmin ? [...NAV_GROUPS, ADMIN_GROUP] : NAV_GROUPS
+}
+
 /** Does `pathname` belong to this destination? */
 export function isActivePath(item: Pick<NavItem, 'path' | 'end'>, pathname: string): boolean {
   if (item.end) return pathname === item.path
@@ -72,6 +86,7 @@ export function isActivePath(item: Pick<NavItem, 'path' | 'end'>, pathname: stri
 
 // Document titles: `${pageTitle} · SHRI HEALTH`, longest-prefix match.
 const ROUTE_TITLES: [string, string][] = [
+  ['/admin', 'Administration'],
   ['/patients/outpatients', 'Outpatients'],
   ['/patients/inpatients', 'Inpatients'],
   ['/patients/', 'Patient profile'],
