@@ -65,6 +65,16 @@ class Settings(BaseFields, AuthFields, PortalFields, OpenBaoFields, PublicFormFi
         return self
 
     @model_validator(mode="after")
+    def _demo_sign_in_only_on_a_demo_server(self) -> "Settings":
+        # D121: the mobile + date-of-birth sign-in opens a chart without a password, so it runs
+        # only on a demo server with synthetic patients, never in production.
+        if self.portal_demo_sign_in and self.environment == "production":
+            raise ValueError("portal_demo_sign_in is never allowed in production (D121)")
+        if self.portal_demo_sign_in and not self.shri_demo:
+            raise ValueError("portal_demo_sign_in needs SHRI_DEMO=true (D121: demo servers only)")
+        return self
+
+    @model_validator(mode="after")
     def _object_store_complete(self) -> "Settings":
         missing = self.missing(*OBJECT_STORE_FIELDS)
         if missing and len(missing) < len(OBJECT_STORE_FIELDS):

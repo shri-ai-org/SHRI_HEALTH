@@ -38,3 +38,11 @@ class PortalFields(BaseSettings):
     portal_absolute_hours: int = 4
     # Enrolment attempts per client IP per 10 minutes, before the 429 (and nginx's own limit).
     portal_enrollment_ip_limit: int = 10
+
+    # The demo server's sign-in with a mobile number and a date of birth (D121): synthetic
+    # patients only, refused at startup unless SHRI_DEMO=true outside production (Settings).
+    shri_demo: bool = False
+    portal_demo_sign_in: bool = False
+    # Demo sign-in attempts per 10 minutes, per client IP and per mobile number.
+    portal_demo_sign_in_ip_limit: int = 20
+    portal_demo_sign_in_number_limit: int = 5
