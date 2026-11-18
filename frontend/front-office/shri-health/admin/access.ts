@@ -19,14 +19,18 @@ export type AdminSection = (typeof ADMIN_SECTIONS)[number]
 let mePermissions: Promise<ReadonlySet<string>> | null = null
 let readFor: string | null = null
 
-/** The signed-in user's permissions, read once per user (an empty set if the read fails: fail closed). */
-function permissionsFor(userId: string): Promise<ReadonlySet<string>> {
+/**
+ * The signed-in user's permissions, read once per user. A failed read gives an empty set (fail
+ * closed) and is not kept, so opening the area again reads /me again instead of staying empty.
+ */
+export function permissionsFor(userId: string): Promise<ReadonlySet<string>> {
   if (!mePermissions || readFor !== userId) {
     readFor = userId
-    mePermissions = getMe().then(
-      (res) => new Set(res.status === 200 ? res.data.permissions : []),
-      () => new Set<string>(),
-    )
+    const forget = () => {
+      if (readFor === userId) mePermissions = null
+      return new Set<string>()
+    }
+    mePermissions = getMe().then((res) => (res.status === 200 ? new Set(res.data.permissions) : forget()), forget)
   }
   return mePermissions
 }
