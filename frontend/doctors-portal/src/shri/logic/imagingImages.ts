@@ -58,3 +58,15 @@ export function illustrativeSeries(reportId: string, studyName: string, loaded: 
     frameWord: 'image',
   }
 }
+
+/**
+ * What the viewer says when an image can't be shown, by the refusal's status (Anand's review of
+ * #417): 403 no access to images, 404 not there or the link already used, 409/410 not ready or
+ * expired; anything else (or an image that failed to load) the general line.
+ */
+export function imageProblem(status?: number): string {
+  if (status === 403) return "You don't have access to this report's images."
+  if (status === 404) return "This image isn't available. Try again."
+  if (status === 409 || status === 410) return 'The image link expired. Try again.'
+  return "Couldn't load the image. The link may have expired."
+}

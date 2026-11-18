@@ -18,6 +18,7 @@ import { useAppointments } from './schedule'
 import { appointmentsOf, nextOf } from '../../../shri-health/record'
 import { usePatientProblems } from '../../../shri-health/history'
 import { usePatientImagingReports, usePatientLabResults } from '../../../shri-health/results'
+import { useActiveMedicationCount } from '../../../shri-health/medications'
 import { formatTime as clinicTime } from '../../../shri-health/format'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
@@ -90,6 +91,8 @@ export function useSectionCounts(p: Patient): Record<Exclude<RecordSection, 'rec
   // SHRI_HEALTH: with the API the two counts are the server's (no count for a role that can't read them).
   const labs = REAL_API ? usePatientLabResults(p.id) : null
   const imaging = REAL_API ? usePatientImagingReports(p.id) : null
+  // With the API, the count is the server's (no count until it's read, or if it can't be): never the sample's.
+  const medicines = useActiveMedicationCount(REAL_API ? p.id : '')
   return {
     condition: problems.length,
     // No count on the History tab: it would read four lists on every record page.
@@ -97,7 +100,7 @@ export function useSectionCounts(p: Patient): Record<Exclude<RecordSection, 'rec
     results: labs ? (labs.denied ? undefined : labs.items.length) : resultsFor(p.id).length,
     reports: imaging ? (imaging.denied ? undefined : imaging.items.length) : reportsFor(p.id).length,
     notes: pastNotesFor(p.id).length + voice.length + session.length,
-    prescriptions: activeMedicines(p.id).length,
+    prescriptions: REAL_API ? medicines : activeMedicines(p.id).length,
     appointments: appointmentsOf(book, p.id).length,
   }
 }

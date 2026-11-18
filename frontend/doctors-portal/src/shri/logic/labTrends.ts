@@ -4,6 +4,7 @@
 // sample was collected (or the report issued). Text results have no series. A reading is flagged by
 // the lab's interpretation, or, when the lab gives none, by the reference range.
 
+import { formatDate } from '@/data/format'
 import type { LabReport } from '../../../shri-health/results'
 
 export type TrendFlag = 'high' | 'low' | 'critical-high' | 'critical-low' | 'abnormal'
@@ -115,4 +116,32 @@ export function trendSummary(s: LabSeries, day: (at: string) => string): string 
   const unit = s.unit ? ` ${s.unit}` : ''
   const flag = latest.flag ? `, ${FLAG_WORD[latest.flag].toLowerCase()}` : s.low !== undefined || s.high !== undefined ? ', within range' : ''
   return `Latest ${formatValue(latest.value)}${unit}${flag}; ${s.readings.length} results since ${day(s.readings[0].at)}`
+}
+
+const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
+
+/**
+ * A point's date on the x-axis: the month and year over a year or more, else the day. With the API,
+ * U.S. style ("Nov 2025", "Nov 18"), read from the date's own fields (the clinic's day); the sample
+ * screens keep cutting their "18-Nov-2025". Never a cut US date ("18, 2025").
+ */
+export function axisDay(d: Date, long: boolean, realApi: boolean = REAL_API): string {
+  if (realApi) return new Intl.DateTimeFormat('en-US', long ? { month: 'short', year: 'numeric' } : { month: 'short', day: 'numeric' }).format(d)
+  return long ? formatDate(d).slice(3) : formatDate(d).replace(/-\d{4}$/, '')
+}
+
+/**
+ * Which x-axis labels to draw so none overlap on a narrow chart: always the first and the last, and a
+ * middle one only when it stands at least `minGap` pixels from its neighbours that are drawn.
+ */
+export function spacedLabels(xs: number[], minGap: number): number[] {
+  const n = xs.length
+  if (n <= 2) return xs.map((_, i) => i)
+  const last = n - 1
+  const kept = [0]
+  for (let i = 1; i < last; i++) {
+    if (xs[i]! - xs[kept[kept.length - 1]!]! >= minGap && xs[last]! - xs[i]! >= minGap) kept.push(i)
+  }
+  if (xs[last]! - xs[0]! >= minGap) kept.push(last)
+  return kept
 }
