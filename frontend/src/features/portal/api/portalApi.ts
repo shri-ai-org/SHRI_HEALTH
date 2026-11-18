@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type {
+  DemoSignInRequest,
   EnrollmentRequest,
   PortalAllergy,
   PortalAppointment,
@@ -64,6 +65,11 @@ export interface PortalContractApi {
    * the same `422`, so nothing can be probed.
    */
   enroll(input: EnrollmentRequest, idempotencyKey: string): Promise<void>
+  /**
+   * Demo servers only (D121): `POST /portal/auth/demo-sign-in` with the mobile number and date of
+   * birth. The server sets the session cookie and returns the session; every refusal is one `422`.
+   */
+  demoSignIn(input: DemoSignInRequest): Promise<PortalSession>
   /** The patient realm's own account page: password, multi-factor and recovery settings. */
   readonly accountSecurityUrl: string
 

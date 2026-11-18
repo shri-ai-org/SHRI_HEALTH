@@ -3,7 +3,7 @@ import { API_BASE, onUnauthenticated, setCsrfSessionPath, setCsrfToken } from '.
 import type { PortalSession } from '../../api/generated/model'
 import { IdleTimeoutWarning, Spinner } from '../../design-system'
 import { PortalApiContext, type PortalApi } from './api/portalApi'
-import { pathEnabled } from './features'
+import { demoSignInOn, pathEnabled } from './features'
 import './portal.css'
 import { PortalShell } from './PortalShell'
 import { matchPath, PortalRouter, useRouter } from './router'
@@ -285,8 +285,9 @@ function Gate({ api }: { api: PortalApi }) {
     // Sign-in leaves for the realm and comes back through `/portal/auth/callback`, which sets the
     // cookie and returns to the portal. Nobody signed in: straight there (AutoSignIn). Signed out,
     // timed out or ended: the page says why and waits for the patient's click.
-    if (!state.reason) return <AutoSignIn api={api} />
-    return <SignInPage reason={state.reason} />
+    // On a demo server (D121) the page stays, so a new patient can use the demo sign-in.
+    if (!state.reason && !demoSignInOn()) return <AutoSignIn api={api} />
+    return <SignInPage reason={state.reason} onDemoSignIn={signedIn} />
   }
 
   if (SIGNED_OUT_PATHS.includes(path)) {

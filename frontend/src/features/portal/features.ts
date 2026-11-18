@@ -6,6 +6,13 @@
 export const PORTAL_ENABLED = import.meta.env.DEV
 
 /**
+ * The demo sign-in with a mobile number and date of birth (D121): demo servers only, in a build with
+ * `VITE_FEATURE_DEMO_SIGN_IN=on` (deploy.sh sets it for `SHRI_DEMO_SIGN_IN=true`, which needs
+ * `SHRI_DEMO=true`). Read when called, so a test can switch it. The server refuses it elsewhere too.
+ */
+export const demoSignInOn = (): boolean => import.meta.env.VITE_FEATURE_DEMO_SIGN_IN === 'on'
+
+/**
  * P1 portal features that have no contract yet (MOCK_GUIDE §5d). Their screens stay in the code,
  * hidden from the menus, the home page and the router, until their batch lands; then the switch
  * turns on. Hide them, don't delete them.

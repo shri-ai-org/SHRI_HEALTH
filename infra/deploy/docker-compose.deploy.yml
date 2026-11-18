@@ -207,6 +207,7 @@ services:
         VITE_FEATURE_AI_ASSISTANT: ${SHRI_WEB_AI:-off}
         VITE_FEATURE_AI_MORNING_BRIEF: ${SHRI_WEB_AI:-off}
         VITE_FEATURE_AI_DIFFERENTIAL: ${SHRI_WEB_AI:-off}
+        VITE_FEATURE_DEMO_SIGN_IN: ${SHRI_WEB_DEMO_SIGN_IN:-off}
     # SHRI_BIND is 127.0.0.1 behind a shared host's Nginx (deploy.sh sets it from SHRI_PUBLIC_URL),
     # so only that host reaches us; 0.0.0.0 on a host of our own.
     ports: !override
