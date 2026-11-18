@@ -282,7 +282,7 @@ SELECT m.id, m.subject_patient_id, m.intent, m.status,
        -- The prescriber's name, for a signed prescription only (never a reported medicine).
        CASE WHEN m.intent = 'order' THEN """ + _SIGNER_NAME + """ END AS signer_name
 FROM clinical.medication_request m
-"""
+"""  # noqa: S608 (joins this module's constant _SIGNER_NAME; no input, the values are bound)
 # On the list (D28): what the patient reported (intent plan) and what was prescribed and signed
 # here (intent order); drafts, unsigned orders and entered-in-error entries never.
 _ON_THE_LIST = """((m.intent = 'plan' AND m.reported_boolean)
@@ -319,7 +319,7 @@ FROM clinical.medication_request m
 LEFT JOIN clinical.encounter e ON e.id = m.encounter_id
 LEFT JOIN admin.pharmacy ph ON ph.id = m.dispense_request_performer_pharmacy_id
 WHERE m.id = :id AND m.intent = 'order'
-""")
+""")  # noqa: S608 (joins this module's constant _SIGNER_NAME; no input, the values are bound)
 #: A visit's prescriptions, drafts included, oldest first (listEncounterPrescriptions, gap 82).
 _ENCOUNTER_PRESCRIPTIONS = text("""
 SELECT m.id FROM clinical.medication_request m
