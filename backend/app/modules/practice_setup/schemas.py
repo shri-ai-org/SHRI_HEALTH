@@ -34,6 +34,8 @@ PayerType = Literal[
     "auto", "self-pay", "other",
 ]
 EnrollmentTransaction = Literal["837P", "835", "270", "276", "EFT"]
+ConsentKind = Literal["treatment", "privacy-notice", "ambient-recording", "telehealth",
+                      "research", "information-sharing", "financial"]
 EnrollmentStatus = Literal["not-required", "pending", "approved", "rejected"]
 
 
@@ -231,6 +233,25 @@ class PracticePayer(Out):
 
 class PracticePayerList(Out):
     items: list[PracticePayer]
+    next_cursor: str | None = None
+
+
+# ----------------------------------------------------------------------------- consent requirements
+class ConsentRequirement(Out):
+    id: UUID
+    kind: ConsentKind
+    title: str
+    policy_version: str
+    required: bool
+    form_file_id: UUID | None = None
+    effective_date: date
+    active: bool
+    created_at: Timestamp
+    updated_at: Timestamp
+
+
+class ConsentRequirementList(Out):
+    items: list[ConsentRequirement]
     next_cursor: str | None = None
 
 

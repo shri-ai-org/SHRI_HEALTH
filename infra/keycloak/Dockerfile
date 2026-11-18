@@ -53,6 +53,9 @@ ENV JAVA_HOME=/opt/java \
 RUN useradd --system --uid 10002 --gid 0 --no-create-home --home-dir /opt/keycloak keycloak
 COPY --from=fetch /opt/java /opt/java
 COPY --from=fetch --chown=10002:0 /opt/keycloak /opt/keycloak
+# Our login theme (themes/shri): the stock theme with the sign-in heading blanked; both realms
+# use it (loginTheme in realms/*.json, set on existing realms by sync-client-urls.py).
+COPY --chown=10002:0 themes/shri /opt/keycloak/themes/shri
 USER 10002
 WORKDIR /opt/keycloak
 EXPOSE 8080 9000

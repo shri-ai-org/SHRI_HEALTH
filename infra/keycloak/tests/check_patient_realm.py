@@ -28,6 +28,7 @@ RESET_FLOW = "shri patient reset"
 REALM_RULES: dict[str, Any] = {
     "realm": "shri-patients",
     "enabled": True,
+    "loginTheme": "shri",  # our theme: the stock one without the sign-in heading (#85)
     "registrationAllowed": False,  # an account only through enrolment (ADR-0013 §3)
     "registrationEmailAsUsername": True,
     "verifyEmail": True,

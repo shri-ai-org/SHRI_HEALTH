@@ -64,7 +64,7 @@ With `SHRI_SITE_URL` set, deploy.sh:
 - binds **every** port of ours to `127.0.0.1` (our edge on `SHRI_HTTPS_PORT`, e.g. `9443`; Keycloak's admin on `SHRI_KC_ADMIN_PORT`), and `check` fails if any isn't;
 - keeps our TLS on that local hop with its own self-signed certificate, which the host's Nginx verifies (`proxy_ssl_verify on`); the real certificate is the host's;
 - sends HSTS **without** `includeSubDomains` (the company's other names aren't ours) and trusts the client address only from the host's Nginx (via the Docker gateway), so rate limits see real clients;
-- points Keycloak (`KC_HOSTNAME`), the sign-in redirects, the post-login pages and the cookies at the public address, and sets the clients' redirect URIs on every `up` (`infra/keycloak/sync-client-urls.py`), so changing mode needs no manual Keycloak step.
+- points Keycloak (`KC_HOSTNAME`), the sign-in redirects, the post-login pages and the cookies at the public address, and sets the clients' redirect URIs and both realms' login theme (`shri`, the stock one without the sign-in heading) on every `up` (`infra/keycloak/sync-client-urls.py`), so changing mode needs no manual Keycloak step.
 
 Also on a shared host:
 - `SHRI_PROJECT` is a unique compose project name (`shri-` prefix); every container, network and volume carries it, and deploy.sh never touches anything else.

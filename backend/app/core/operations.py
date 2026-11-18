@@ -67,7 +67,9 @@ IDEMPOTENT_IN_DATABASE = frozenset({"submitPreRegistration"})
 SELF_AUDITED = frozenset({"startLogin", "finishLogin", "refreshSession", "logout",
                           # The patient portal's sign-in and enrolment (portal_sign_in.py).
                           "startPortalLogin", "completePortalLogin", "refreshPortalSession",
-                          "signOutOfPortal", "enrollInPortal"})
+                          "signOutOfPortal", "enrollInPortal",
+                          # The demo server's sign-in (portal_demo_sign_in.py, D121).
+                          "signInToPortalForDemo"})
 # Idempotency-Key handled by the route itself, for a caller with no session yet: enrolment
 # replays a finished request's 204 for the same key and body (portal_sign_in.EnrollmentGuard).
 IDEMPOTENT_IN_ROUTE = frozenset({"enrollInPortal"})

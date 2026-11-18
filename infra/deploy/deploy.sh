@@ -64,6 +64,9 @@ SHRI_DEMO_SKIP_AUTH_CODE=false
 # morning brief, differentials; the VITE_FEATURE_AI_* flags, read at build time). Only with
 # SHRI_DEMO=true. Each feature still needs its per-clinic switch and the Claude key (D116, D12).
 SHRI_DEMO_AI_SCREENS=false
+# true: the patient portal's demo sign-in, mobile number + date of birth with no code or password
+# (D121; patients without a portal account). Only with SHRI_DEMO=true; the API refuses it otherwise.
+SHRI_DEMO_SIGN_IN=false
 # Leave empty: the demo patients are then booked on the day the seed runs, in the clinic's time
 # zone (San Jose), so every rehearsal has a full day, and the reset on 20 Nov after 13:30 IST gives
 # the demo day. A date (YYYY-MM-DD, seed/demo.py) only to rehearse a particular day; never left
@@ -154,6 +157,15 @@ load_env() {
               export SHRI_WEB_AI=on ;;
         false) export SHRI_WEB_AI=off ;;
         *) die "SHRI_DEMO_AI_SCREENS is true or false" ;;
+    esac
+    # D121: the portal's demo sign-in (mobile number + date of birth), synthetic patients only.
+    # The API refuses it too unless SHRI_DEMO=true outside production.
+    case "${SHRI_DEMO_SIGN_IN:-false}" in
+        true) [ "${SHRI_DEMO:-false}" = true ] \
+                  || die "SHRI_DEMO_SIGN_IN=true needs SHRI_DEMO=true (D121: demo servers only, synthetic patients)"
+              export SHRI_API_DEMO_SIGN_IN=true SHRI_WEB_DEMO_SIGN_IN=on ;;
+        false) export SHRI_API_DEMO_SIGN_IN=false SHRI_WEB_DEMO_SIGN_IN=off ;;
+        *) die "SHRI_DEMO_SIGN_IN is true or false" ;;
     esac
     SHRI_DEMO_DAY="${SHRI_DEMO_DAY:-}"
     if [ -n "$SHRI_DEMO_DAY" ]; then
@@ -355,7 +367,7 @@ guard_ours() {
 }
 
 sync_clients() {
-    say "Keycloak sign-in addresses: $SHRI_PUBLIC_URL"
+    say "Keycloak sign-in addresses and login theme: $SHRI_PUBLIC_URL"
     wait_for "$EDGE_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" PUBLIC_URL="$SHRI_PUBLIC_URL" \

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0027"
+HEAD = "0028"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -138,6 +138,11 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"a.tenant_id = {clinic} AND a.id::text LIKE '{str(sid(demo.APPOINTMENT, 0))[:9]}%' "
               f"AND (a.start AT TIME ZONE '{zone}')::date = {today} "
               "ORDER BY a.start, a.id LIMIT 1", str(sid(demo.PATIENT, 3)), fix=RESET),
+        # What registration's consent checkbox lists (listConsentRequirements, D59): the
+        # seed's requirements, required and optional. An admin may add more in a rehearsal.
+        Check("the demo clinic's active consent requirements",
+              "SELECT count(*) FROM admin.consent_requirement WHERE tenant_id = "
+              f"{clinic} AND is_active", str(len(demo.CONSENTS)), at_least=True, fix=RESET),
         Check("the 11 shown patients",
               f"SELECT count(*) FROM clinical.patient WHERE id IN ({shown})",
               str(len(demo.SHOWN_PATIENTS)), fix=RESET),
@@ -191,6 +196,13 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
               "AND status = 'active')", "3", fix=RESET),
+        # Her medications as signed prescriptions (seed/linda.py, #403): naproxen,
+        # cyclobenzaprine, acetaminophen and the omeprazole. The history's old reported entries
+        # (intent plan, never signed) don't count, so a server seeded before #403 fails here.
+        Check("Linda Thompson has at least 4 signed prescriptions",
+              "SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
+              f"'{sid(demo.PATIENT, 3)}' AND intent = 'order' AND ext_signed_at IS NOT NULL "
+              "AND status NOT IN ('draft', 'entered-in-error')", "4", at_least=True, fix=RESET),
     ]
 
 

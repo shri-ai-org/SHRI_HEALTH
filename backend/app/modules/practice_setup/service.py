@@ -99,6 +99,15 @@ async def list_practice_payers(db: AsyncSession, repo: SetupRepository, *, activ
     return schemas.PracticePayerList(items=page.items, next_cursor=_next(page))
 
 
+async def list_consent_requirements(db: AsyncSession, repo: SetupRepository, *,
+                                    kind: str | None, active: bool, cursor_value: str | None,
+                                    limit: int) -> schemas.ConsentRequirementList:
+    page = await repo.list_consent_requirements(
+        db, kind=kind, active=active, limit=limit,
+        after=_after(cursor_value, "consent-requirements"))
+    return schemas.ConsentRequirementList(items=page.items, next_cursor=_next(page))
+
+
 async def list_note_templates(db: AsyncSession, repo: SetupRepository, *,
                               owner_user_id: UUID | None, active: bool | None,
                               cursor_value: str | None, limit: int) -> schemas.NoteTemplateList:
