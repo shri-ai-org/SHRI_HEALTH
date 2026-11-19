@@ -5,8 +5,8 @@ the real sign-in (ADR-0013, D85) returns after the demo.
 The rules (D121, Thulasi's review on #433):
 - **Off unless switched on**, and the switch needs SHRI_DEMO=true outside production, or the API
   refuses to start (Settings._demo_sign_in_only_on_a_demo_server). Off, the route isn't there (404).
-- **One answer for every refusal:** `401 unauthenticated` (contract #458), so charts can't be probed;
-  only a body that doesn't match the schema is `422`.
+- **One answer for every refusal:** `401 unauthenticated` (contract #458), so charts can't be
+  probed; only a body that doesn't match the schema is `422`.
 - **Rate-limited per client IP and per number.** The guard keeps only a keyed hash of the number.
 - **The number and the date of birth are never logged or audited.** A sign-in is audited naming
   the patient; a refusal names no one (a clinic-less `access-denied` row, as for enrolment).
