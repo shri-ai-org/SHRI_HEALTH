@@ -4,7 +4,9 @@
 # which gets a managed OpenBao set up separately.
 #
 # Needs: BAO_ADDR, BAO_TOKEN (the dev server's root token) and OPENBAO_API_TOKEN (the token the
-# API will use). Safe to run again: each step checks first.
+# API will use). Optional: OPENBAO_WORKER_TOKEN (the partner worker's; deploy.sh passes it), which
+# can only read secret/shri-health/api (BREVO_API_KEY for the email sender): no Transit, so the
+# worker can't decrypt fields or files. Safe to run again: each step checks first.
 #
 # The API's token can encrypt and decrypt with `shri-fields` (field encryption), and make and
 # unwrap data keys with `shri-files` (file envelope encryption), both in core/crypto.py. It can't
@@ -63,4 +65,17 @@ if ! bao token lookup "$OPENBAO_API_TOKEN" >/dev/null 2>&1; then
         -renewable=false -ttl=768h >/dev/null
 fi
 
-echo "OpenBao ready: Transit keys $KEY and $FILES_KEY, the API's secrets path, the API's token limited to what it needs"
+# The partner worker's token: the startup secrets path, read only, nothing else.
+if [ -n "${OPENBAO_WORKER_TOKEN:-}" ]; then
+    bao policy write shri-worker-secrets - >/dev/null <<EOF
+path "secret/data/shri-health/api" {
+  capabilities = ["read"]
+}
+EOF
+    if ! bao token lookup "$OPENBAO_WORKER_TOKEN" >/dev/null 2>&1; then
+        bao token create -id="$OPENBAO_WORKER_TOKEN" -policy=shri-worker-secrets \
+            -no-default-policy -orphan -renewable=false -ttl=768h >/dev/null
+    fi
+fi
+
+echo "OpenBao ready: Transit keys $KEY and $FILES_KEY, the API's secrets path, the API's (and the worker's) token limited to what it needs"

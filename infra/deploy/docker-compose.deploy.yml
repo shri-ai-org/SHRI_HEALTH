@@ -171,18 +171,34 @@ services:
 
   integration-worker:
     mem_limit: 512m
-    # Backend only, like the API: the simulated partners need no internet. Real partners will be
-    # added to the egress proxy's list when they are chosen (Q11-Q17).
+    # Backend only, like the API. Its one way out is the egress proxy, and only to api.brevo.com
+    # (email to the team's own addresses); the simulated partners need no internet. Real partners
+    # will be added to the egress proxy's list when they are chosen (Q11-Q17).
     networks: [backend]
     image: shri-health/api:${SHRI_RELEASE}
     environment:
       ENVIRONMENT: ${SHRI_ENVIRONMENT:-staging}
+      # Its startup secrets (BREVO_API_KEY) from OpenBao KV, secret/shri-health/api, with a token of
+      # its own that can only read that path (no Transit); deploy.sh makes it (state dir).
+      OPENBAO_ADDR: http://openbao:8200
+      OPENBAO_TOKEN: ${SHRI_OPENBAO_WORKER_TOKEN:?run through deploy.sh}
+      # Email (integration/mail.py): Brevo only for the team's addresses (EMAIL_TEAM_ALLOWLIST),
+      # everyone else to Mailpit. deploy.sh sets these only with SHRI_DEMO=true; elsewhere they
+      # are empty and the worker sends no email.
+      EMAIL_TEAM_ALLOWLIST: ${SHRI_WORKER_EMAIL_TEAM_ALLOWLIST:-}
+      EMAIL_FROM_ADDRESS: ${SHRI_WORKER_EMAIL_FROM_ADDRESS:-}
+      MAILPIT_SMTP_HOST: ${SHRI_WORKER_MAILPIT_SMTP_HOST:-}
       # The simulated payer and pharmacy (D95): demo hosts only; settings refuse it in production.
       SIMULATED_PARTNERS: ${SHRI_DEMO:-false}
       SIMULATED_PARTNER_CALLBACK_URL: http://api:8000
       HOOK_SECRET_CLEARINGHOUSE: ${HOOK_SECRET_CLEARINGHOUSE:?}
       HOOK_SECRET_ERX: ${HOOK_SECRET_ERX:?}
     restart: unless-stopped
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      openbao:
+        condition: service_healthy
 
   nginx:
     mem_limit: 256m
@@ -230,8 +246,8 @@ services:
 
   egress:
     mem_limit: 64m
-    # The API's only way out: api.anthropic.com over HTTPS, by name, never decrypted
-    # (egress/nginx.conf). The same pinned Nginx image as the development edge.
+    # The API's and the worker's only way out: api.anthropic.com and api.brevo.com over HTTPS, by
+    # name, never decrypted (egress/nginx.conf). The same pinned Nginx image as the development edge.
     image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     volumes:
       - ../deploy/egress/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -240,17 +256,18 @@ services:
     networks:
       default: {}
       backend:
-        aliases: [api.anthropic.com]
+        aliases: [api.anthropic.com, api.brevo.com]
     restart: unless-stopped
 
   mailpit:
-    # The demo mail catcher: Keycloak's mail (and later the API's) is caught here and shown in its
+    # The demo mail catcher: Keycloak's mail and the worker's (every address off the team's
+    # allowlist) is caught here and shown in its
     # web UI, never delivered. Demo hosts only: the "mailpit" profile, which deploy.sh switches
     # on (COMPOSE_PROFILES) only with SHRI_DEMO=true and refuses in production.
     profiles: ["mailpit"]
     image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     mem_limit: 128m
-    # SMTP on 1025 inside the compose networks only (Keycloak on default, the API on backend): no
+    # SMTP on 1025 inside the compose networks only (Keycloak on default, the worker on backend): no
     # SMTP port is published. The web UI only on this host's loopback; behind a shared host its
     # Nginx serves it at /mail/ (deploy.sh host-nginx). backend alone can't publish a port.
     networks: [default, backend]
