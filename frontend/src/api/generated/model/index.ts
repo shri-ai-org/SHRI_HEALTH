@@ -753,6 +753,7 @@ export * from './refillRequest';
 export * from './refillRequestList';
 export * from './refillRequestResponse';
 export * from './refillRequestResponseDecision';
+export * from './refillRequestResponseReason';
 export * from './refillRequestStatus';
 export * from './registerPatientHeaders';
 export * from './relatedPerson';

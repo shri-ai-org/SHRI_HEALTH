@@ -43,7 +43,7 @@ export interface PortalRefillRequest {
   /** When the practice answered. */
   respondedAt?: Timestamp;
   /**
-     * Why it was declined.
+     * Why it was declined, in the fixed wording of the practice's decline code (never clinician free text).
      * @maxLength 500
      */
   declineReason?: string;
