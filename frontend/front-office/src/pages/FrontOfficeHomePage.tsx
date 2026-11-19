@@ -29,7 +29,6 @@ import { useFlow } from '../flows/useFlow'
 import { TodoCard } from '../components/todo/TodoCard'
 import { getAppointmentsForDate, getBillingOverview, getNeedsAttention, getQueueView } from '../domain/selectors'
 import { getOutpatients } from '../domain/outpatientSelectors'
-import { getPatientRows } from '../domain/patientSelectors'
 import { todayKey } from '../domain/time'
 import type { NeedsAttentionItem } from '../domain/selectors'
 import { getInpatientRows } from '../domain/admissionSelectors'
@@ -72,9 +71,7 @@ export function FrontOfficeHomePage() {
   const inpatients = useStoreValue(getInpatientRows, now)
   const needsAttention = useStoreValue(getNeedsAttention, now)
   const outpatients = useStoreValue(getOutpatients, now, 'today', false, '')
-  const patientRows = useStoreValue(getPatientRows)
   const today = todayKey(new Date(now))
-  const registeredToday = patientRows.filter((row) => todayKey(new Date(row.patient.createdAt)) === today).length
 
   const [loadError, setLoadError] = useState<string | null>(null)
   // Today's SHRI_HEALTH bookings, read again on each tick of the clock (15 s), as the outpatient list does.
@@ -160,8 +157,9 @@ export function FrontOfficeHomePage() {
 
       <div className="flex flex-col gap-4 sm:gap-5 mt-4 sm:mt-5">
         {loadError ? <Alert tone="warning">{`Today's bookings could not be read from the server: ${loadError}`}</Alert> : null}
-        {/* Five figures, one purpose each — each card opens the place that holds it. */}
-        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-3' : 'sm:grid-cols-3 xl:grid-cols-5')}>
+        {/* One purpose per figure — each card opens the place that holds it. No "Registered today":
+            the API has no registered-on read (D65), so a count from this browser alone would be wrong (Vimal, 18 Nov). */}
+        <section aria-label="Today at a glance" className={figureRowClass(REAL_API ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-4')}>
           <StatCard
             hue="blue"
             icon={CalendarClock}
@@ -205,15 +203,6 @@ export function FrontOfficeHomePage() {
               title="Bills raised today still to pay at the billing counter — opens every bill with payment pending"
             />
           )}
-          <StatCard
-            hue="teal"
-            icon={UserPlus}
-            value={registeredToday}
-            label="Registered today"
-            trend={trends.PATIENT_REGISTERED}
-            to="/patients?filter=today"
-            title="Show the patients registered today"
-          />
         </section>
 
         <div className="grid grid-cols-1 items-start gap-4 sm:gap-5 min-[1400px]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
