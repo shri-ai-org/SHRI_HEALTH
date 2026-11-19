@@ -11,6 +11,7 @@ import {
   forgetStatusToken,
   keepStatusToken,
   PASSWORD_HELP_STATUS_PATH,
+  requestAnswer,
   type PasswordHelpHandlers,
   type RequestFormState,
 } from '../../../shri-health/passwordHelp'
@@ -110,7 +111,7 @@ export function RequestPage({ handlers, signInHref }: { handlers: PasswordHelpHa
     handlers.requestReset(username).then(
       (outcome) => {
         if (outcome.kind === 'accepted') keepStatusToken(outcome.statusToken)
-        setState({ kind: outcome.kind === 'accepted' ? 'sent' : outcome.kind })
+        setState({ kind: requestAnswer(outcome) })
       },
       () => setState({ kind: 'error' }),
     )

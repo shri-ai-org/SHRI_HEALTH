@@ -8,7 +8,7 @@ import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import type { Tone } from '../../utils/tone'
 import { PasswordHelpLayout } from './PasswordHelpLayout'
-import { PASSWORD_HELP_PATH, takeStatusToken, type PasswordHelpHandlers, type ResetStatus, type StatusViewState } from '../../../shri-health/passwordHelp'
+import { FINAL_STATUSES, forgetStatusToken, PASSWORD_HELP_PATH, takeStatusToken, type PasswordHelpHandlers, type ResetStatus, type StatusViewState } from '../../../shri-health/passwordHelp'
 
 const STATUS: Record<ResetStatus, { tone: Tone; title: string; text: string; newRequest: boolean }> = {
   waiting: { tone: 'info', title: 'Waiting for the administrator', text: 'Your request was sent. Check back here, or wait for an email. Requests expire after 24 hours.', newRequest: false },
@@ -105,7 +105,14 @@ export function StatusPage({ handlers, signInHref }: { handlers: PasswordHelpHan
   const read = useCallback(() => {
     if (!token) return
     setState({ kind: 'loading' })
-    handlers.readStatus(token).then(setState, () => setState({ kind: 'error' }))
+    handlers.readStatus(token).then(
+      (next) => {
+        // A request that is over needs no token: this tab forgets it (the page keeps showing the answer).
+        if (next.kind === 'ready' && FINAL_STATUSES.includes(next.status)) forgetStatusToken()
+        setState(next)
+      },
+      () => setState({ kind: 'error' }),
+    )
   }, [handlers, token])
   useEffect(() => {
     read()

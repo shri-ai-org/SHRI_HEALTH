@@ -37,8 +37,21 @@ export type RequestFormState =
   | { kind: 'unavailable' }
   | { kind: 'error' }
 
+/**
+ * The form's answer to an outcome. Only the three problems get their own words; every other answer
+ * (accepted, or anything the server might call "created", "already open", "no such account" or
+ * something new) gets the one "Request sent" answer, so nothing on the page tells whether an
+ * account exists.
+ */
+export function requestAnswer(outcome: { kind: string }): Exclude<RequestFormState['kind'], 'editing' | 'sending'> {
+  return outcome.kind === 'rate-limited' || outcome.kind === 'unavailable' || outcome.kind === 'error' ? outcome.kind : 'sent'
+}
+
 /** A request's status, as the server reports it. */
 export type ResetStatus = 'waiting' | 'approved' | 'declined' | 'expired' | 'unavailable'
+
+/** Statuses after which the request is over, so this tab forgets its token. */
+export const FINAL_STATUSES: readonly ResetStatus[] = ['approved', 'declined', 'expired', 'unavailable']
 
 /** The status page's state. `no-token`: opened without a token (a new tab, or the tab's storage cleared). */
 export type StatusViewState =

@@ -102,6 +102,27 @@ describe('the status page', () => {
     expect(Boolean(screen.queryByRole('link', { name: 'Send a new request' }))).toBe(newRequest)
   })
 
+  it.each(['approved', 'declined', 'expired', 'unavailable'] as const)('forgets the token once the request is %s', async (status) => {
+    sessionStorage.setItem('shri.passwordHelp.statusToken', TOKEN)
+    await open(handlers({ kind: 'ready', status }).h)
+    expect(sessionStorage.getItem('shri.passwordHelp.statusToken')).toBeNull()
+  })
+
+  it('keeps the token while the request is waiting, or when the check failed', async () => {
+    sessionStorage.setItem('shri.passwordHelp.statusToken', TOKEN)
+    const waiting = await open(handlers({ kind: 'ready', status: 'waiting' }).h)
+    expect(sessionStorage.getItem('shri.passwordHelp.statusToken')).toBe(TOKEN)
+    waiting.unmount()
+    await open(handlers({ kind: 'error' }).h)
+    expect(sessionStorage.getItem('shri.passwordHelp.statusToken')).toBe(TOKEN)
+  })
+
+  it('never puts the token in the document title', async () => {
+    window.history.replaceState(null, '', `/password-help/status#status=${TOKEN}`)
+    await open(handlers({ kind: 'ready', status: 'waiting' }).h)
+    expect(document.title).not.toContain(TOKEN)
+  })
+
   it('says to check email once approved', async () => {
     sessionStorage.setItem('shri.passwordHelp.statusToken', TOKEN)
     await open(handlers({ kind: 'ready', status: 'approved' }).h)

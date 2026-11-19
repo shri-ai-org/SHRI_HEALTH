@@ -64,6 +64,22 @@ describe('the request form', () => {
     expect(document.body.textContent).not.toMatch(/not found|no account|doesn't exist|does not exist|unknown user/i)
   })
 
+  it('gives that same answer for "created", "already open", "no such account" or any new answer', async () => {
+    const reference = open(handlers({ kind: 'accepted', statusToken: TOKEN }).h)
+    await send('example.staff')
+    const expected = reference.container.innerHTML
+    reference.unmount()
+    for (const kind of ['created', 'already-open', 'no-such-account', 'something-new']) {
+      sessionStorage.clear()
+      const view = open(handlers({ kind } as unknown as RequestOutcome).h)
+      await send('example.staff')
+      expect(view.container.innerHTML).toBe(expected)
+      expect(document.title).not.toMatch(/account|found|exist/i)
+      expect(window.location.href).not.toContain('example.staff')
+      view.unmount()
+    }
+  })
+
   it('asks for a username before sending, and sends nothing', async () => {
     const { h, sent } = handlers({ kind: 'accepted', statusToken: TOKEN })
     open(h)
