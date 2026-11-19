@@ -4,8 +4,8 @@ import { expect, test } from '@playwright/test'
 import { doctorsPort } from '../playwright.config'
 
 // The record's Prescriptions tab on the doctors' portal with the real API: the medication list
-// (listMedications), each signed medicine's prescriber (getPrescription) and the day in the clinic's
-// calendar. Uses the demo seed's Linda Thompson when she is there, and a new synthetic patient with
+// (listMedications) with each signed medicine's prescriber, its pharmacy (getPrescription, once per
+// prescription) and the day in the clinic's calendar. Uses the demo seed's Linda Thompson when she is there, and a new synthetic patient with
 // no medications. Skips without the real API. Synthetic data only.
 
 const DOCTORS = `http://localhost:${doctorsPort}`
@@ -16,17 +16,35 @@ test.beforeEach(async ({ request }) => {
   test.skip(!(probe.headers()['content-type'] ?? '').includes('application/problem+json'), 'needs the real API')
 })
 
-test('lists the medicines with their prescribers, the dose text and the clinic day', async ({ page, request }) => {
+type Listed = { status: string; source: string; prescriptionId?: string; prescriberDisplayName?: string; medication: { text?: string } }
+
+test('lists the medicines with their prescribers and pharmacies, the dose text and the clinic day', async ({ page, request }) => {
   const meds = await request.get(`${DOCTORS}/api/v1/patients/${LINDA}/medications`)
   test.skip(meds.status() !== 200, 'needs the demo seed')
-  const items = ((await meds.json()) as { items: { status: string; medication: { text?: string } }[] }).items.filter((m) => m.status === 'active')
+  const items = ((await meds.json()) as { items: Listed[] }).items.filter((m) => m.status === 'active')
+  const asked: string[] = []
+  page.on('request', (r) => {
+    const m = /\/api\/v1\/prescriptions\/([0-9a-f-]{36})$/.exec(new URL(r.url()).pathname)
+    if (m && r.method() === 'GET') asked.push(m[1])
+  })
 
   await page.goto(`${DOCTORS}/patient/${LINDA}/prescriptions`)
   const taking = page.locator('li', { hasText: 'since ' })
   await expect(taking).toHaveCount(items.length)
-  // Every name fills in; none is left looking, and none is made up from recordedBy.
-  await expect(page.getByText('Finding the prescriber…')).toHaveCount(0, { timeout: 15_000 })
-  for (const m of items) await expect(page.getByText(m.medication.text ?? '', { exact: true })).toBeVisible()
+  for (const m of items) {
+    const row = taking.filter({ has: page.getByText(m.medication.text ?? '', { exact: true }) })
+    // The prescriber is the list's own name, never recordedBy; a reported medicine says so.
+    const by = m.source === 'prescription' ? (m.prescriberDisplayName ?? 'Prescriber unavailable') : 'Reported'
+    await expect(row.first()).toContainText(by)
+    if (!m.prescriptionId) continue
+    const rx = await request.get(`${DOCTORS}/api/v1/prescriptions/${m.prescriptionId}`)
+    const pharmacy = rx.status() === 200 ? ((await rx.json()) as { pharmacyName?: string }).pharmacyName : undefined
+    if (pharmacy) await expect(row.first()).toContainText(`Pharmacy: ${pharmacy}`)
+  }
+  // Each prescription is read once for its pharmacy, and only those.
+  const ids = [...new Set(items.map((m) => m.prescriptionId).filter(Boolean))]
+  expect([...new Set(asked)].sort()).toEqual(ids.sort())
+  expect(asked.length).toBe(new Set(asked).size)
   const omeprazole = taking.filter({ hasText: 'omeprazole' })
   if ((await omeprazole.count()) > 0) await expect(omeprazole).toContainText('since Sep 29, 2026')
 })

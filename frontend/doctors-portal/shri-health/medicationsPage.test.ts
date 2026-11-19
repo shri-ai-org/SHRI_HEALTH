@@ -30,18 +30,28 @@ beforeEach(() => setFacilityTimeZone('America/Los_Angeles'))
 describe('the medication list on the Prescriptions page', () => {
   it('maps current medicines first and past ones after, with the dose text whole and the status in words', async () => {
     answer = items(
-      med({ id: 'm1' }),
+      med({ id: 'm1', prescriberDisplayName: 'Dr. Example Prescriber MD' }),
       med({ id: 'm2', status: 'stopped', prescriptionId: 'rx2', medication: { text: 'naproxen 500 MG Oral Tablet' }, recordedAt: '2025-11-18T18:10:00Z' }),
       med({ id: 'm3', status: 'completed', source: 'reported', prescriptionId: undefined, medication: { codings: [{ display: 'ibuprofen 200 MG Oral Tablet' }] } }),
       med({ id: 'm4', status: 'entered-in-error' }),
     )
     const list = await loadMedications(PATIENT)
     expect(list.current).toHaveLength(1)
-    expect(list.current[0]).toMatchObject({ id: 'm1', drug: 'omeprazole 20 MG Delayed Release Oral Capsule', frequency: '20 mg (1 capsule) by mouth once daily before breakfast', status: 'Active', prescriptionId: 'rx1', by: 'Prescribed here' })
+    expect(list.current[0]).toMatchObject({ id: 'm1', drug: 'omeprazole 20 MG Delayed Release Oral Capsule', frequency: '20 mg (1 capsule) by mouth once daily before breakfast', status: 'Active', prescriptionId: 'rx1', by: 'Dr. Example Prescriber MD' })
     expect(list.history.map((h) => [h.items[0].drug, h.items[0].status, h.prescriptionId, h.by])).toEqual([
       ['ibuprofen 200 MG Oral Tablet', 'Completed', undefined, 'Reported'],
-      ['naproxen 500 MG Oral Tablet', 'Stopped', 'rx2', 'Prescribed here'],
+      ['naproxen 500 MG Oral Tablet', 'Stopped', 'rx2', 'Prescriber unavailable'],
     ])
+  })
+
+  it('takes the prescriber from the list, never from recordedBy, and says "Reported" for a reported medicine', async () => {
+    answer = items(
+      med({ id: 'm1', prescriberDisplayName: 'Dr. Example Prescriber MD', recordedBy: 'example-recorder' }),
+      med({ id: 'm2', source: 'reported', prescriptionId: undefined, recordedBy: 'example-recorder', recordedAt: '2026-09-28T17:10:00Z' }),
+      med({ id: 'm3', prescriptionId: 'rx3', recordedBy: 'example-recorder', recordedAt: '2026-09-27T17:10:00Z' }),
+    )
+    const list = await loadMedications(PATIENT)
+    expect(list.current.map((m) => m.by)).toEqual(['Dr. Example Prescriber MD', 'Reported', 'Prescriber unavailable'])
   })
 
   it('reads the day it went on the list in the clinic’s calendar: omeprazole reads Sep 29, not a day early', async () => {
