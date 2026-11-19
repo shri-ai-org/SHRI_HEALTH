@@ -32,5 +32,6 @@ if bao status >/dev/null 2>&1; then :; else
     rm -f "$body"
 fi
 
-# The API's narrow Transit token (32 days, not renewable) is created again here once it expires.
+# The API's narrow Transit token and the worker's secrets-only token (32 days, not renewable) are
+# created again here once they expire.
 BAO_TOKEN="$BAO_ROOT_TOKEN" sh /init/transit-init.sh >&2

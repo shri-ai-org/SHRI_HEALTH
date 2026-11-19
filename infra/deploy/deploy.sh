@@ -50,6 +50,29 @@ mailpit_credential() {
     grep -q '^demo-admin:\$apr1\$' "$dir/ui.htpasswd" || die "could not write Mailpit's credential in $dir"
 }
 
+# The worker's email (integration/mail.py), demo hosts only: SHRI_EMAIL_TEAM_ALLOWLIST (the team's
+# own addresses, comma-separated) go out through Brevo, from SHRI_EMAIL_FROM_ADDRESS; everyone else
+# to Mailpit. Elsewhere all three are empty, so the worker sends no email. Brevo's key is never in
+# the settings file: it is BREVO_API_KEY in OpenBao (README, set-secret.sh).
+email_settings() {
+    local address='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+'
+    SHRI_WORKER_EMAIL_TEAM_ALLOWLIST="" SHRI_WORKER_EMAIL_FROM_ADDRESS="" SHRI_WORKER_MAILPIT_SMTP_HOST=""
+    if [ "${SHRI_DEMO:-false}" = true ]; then
+        SHRI_WORKER_MAILPIT_SMTP_HOST=mailpit
+        if [ -n "${SHRI_EMAIL_TEAM_ALLOWLIST:-}" ]; then
+            [[ "$SHRI_EMAIL_TEAM_ALLOWLIST" =~ ^$address(,$address)*$ ]] \
+                || die "SHRI_EMAIL_TEAM_ALLOWLIST is email addresses separated by commas (no spaces)"
+            [[ "${SHRI_EMAIL_FROM_ADDRESS:-}" =~ ^$address$ ]] \
+                || die "SHRI_EMAIL_TEAM_ALLOWLIST needs SHRI_EMAIL_FROM_ADDRESS (a sender Brevo has verified)"
+            SHRI_WORKER_EMAIL_TEAM_ALLOWLIST="$SHRI_EMAIL_TEAM_ALLOWLIST"
+            SHRI_WORKER_EMAIL_FROM_ADDRESS="$SHRI_EMAIL_FROM_ADDRESS"
+        fi
+    elif [ -n "${SHRI_EMAIL_TEAM_ALLOWLIST:-}" ]; then
+        die "SHRI_EMAIL_TEAM_ALLOWLIST needs SHRI_DEMO=true (Brevo signs no BAA; never with real patients)"
+    fi
+    export SHRI_WORKER_EMAIL_TEAM_ALLOWLIST SHRI_WORKER_EMAIL_FROM_ADDRESS SHRI_WORKER_MAILPIT_SMTP_HOST
+}
+
 init_env() {
     local file="$1"
     [ -e "$file" ] && die "$file exists; edit it instead"
@@ -86,6 +109,12 @@ SHRI_DEMO_AI_SCREENS=false
 # true: the patient portal's demo sign-in, mobile number + date of birth with no code or password
 # (D121; patients without a portal account). Only with SHRI_DEMO=true; the API refuses it otherwise.
 SHRI_DEMO_SIGN_IN=false
+# The worker's email (demo hosts only): these team addresses (comma-separated, no spaces) get real
+# mail through Brevo, from SHRI_EMAIL_FROM_ADDRESS (a sender Brevo has verified); every other
+# address goes to Mailpit. Empty: all mail goes to Mailpit. Brevo's key is BREVO_API_KEY in OpenBao
+# (README), never here.
+SHRI_EMAIL_TEAM_ALLOWLIST=
+SHRI_EMAIL_FROM_ADDRESS=
 # Leave empty: the demo patients are then booked on the day the seed runs, in the clinic's time
 # zone (San Jose), so every rehearsal has a full day, and the reset on 20 Nov after 13:30 IST gives
 # the demo day. A date (YYYY-MM-DD, seed/demo.py) only to rehearse a particular day; never left
@@ -266,6 +295,15 @@ load_env() {
     SHRI_MAILPIT_AUTH_FILE="$SHRI_STATE_DIR/mailpit/ui.htpasswd"
     if [ "${SHRI_DEMO:-false}" = true ]; then mailpit_credential "$SHRI_STATE_DIR"; fi
     export SHRI_MAILPIT_UI_PORT SHRI_MAILPIT_WEBROOT SHRI_MAILPIT_AUTH_FILE
+    # The partner worker's OpenBao token (read secret/shri-health/api only, for BREVO_API_KEY):
+    # made once in the state dir (mode 600), never in the settings file or on a command line.
+    if [ ! -s "$SHRI_STATE_DIR/openbao-worker-token" ]; then
+        (umask 077; secret >"$SHRI_STATE_DIR/openbao-worker-token")
+    fi
+    chmod 600 "$SHRI_STATE_DIR/openbao-worker-token"
+    SHRI_OPENBAO_WORKER_TOKEN="$(cat "$SHRI_STATE_DIR/openbao-worker-token")"
+    export SHRI_OPENBAO_WORKER_TOKEN
+    email_settings
     case "${TLS_MODE:-self-signed}" in
         self-signed)
             sh "$DEPLOY/tls/make-self-signed.sh" "$SHRI_HOSTNAME" "$SHRI_STATE_DIR/tls" >/dev/null
@@ -291,6 +329,7 @@ unseal() {
     # The key and token reach the script on stdin, never on a command line.
     out="$( {
         printf 'export OPENBAO_API_TOKEN=%s\n' "$OPENBAO_API_TOKEN"
+        printf 'export OPENBAO_WORKER_TOKEN=%s\n' "$SHRI_OPENBAO_WORKER_TOKEN"
         if [ -f "$state" ]; then sed -n 's/^\(BAO_[A-Z_]*\)=\([A-Za-z0-9.+\/=_-]*\)$/export \1=\2/p' "$state"; fi
         cat "$DEPLOY/openbao/init-unseal.sh"
     } | $DC exec -T openbao sh -s)"
