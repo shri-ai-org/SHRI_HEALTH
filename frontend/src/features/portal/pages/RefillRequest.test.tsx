@@ -104,7 +104,7 @@ describe('the refill rules', () => {
 
   it('words each status in the clinic’s time, with a decline’s reason as the clinic sent it', () => {
     expect(requestStatusText(req(), TZ)).toBe('Requested 11/19/2026, 9:30 AM PST. Waiting for your clinic.')
-    expect(requestStatusText(req({ status: 'approved', respondedAt: '2026-11-19T18:00:00Z' }), TZ)).toBe('Approved 11/19/2026, 10:00 AM PST. Your clinic will send it to your pharmacy.')
+    expect(requestStatusText(req({ status: 'approved', respondedAt: '2026-11-19T18:00:00Z' }), TZ)).toBe('Approved by your clinic on 11/19/2026, 10:00 AM PST. Your doctor still needs to sign the prescription before it goes to your pharmacy.')
     expect(requestStatusText(req({ status: 'declined', respondedAt: '2026-11-19T18:00:00Z', declineReason: 'Please book a visit so your clinician can review this medicine.' }), TZ)).toBe(
       'Declined 11/19/2026, 10:00 AM PST. Please book a visit so your clinician can review this medicine.',
     )

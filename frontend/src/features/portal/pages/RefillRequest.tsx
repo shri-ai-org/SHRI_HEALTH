@@ -32,7 +32,9 @@ const REQUEST_STATUS: Record<PortalRefillRequest['status'], { label: string; ton
 export function requestStatusText(r: PortalRefillRequest, timeZone: string | null): string {
   if (r.status === 'requested') return `Requested ${formatDateTime(r.requestedAt, timeZone)}. Waiting for your clinic.`
   const at = r.respondedAt ? ` ${formatDateTime(r.respondedAt, timeZone)}` : ''
-  if (r.status === 'approved') return `Approved${at}. Your clinic will send it to your pharmacy.`
+  // Approval makes a draft prescription; nothing reaches the pharmacy until the doctor signs it.
+  if (r.status === 'approved')
+    return `Approved by your clinic${r.respondedAt ? ` on ${formatDateTime(r.respondedAt, timeZone)}` : ''}. Your doctor still needs to sign the prescription before it goes to your pharmacy.`
   return `Declined${at}.${r.declineReason ? ` ${r.declineReason}` : ''}`
 }
 
