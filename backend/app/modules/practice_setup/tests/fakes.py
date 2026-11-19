@@ -44,6 +44,7 @@ class Clinic:
     schedules: list[schemas.ProviderSchedule] = field(default_factory=list)
     practice_payers: list[schemas.PracticePayer] = field(default_factory=list)
     note_templates: list[schemas.NoteTemplate] = field(default_factory=list)
+    consent_requirements: list[schemas.ConsentRequirement] = field(default_factory=list)
 
 
 @dataclass
@@ -145,6 +146,15 @@ class FakeRepository:
                                            or t.owner_user_id == owner_user_id)
         return _page(self._visible_templates(db), keep, lambda t: t.name, "note-templates",
                      after, limit)
+
+    async def list_consent_requirements(self, db: AsyncSession, *, kind: str | None,
+                                        active: bool | None, after: Position | None, limit: int
+                                        ) -> Page[schemas.ConsentRequirement]:
+        def keep(r: schemas.ConsentRequirement) -> bool:
+            return _active(active)(r) and (kind is None or r.kind == kind)
+        return _page(self._clinic(db).consent_requirements, keep,
+                     lambda r: f"{r.kind}/{r.policy_version}", "consent-requirements", after,
+                     limit)
 
     async def get_note_template(self, db: AsyncSession, note_template_id: UUID
                                 ) -> schemas.NoteTemplate | None:

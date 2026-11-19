@@ -225,7 +225,7 @@ The prescription helpers (D97), on the same rules. A prescription is a Medicatio
   `rejected`; `error` (needs the message) is replayed as `queued`. The same status again
   changes nothing.
 - `create_refill_request(db, RefillRequestIn)`: in the portal session, through
-  `admin.portal_request_refill` (0028); a non-empty `note` is `InvalidInput`, another patient
+  `admin.portal_request_refill` (0029); a non-empty `note` is `InvalidInput`, another patient
   `ResourceNotFound`, then `RefillNotAllowed` or `RefillAlreadyRequested`;
 - `respond_to_refill_request(db, id, approve=, reason=, if_version=)`: the request only:
   approve sets it `completed`; decline sets it `cancelled` with one of `REFILL_DECLINE_REASONS`
@@ -436,7 +436,7 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     latest outbound NewRx (one of the contract's five, else NULL; both NULL before it's sent).
     Never an address, error text or clinician. shri_portal has no privilege on `admin.pharmacy`
     or `admin.erx_transaction` itself.
-  - **A refill request (migration 0028):** `SELECT admin.portal_request_refill(:prescription_id)`
+  - **A refill request (migration 0029):** `SELECT admin.portal_request_refill(:prescription_id)`
     returns the new request's ID. It is built from the prescription alone (drug and sig, no free
     text): a MedicationRequest, intent `proposal`, status `active`, the patient as subject and
     requester, `prior_prescription_id` the prescription, with its history and a Provenance by
@@ -449,8 +449,9 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
   - **Free times:** `admin.portal_busy_times(practitioner, from, to)`, at most 62 days, gives a
     provider's busy times without anyone's appointment.
   - **Self-booking (migration 0021, Vimal's list on #85):** the portal inserts its own
-    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`
-    and nothing else there (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
+    patient's `appointment.booked`, `.cancelled` and `.rescheduled` rows in `admin.event_log`,
+    and, for a refill request (0029), `refill-request.received`, and nothing else there
+    (`portal_own_event`). `SELECT admin.portal_chart_open()` locks the
     session patient FOR SHARE and answers whether the chart is active and not merged. A booked
     revisit (an appointment a follow-up request points at, D98) can't change status as
     `shri_portal` (`P0001`, constraint `portal_revisit_locked`): the clinic moves it. The

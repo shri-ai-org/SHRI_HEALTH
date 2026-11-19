@@ -64,3 +64,42 @@ def test_providers_and_schedules_only_at_the_users_facilities(
         assert answer.json()["code"] == "business-rule-violation", answer.text
         assert {(e["pointer"], e["code"]) for e in answer.json()["errors"]} == {
             (pointer, "invalid-reference")}, (r.operation, r.user, answer.text)
+
+
+def _requirement(tenant: UUID, kind: str) -> str:
+    """One active consent requirement, written as the platform (the test's superuser)."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+
+    from app.db.tests.conftest import sync_url
+
+    rid = uuid.uuid4()
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    try:
+        with admin.begin() as c:
+            c.execute(text(
+                "INSERT INTO admin.consent_requirement (id, tenant_id, kind, title, "
+                "policy_version, is_required, effective_date) VALUES (:i, :t, :k, "
+                "'Sweep requirement (synthetic)', :v, true, DATE '2026-10-01')"),
+                {"i": rid, "t": tenant, "k": kind, "v": f"sweep-{rid.hex[:8]}"})
+    finally:
+        admin.dispose()
+    return str(rid)
+
+
+def test_consent_requirements_are_the_callers_clinics_only(
+        client: Any, practice: Practice, users: dict[str, CurrentUser]) -> None:  # noqa: F811
+    """listConsentRequirements: each clinic's front desk reads its own requirements and never the
+    other clinic's; a clinician without consent-requirements:read is refused. Nothing changes."""
+    staff(practice, users, "fd-b", "fd", clinic_b=True)
+    mine, theirs = _requirement(practice.clinic, "research"), _requirement(practice.clinic_b,
+                                                                           "research")
+    path = f"{API}/consent-requirements"
+    outcomes = sweep(client, practice, [
+        Row("listConsentRequirements", "fd", "GET", path, 200, params={"limit": 100},
+            shown=(mine,), hidden=(theirs,)),
+        Row("listConsentRequirements", "fd-b", "GET", path, 200, params={"limit": 100},
+            shown=(theirs,), hidden=(mine,)),
+        Row("listConsentRequirements", "md", "GET", path, 403),
+    ])
+    assert not failures(outcomes), report(failures(outcomes))

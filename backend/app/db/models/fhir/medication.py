@@ -55,7 +55,7 @@ SIGNED_OR_EXEMPT = ("status IN ('draft', 'cancelled', 'entered-in-error') OR "
                     "(intent = 'plan' AND (reported_boolean IS TRUE OR "
                     "reported_practitioner_id IS NOT NULL)) OR "
                     "(ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL) OR "
-                    # A patient's refill request is never signed (migration 0028).
+                    # A patient's refill request is never signed (migration 0029).
                     "(intent = 'proposal' AND requester_patient_id IS NOT NULL "
                     "AND prior_prescription_id IS NOT NULL)")
 
@@ -124,7 +124,7 @@ class MedicationRequest(Base, ClinicalResourceMixin):
         CheckConstraint("prior_prescription_id IS DISTINCT FROM id", name="not_prior_of_self"),
         code_array_check("category", MedicationRequestCategory, "category_codes"),
         Index("ix_medication_request_patient_status", "subject_patient_id", "status"),
-        # One open refill request per prescription (migration 0028).
+        # One open refill request per prescription (migration 0029).
         Index("uq_medication_request_open_refill", "tenant_id", "prior_prescription_id",
               unique=True,
               postgresql_where=text("intent = 'proposal' AND status = 'active'")),

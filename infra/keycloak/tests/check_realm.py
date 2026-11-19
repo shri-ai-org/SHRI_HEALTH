@@ -30,6 +30,7 @@ BACKSTOP_SECONDS = 5 * 60
 
 REALM_RULES: dict[str, Any] = {
     "enabled": True,
+    "loginTheme": "shri",  # our theme: the stock one without the sign-in heading (#85)
     "registrationAllowed": False,  # staff accounts are created by ADM, never by sign-up
     # No "Forgot password": Keycloak's reset flow asks for the code only if one is set, so a user
     # without one could reset and be signed in. ADM resets staff passwords instead (#72).
@@ -150,6 +151,7 @@ MUTATIONS: dict[str, Any] = {
     "self-service password reset on": lambda r: r.update(resetPasswordAllowed=True),
     "one-time code CONDITIONAL": lambda r: _set_otp(r, "CONDITIONAL"),
     "Keycloak's default browser flow": lambda r: r.update(browserFlow="browser"),
+    "the stock login theme": lambda r: r.pop("loginTheme", None),
     "offline_access offered": lambda r: next(
         c for c in r["clients"] if c["clientId"] == "shri-web")["defaultClientScopes"].append(
         "offline_access"),

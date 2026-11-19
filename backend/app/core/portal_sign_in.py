@@ -392,7 +392,9 @@ async def session_from_cookie(request: Request) -> PortalSessionRow:
                                row.account_id, idle, row.expires_at, row.tokens_refreshed_at)
     stale = datetime.now(UTC) - row.tokens_refreshed_at > timedelta(
         minutes=settings.token_refresh_minutes)
-    if activity and stale:
+    # A demo-phone session (D121) has no realm tokens, so nothing to refresh; it ends at the
+    # normal idle and absolute timeouts.
+    if activity and stale and row.keycloak_refresh_token_enc is not None:
         await _refresh_tokens(request, session, row.keycloak_refresh_token_enc)
     return session
 
@@ -439,7 +441,7 @@ async def stored_refresh_token(request: Request, session: PortalSessionRow) -> s
     async with _patient_session(db, session.tenant_id) as s:
         row = (await s.execute(_READ, {"id": session.id})).one_or_none()
         await s.rollback()
-    if row is None:
+    if row is None or row.keycloak_refresh_token_enc is None:  # a demo-phone session (D121)
         return None
     return (await decrypt_field(request.app, row.keycloak_refresh_token_enc)).decode()
 

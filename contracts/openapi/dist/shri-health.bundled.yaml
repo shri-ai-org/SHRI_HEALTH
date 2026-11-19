@@ -38196,6 +38196,12 @@ components:
           $ref: '#/components/schemas/Id'
           description: Who recorded it.
           x-phi: none
+        prescriberDisplayName:
+          type: string
+          maxLength: 200
+          readOnly: true
+          description: 'The signer''s display name; only for signed prescriptions (`source: prescription`). Never set for patient-reported medicines.'
+          x-phi: none
     MedicationList:
       description: The patient's medication list, active first.
       type: object
@@ -38414,6 +38420,12 @@ components:
         pharmacyId:
           $ref: '#/components/schemas/Id'
           description: The pharmacy (`GET /pharmacies`); defaults to the patient's preferred pharmacy. Required to sign.
+          x-phi: none
+        pharmacyName:
+          type: string
+          maxLength: 200
+          readOnly: true
+          description: The display name of the pharmacy for `pharmacyId`; the same source as the portal's prescriptions (#414).
           x-phi: none
         noteToPharmacy:
           type: string
