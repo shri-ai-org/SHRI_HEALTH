@@ -1,36 +1,29 @@
 # Docs link check: every relative link and anchor in the repository's Markdown outside contracts/
-# resolves. contracts/ has its own (part of npm test in the contracts workflow). Runs only when
-# Markdown or this workflow changes, so a docs-only PR runs just this and the secret scan. The
+# resolves. contracts/ has its own (part of npm test in the contracts workflow). Runs on every pull
+# request and every merge to main. The
 # checker (contracts/scripts/check-links.mjs) uses Node's standard library only: no npm install.
 # Every Action is pinned by commit SHA.
 name: docs
 
 on:
   pull_request:
-    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    # Every pull request runs, drafts included (D106's CI-minutes rules withdrawn, 19 Nov 2026).
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["**/*.md", "!contracts/**", ".github/workflows/docs.yml",
-            "contracts/scripts/check-links.mjs"]
   push:
     branches: [main]
-    paths: ["**/*.md", "!contracts/**", ".github/workflows/docs.yml",
-            "contracts/scripts/check-links.mjs"]
 
 permissions:
   contents: read
 
 concurrency:
-  # A draft's skipped run has its own group, so it never cancels the real run started when the
-  # PR is marked ready a few seconds after a push (#214, #213). Outside a PR (a merge to main)
-  # each commit has its own group, so a newer merge never cancels or drops an earlier run.
-  group: docs-${{ github.event.pull_request.number || github.sha }}${{ github.event.pull_request.draft && '-draft' || '' }}
+  # One group per pull request. Outside a PR (a merge to main) each commit has its own group, so a
+  # newer merge never cancels or drops an earlier run.
+  group: docs-${{ github.event.pull_request.number || github.sha }}
   # Cancel superseded PR runs only; every commit on main gets a complete run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   links:
-    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
