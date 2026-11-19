@@ -188,6 +188,24 @@ class CoverageOrderTaken(InvalidInput):
                          field="order")
 
 
+class RefillNotAllowed(InvalidTransition):
+    """A refill request the prescription doesn't allow (migration 0029): ``current_state`` is
+    ``not-active`` (not active, or not signed) or ``not-refillable`` (PSY, a controlled
+    substance, or one whose schedule can't be read): the API's ``409 invalid-state-transition``
+    with that code at ``/prescriptionId``."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+
+
+class RefillAlreadyRequested(InvalidTransition):
+    """The prescription already has an open refill request (``uq_medication_request_open_refill``,
+    migration 0029): the API's ``409 refill-already-requested``."""
+
+    def __init__(self) -> None:
+        super().__init__("refill-already-requested")
+
+
 class SignRefused(InvalidInput):
     """Signing refused (422 business-rule-violation): one ``(pointer, code)`` per refusal, each
     a JSON Pointer into the prescription as GET reads it: ``required`` at ``/dosageText``,
@@ -732,6 +750,27 @@ class PrescriptionIn:
     pharmacy_id: uuid.UUID | None = None  # admin.pharmacy; required to sign
     note_to_pharmacy: str | None = None
     dea_schedule: str | None = None  # CII to CV, the RxNorm concept's dea_schedule property
+    prior_prescription_id: uuid.UUID | None = None  # the prescription a renewal renews
+
+
+@dataclass(frozen=True)
+class RefillRequestIn:
+    """The patient's refill request (#400, migration 0029). Built from the prescription only:
+    ``note`` must be empty, since a request carries no free text."""
+    patient_id: uuid.UUID  # the portal session's patient
+    prior_prescription_id: uuid.UUID  # the prescription to refill
+    note: str | None = None
+
+
+#: Why a refill request was declined: a fixed code, and the words the patient reads (no
+#: clinician free text reaches the portal).
+REFILL_DECLINE_REASONS = {
+    "needs-visit": "Please book a visit so your clinician can review this medicine.",
+    "needs-lab-work": "Your clinician needs new lab results before renewing this medicine.",
+    "no-longer-recommended": "Your clinician no longer recommends this medicine. "
+                             "Please contact the office if you have questions.",
+    "contact-the-office": "Please contact the office about this request.",
+}
 
 
 @dataclass(frozen=True)
@@ -1041,6 +1080,24 @@ class FhirStore(Protocol):
                                       ) -> TransmissionWritten:
         """The NewRx's way to the pharmacy (``/hooks/erx``). The same status again changes
         nothing. Doesn't change the prescription, which is signed and frozen."""
+        ...
+
+    # Refill requests: MedicationRequest, intent proposal (#400, migration 0029)
+    async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn) -> Written:
+        """The patient's request, in the portal session (``admin.portal_request_refill``): built
+        from the prescription, active at once, with the patient's Provenance. ``ResourceNotFound``
+        when it isn't her prescription, ``RefillNotAllowed``, ``RefillAlreadyRequested``."""
+        ...
+
+    async def respond_to_refill_request(self, db: AsyncSession, request_id: uuid.UUID, *,
+                                        approve: bool, reason: str | None, if_version: int
+                                        ) -> Written:
+        """The clinician's answer, the request only: approve (``completed``) or decline
+        (``cancelled``, ``reason`` one of ``REFILL_DECLINE_REASONS``), with a Provenance by the
+        current user; ``InvalidTransition`` unless the request is active. On approval the caller
+        writes the renewal draft in the same transaction, through ``create_prescription`` with
+        ``prior_prescription_id`` (#415's rules on what to copy), so it is safety-checked and
+        signed as any prescription; ``refill_renewal_id()`` reads it back."""
         ...
 
     # Notes: Composition (composition, composition_author, composition_section, attesters)
@@ -2325,6 +2382,61 @@ class SqlFhirStore:
                                        ext_reason=reason.strip()))
         return await _written(db, issue)
 
+    # ------------------------------------------------------------------------- Refill requests
+    async def create_refill_request(self, db: AsyncSession, request: RefillRequestIn) -> Written:
+        if request.note is not None and request.note.strip():
+            raise InvalidInput("a refill request takes no note", field="note")
+        session_patient = (await db.execute(text(
+            "SELECT NULLIF(current_setting('app.current_patient_id', true), '')::uuid"))).scalar()
+        if session_patient != request.patient_id:
+            raise ResourceNotFound
+        try:
+            async with db.begin_nested():
+                request_id = (await db.execute(text("SELECT admin.portal_request_refill(:p)"),
+                                               {"p": request.prior_prescription_id})).scalar_one()
+        except DBAPIError as exc:
+            detail = db_error_detail(exc)
+            constraint = detail.constraint or getattr(
+                getattr(exc.orig, "__cause__", None), "constraint_name", None)
+            if detail.sqlstate == "P0002":
+                raise ResourceNotFound from None
+            if constraint == "refill_not_active":
+                raise RefillNotAllowed("not-active") from None
+            if constraint == "refill_not_refillable":
+                raise RefillNotAllowed("not-refillable") from None
+            if constraint == "uq_medication_request_open_refill":
+                raise RefillAlreadyRequested from None
+            raise
+        version, updated = (await db.execute(
+            select(MedicationRequest.meta_version_id, MedicationRequest.meta_last_updated)
+            .where(MedicationRequest.id == request_id))).one()
+        return Written(request_id, version, updated)
+
+    async def respond_to_refill_request(self, db: AsyncSession, request_id: uuid.UUID, *,
+                                        approve: bool, reason: str | None, if_version: int
+                                        ) -> Written:
+        mr = await _locked(db, MedicationRequest, request_id, if_version)
+        if mr.intent != "proposal":
+            raise ResourceNotFound
+        if mr.status != "active":
+            raise InvalidTransition(mr.status)
+        if approve:
+            if reason is not None and reason.strip():
+                raise InvalidInput("an approval takes no reason", field="reason")
+            mr.status = "completed"
+        else:
+            wording = REFILL_DECLINE_REASONS.get(reason or "")
+            if wording is None:
+                raise InvalidInput("a declined refill needs one of the listed reasons",
+                                   field="reason")
+            mr.status = "cancelled"
+            (mr.status_reason_system, mr.status_reason_code, mr.status_reason_text) = (
+                systems.SHRI_LOCAL, reason, wording)
+        written = await _written(db, mr)
+        await _provenance(db, "MedicationRequest", written,
+                          (systems.V3_DATA_OPERATION, "UPDATE", None))
+        return written
+
     async def sign_prescription(self, db: AsyncSession, prescription_id: uuid.UUID, *,
                                 if_version: int, integration_message_id: uuid.UUID | None = None
                                 ) -> Written:
@@ -2649,6 +2761,22 @@ def _apply_prescription(mr: MedicationRequest, data: PrescriptionIn | Prescripti
                           ("dea_schedule", "ext_dea_schedule")):
         if _given(getattr(data, field)):
             setattr(mr, column, getattr(data, field))
+    if isinstance(data, PrescriptionIn) and data.prior_prescription_id is not None:
+        mr.prior_prescription_id = data.prior_prescription_id
+
+
+async def refill_renewal_id(db: AsyncSession, request_id: uuid.UUID) -> uuid.UUID | None:
+    """An approved refill request's renewal (the contract's ``newPrescriptionId``): the draft
+    written in the approval's transaction, so it was created at the request's last change and
+    names the same prior prescription."""
+    found: uuid.UUID | None = (await db.execute(text("""
+        SELECT r.id FROM clinical.medication_request q
+          JOIN clinical.medication_request r
+            ON r.prior_prescription_id = q.prior_prescription_id AND r.intent = 'order'
+           AND r.created_at = q.meta_last_updated
+         WHERE q.id = :id AND q.intent = 'proposal' AND q.status = 'completed'
+         ORDER BY r.id LIMIT 1"""), {"id": request_id})).scalar_one_or_none()
+    return found
 
 
 async def _replace_dosage(db: AsyncSession, prescription_id: uuid.UUID, sig: str | None

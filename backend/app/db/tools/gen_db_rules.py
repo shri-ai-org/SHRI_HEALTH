@@ -760,8 +760,10 @@ def portal_idempotency_sql() -> list[str]:
 
 
 #: The schedule events a portal booking, cancel or reschedule emits (migration 0021), so the front
-#: desk's day view updates live; no other event type.
-PORTAL_EVENT_TYPES = ("appointment.booked", "appointment.cancelled", "appointment.rescheduled")
+#: desk's day view updates live, and the refill request's (migration 0029, for the clinic's inbox);
+#: no other event type.
+PORTAL_EVENT_TYPES = ("appointment.booked", "appointment.cancelled", "appointment.rescheduled",
+                      "refill-request.received")
 
 
 def portal_booking_sql() -> list[str]:

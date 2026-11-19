@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0028"
+HEAD = "0029"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -59,6 +59,21 @@ UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.re
             "AND NOT (c.relrowsecurity AND c.relforcerowsecurity)")
 
 
+# Who may create objects in the schemas the writing SECURITY DEFINER functions name in their
+# search_path (clinical, admin, audit, public, pg_temp; 0029): only their owner, shri_migrator.
+# Any other service role, or PUBLIC, with CREATE there could shadow a table a trigger names
+# unqualified, so each (schema, role) pair counts, and PUBLIC counts as one.
+SCHEMA_CREATORS = (
+    "SELECT (SELECT count(*) FROM pg_namespace n CROSS JOIN pg_roles r "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND r.rolname LIKE 'shri\\_%' AND r.rolname <> 'shri_migrator' "
+    "AND has_schema_privilege(r.oid, n.oid, 'CREATE')) "
+    "+ (SELECT count(*) FROM pg_namespace n, "
+    "aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a "
+    "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+    "AND a.grantee = 0 AND a.privilege_type = 'CREATE')")
+
+
 def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Check]:
     return [
         Check("migrations at head", "SELECT version_num FROM admin.alembic_version", head),
@@ -72,6 +87,8 @@ def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Ch
               "SELECT count(*) FROM pg_roles WHERE rolname LIKE 'shri\\_%' "
               "AND (rolbypassrls OR rolsuper)",
               "0"),
+        Check("only shri_migrator may create in clinical, admin, audit and public",
+              SCHEMA_CREATORS, "0"),
         Check("demo patients loaded", "SELECT count(*) FROM clinical.patient", str(patients)),
     ]
 
@@ -181,7 +198,7 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"'{sid(demo.PATIENT, 2)}' AND code_code = '723' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 2)}' AND medication_codeable_concept_code = '861007' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
         Check("Linda Thompson's after-visit summaries (one per signed past visit)",
               "SELECT count(*) FROM clinical.document_reference WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND type_code = '34133-9' AND status = 'current' "
@@ -195,7 +212,7 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               f"'{sid(demo.PATIENT, 3)}' AND code_code = '2670' AND clinical_status = 'active') "
               "+ (SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND medication_codeable_concept_code = '198014' "
-              "AND status = 'active')", "3", fix=RESET),
+              "AND intent <> 'proposal' AND status = 'active')", "3", fix=RESET),
         # Her medications as signed prescriptions (seed/linda.py, #403): naproxen,
         # cyclobenzaprine, acetaminophen and the omeprazole. The history's old reported entries
         # (intent plan, never signed) don't count, so a server seeded before #403 fails here.

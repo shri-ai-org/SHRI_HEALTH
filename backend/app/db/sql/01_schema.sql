@@ -4442,7 +4442,7 @@ CREATE TABLE clinical.medication_request (
 	verified_by_user_id UUID, 
 	ai_suggestion_id UUID, 
 	CONSTRAINT pk_medication_request PRIMARY KEY (id), 
-	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL)), 
+	CONSTRAINT ck_medication_request_active_requires_signature CHECK (status IN ('draft', 'cancelled', 'entered-in-error') OR entry_source IN ('imported', 'interface') OR (intent = 'plan' AND (reported_boolean IS TRUE OR reported_practitioner_id IS NOT NULL)) OR (ext_signed_at IS NOT NULL AND ext_signed_by_practitioner_id IS NOT NULL) OR (intent = 'proposal' AND requester_patient_id IS NOT NULL AND prior_prescription_id IS NOT NULL)), 
 	CONSTRAINT ck_medication_request_medication_code_binding CHECK (medication_codeable_concept_system IS NULL OR medication_codeable_concept_system IN ('http://www.nlm.nih.gov/research/umls/rxnorm', 'http://hl7.org/fhir/sid/ndc')), 
 	CONSTRAINT ck_medication_request_repeats_range CHECK (dispense_request_number_of_repeats_allowed IS NULL OR dispense_request_number_of_repeats_allowed BETWEEN 0 AND 11), 
 	CONSTRAINT ck_medication_request_cii_no_refills CHECK (ext_dea_schedule IS DISTINCT FROM 'CII' OR coalesce(dispense_request_number_of_repeats_allowed, 0) = 0), 
@@ -4500,6 +4500,8 @@ CREATE TABLE clinical.medication_request (
 CREATE INDEX ix_medication_request_patient_status ON clinical.medication_request (subject_patient_id, status);
 
 CREATE INDEX ix_medication_request_tenant_id ON clinical.medication_request (tenant_id);
+
+CREATE UNIQUE INDEX uq_medication_request_open_refill ON clinical.medication_request (tenant_id, prior_prescription_id) WHERE intent = 'proposal' AND status = 'active';
 
 CREATE TABLE clinical.diagnostic_report (
 	status VARCHAR(40) NOT NULL, 
