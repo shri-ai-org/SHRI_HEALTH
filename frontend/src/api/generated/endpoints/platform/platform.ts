@@ -15,12 +15,14 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type {
+  ApprovePasswordResetRequestHeaders,
   AuditEventList,
   BadRequestResponse,
   BreakGlassGrant,
   BreakGlassHeaders,
   BreakGlassRequest,
   ConflictResponse,
+  DeclinePasswordResetRequestHeaders,
   EventEnvelope,
   FinishLoginParams,
   ForbiddenResponse,
@@ -30,12 +32,21 @@ import type {
   InternalErrorResponse,
   ListAuditEventsParams,
   ListIntegrationMessagesParams,
+  ListPasswordResetRequestsParams,
   ListRolesParams,
   ListUsersParams,
   Me,
   NotFoundResponse,
   Operation,
+  PasswordHelpReceipt,
+  PasswordHelpRequest,
+  PasswordHelpStatus,
+  PasswordHelpStatusQuery,
+  PasswordResetDecline,
+  PasswordResetRequest,
+  PasswordResetRequestList,
   PatientFhirRecord,
+  RequestPasswordHelpHeaders,
   RoleList,
   ServiceUnavailableResponse,
   Session,
@@ -337,6 +348,181 @@ export const getSession = async ( options?: Parameters<typeof apiFetch>[1]): Pro
     method: 'GET'
 
 
+  }
+);}
+
+
+export type requestPasswordHelpResponse200 = {
+  data: PasswordHelpReceipt
+  status: 200
+}
+
+export type requestPasswordHelpResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type requestPasswordHelpResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type requestPasswordHelpResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type requestPasswordHelpResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type requestPasswordHelpResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type requestPasswordHelpResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type requestPasswordHelpResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type requestPasswordHelpResponseSuccess = (requestPasswordHelpResponse200) & {
+  headers: Headers;
+};
+export type requestPasswordHelpResponseError = (requestPasswordHelpResponse400 | requestPasswordHelpResponse403 | requestPasswordHelpResponse404 | requestPasswordHelpResponse409 | requestPasswordHelpResponse422 | requestPasswordHelpResponse429 | requestPasswordHelpResponse500) & {
+  headers: Headers;
+};
+
+export type requestPasswordHelpResponse = (requestPasswordHelpResponseSuccess | requestPasswordHelpResponseError)
+
+export const getRequestPasswordHelpUrl = () => {
+
+
+
+
+  return `/auth/password-help`
+}
+
+/**
+ * **Demo servers only (D123).** The staff "Forgot password?" form, reached from the link on Keycloak's sign-in page. The user gives a username or email (`login`, an identifier only); an ADM approves or declines the request in the front office (`approvePasswordResetRequest`), and on approval Keycloak sends its own reset email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers). Our API never sees a password or a reset link (D3). **Same answer for any valid input:** `200` with a one-time `statusToken`, whether or not the account exists or already has an open request, so the form can't be used to probe accounts; a request for no account reads `waiting` until it expires. One open request per account. The token is returned once, kept by the page (the URL fragment or memory, never a query string), and read back only in a POST body (`getPasswordHelpStatus`); only its hash is stored, and it expires with the request after 24 hours. Public: no session yet, so the `Origin` header must be the app's host instead of a CSRF token; rate-limited per IP and per login. `404` unless the server runs with `SHRI_DEMO=true` and password help switched on (never in production). Audited as `security`, actor `anonymous`; the login is never logged.
+ * @summary Ask for help with a forgotten password (staff)
+ */
+export const requestPasswordHelp = async (passwordHelpRequest: PasswordHelpRequest,
+    headers: RequestPasswordHelpHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<requestPasswordHelpResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<requestPasswordHelpResponse>(getRequestPasswordHelpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordHelpRequest)
+  }
+);}
+
+
+export type getPasswordHelpStatusResponse200 = {
+  data: PasswordHelpStatus
+  status: 200
+}
+
+export type getPasswordHelpStatusResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type getPasswordHelpStatusResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPasswordHelpStatusResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPasswordHelpStatusResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPasswordHelpStatusResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPasswordHelpStatusResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPasswordHelpStatusResponseSuccess = (getPasswordHelpStatusResponse200) & {
+  headers: Headers;
+};
+export type getPasswordHelpStatusResponseError = (getPasswordHelpStatusResponse400 | getPasswordHelpStatusResponse403 | getPasswordHelpStatusResponse404 | getPasswordHelpStatusResponse422 | getPasswordHelpStatusResponse429 | getPasswordHelpStatusResponse500) & {
+  headers: Headers;
+};
+
+export type getPasswordHelpStatusResponse = (getPasswordHelpStatusResponseSuccess | getPasswordHelpStatusResponseError)
+
+export const getGetPasswordHelpStatusUrl = () => {
+
+
+
+
+  return `/auth/password-help/status`
+}
+
+/**
+ * **Demo servers only (D123).** The status page of `requestPasswordHelp`: informational only, with no password action,
+ *   so it can't become a takeover link. The token goes in the body, never in a URL (D13). `waiting` (not decided yet,
+ *   also for a request that matched no account), `approved` ("check your email for a link to set a new password"), `declined`,
+ *   `expired` (24 hours passed, or the link's own lifespan), and `unavailable` for a token that is unknown or malformed;
+ *   the answer never says whether an account exists. Public, `Origin`-checked and rate-limited per IP, like the request.
+ *   Not audited (it reads no account data).
+ * @summary Read a password-help request's status (staff)
+ */
+export const getPasswordHelpStatus = async (passwordHelpStatusQuery: PasswordHelpStatusQuery, options?: Parameters<typeof apiFetch>[1]): Promise<getPasswordHelpStatusResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<getPasswordHelpStatusResponse>(getGetPasswordHelpStatusUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordHelpStatusQuery)
   }
 );}
 
@@ -857,6 +1043,284 @@ export const listUsers = async (params?: ListUsersParams, options?: Parameters<t
     method: 'GET'
 
 
+  }
+);}
+
+
+export type listPasswordResetRequestsResponse200 = {
+  data: PasswordResetRequestList
+  status: 200
+}
+
+export type listPasswordResetRequestsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listPasswordResetRequestsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listPasswordResetRequestsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listPasswordResetRequestsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listPasswordResetRequestsResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type listPasswordResetRequestsResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type listPasswordResetRequestsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listPasswordResetRequestsResponseSuccess = (listPasswordResetRequestsResponse200) & {
+  headers: Headers;
+};
+export type listPasswordResetRequestsResponseError = (listPasswordResetRequestsResponse400 | listPasswordResetRequestsResponse401 | listPasswordResetRequestsResponse403 | listPasswordResetRequestsResponse404 | listPasswordResetRequestsResponse422 | listPasswordResetRequestsResponse429 | listPasswordResetRequestsResponse500) & {
+  headers: Headers;
+};
+
+export type listPasswordResetRequestsResponse = (listPasswordResetRequestsResponseSuccess | listPasswordResetRequestsResponseError)
+
+export const getListPasswordResetRequestsUrl = (params?: ListPasswordResetRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/password-reset-requests?${stringifiedParams}` : `/password-reset-requests`
+}
+
+/**
+ * **Demo servers only (D123).** The password-help requests of staff and patients for the administrator's approval screen in the front office admin area: pending
+ *   first, then newest. Each names the account and how it was asked for, masked: a mobile number shows only its last
+ *   4 digits, never the whole number. The request's IP shows only its prefix (/24 for IPv4, /48 for IPv6). A request
+ *   that matched no account is never listed. ADM only. Audited as `security`.
+ * @summary List password-help requests
+ */
+export const listPasswordResetRequests = async (params?: ListPasswordResetRequestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listPasswordResetRequestsResponse> => {
+
+  return apiFetch<listPasswordResetRequestsResponse>(getListPasswordResetRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type approvePasswordResetRequestResponse200 = {
+  data: PasswordResetRequest
+  status: 200
+}
+
+export type approvePasswordResetRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type approvePasswordResetRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type approvePasswordResetRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type approvePasswordResetRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type approvePasswordResetRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type approvePasswordResetRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type approvePasswordResetRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type approvePasswordResetRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type approvePasswordResetRequestResponse503 = {
+  data: ServiceUnavailableResponse
+  status: 503
+}
+
+export type approvePasswordResetRequestResponseSuccess = (approvePasswordResetRequestResponse200) & {
+  headers: Headers;
+};
+export type approvePasswordResetRequestResponseError = (approvePasswordResetRequestResponse400 | approvePasswordResetRequestResponse401 | approvePasswordResetRequestResponse403 | approvePasswordResetRequestResponse404 | approvePasswordResetRequestResponse409 | approvePasswordResetRequestResponse422 | approvePasswordResetRequestResponse429 | approvePasswordResetRequestResponse500 | approvePasswordResetRequestResponse503) & {
+  headers: Headers;
+};
+
+export type approvePasswordResetRequestResponse = (approvePasswordResetRequestResponseSuccess | approvePasswordResetRequestResponseError)
+
+export const getApprovePasswordResetRequestUrl = (resetRequestId: Id,) => {
+
+
+
+
+  return `/password-reset-requests/${resetRequestId}/approve`
+}
+
+/**
+ * **Demo servers only (D123).** Approves a pending request: core asks Keycloak to send its own reset email to the account's
+ *   email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers), and the requester's status
+ *   page reads `approved`. The API never sees the password or the link (D3). Only a `pending` request can be approved;
+ *   anything else is `409` with its `currentState`. ADM only. Audited as `security`.
+ * @summary Approve a password-help request
+ */
+export const approvePasswordResetRequest = async (resetRequestId: Id,
+    headers: ApprovePasswordResetRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<approvePasswordResetRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<approvePasswordResetRequestResponse>(getApprovePasswordResetRequestUrl(resetRequestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { ...headers, ...getHeaders(options?.headers) }
+
+  }
+);}
+
+
+export type declinePasswordResetRequestResponse200 = {
+  data: PasswordResetRequest
+  status: 200
+}
+
+export type declinePasswordResetRequestResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type declinePasswordResetRequestResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type declinePasswordResetRequestResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type declinePasswordResetRequestResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type declinePasswordResetRequestResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type declinePasswordResetRequestResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type declinePasswordResetRequestResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type declinePasswordResetRequestResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type declinePasswordResetRequestResponseSuccess = (declinePasswordResetRequestResponse200) & {
+  headers: Headers;
+};
+export type declinePasswordResetRequestResponseError = (declinePasswordResetRequestResponse400 | declinePasswordResetRequestResponse401 | declinePasswordResetRequestResponse403 | declinePasswordResetRequestResponse404 | declinePasswordResetRequestResponse409 | declinePasswordResetRequestResponse422 | declinePasswordResetRequestResponse429 | declinePasswordResetRequestResponse500) & {
+  headers: Headers;
+};
+
+export type declinePasswordResetRequestResponse = (declinePasswordResetRequestResponseSuccess | declinePasswordResetRequestResponseError)
+
+export const getDeclinePasswordResetRequestUrl = (resetRequestId: Id,) => {
+
+
+
+
+  return `/password-reset-requests/${resetRequestId}/decline`
+}
+
+/**
+ * **Demo servers only (D123).** Declines a pending request with a reason from a fixed list; nothing is sent, and the requester's status page reads `declined` (never the reason). Only a `pending` request can be declined; anything else is `409` with its `currentState`. ADM only. Audited as `security`.
+ * @summary Decline a password-help request
+ */
+export const declinePasswordResetRequest = async (resetRequestId: Id,
+    passwordResetDecline: PasswordResetDecline,
+    headers: DeclinePasswordResetRequestHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<declinePasswordResetRequestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<declinePasswordResetRequestResponse>(getDeclinePasswordResetRequestUrl(resetRequestId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordResetDecline)
   }
 );}
 

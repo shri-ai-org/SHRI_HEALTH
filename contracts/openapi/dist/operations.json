@@ -122,6 +122,16 @@
    "path": "/api/v1/patients/{patientId}/surgical-history",
    "permission": "surgical-history:create"
   },
+  "approvePasswordResetRequest": {
+   "audit": {
+    "action": "U",
+    "category": "security"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/password-reset-requests/{resetRequestId}/approve",
+   "permission": "password-resets:approve"
+  },
   "attachCoverageCardImage": {
    "audit": {
     "action": "C",
@@ -706,6 +716,16 @@
    "path": "/api/v1/encounters/{encounterId}/follow-up/decline",
    "permission": "follow-ups:decline"
   },
+  "declinePasswordResetRequest": {
+   "audit": {
+    "action": "U",
+    "category": "security"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/password-reset-requests/{resetRequestId}/decline",
+   "permission": "password-resets:approve"
+  },
   "disablePortalAccount": {
    "audit": {
     "action": "E",
@@ -1088,6 +1108,17 @@
    "path": "/api/v1/orders/{orderId}",
    "permission": "orders:read"
   },
+  "getPasswordHelpStatus": {
+   "audit": {
+    "action": "R",
+    "actor": "anonymous",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/auth/password-help/status",
+   "permission": "public"
+  },
   "getPatient": {
    "audit": {
     "action": "R",
@@ -1188,6 +1219,17 @@
    "method": "GET",
    "path": "/api/v1/portal/me/messages/{threadId}",
    "permission": "portal-records:read"
+  },
+  "getPortalPasswordHelpStatus": {
+   "audit": {
+    "action": "R",
+    "actor": "anonymous",
+    "category": "none"
+   },
+   "idempotency": null,
+   "method": "POST",
+   "path": "/api/v1/portal/password-help/status",
+   "permission": "public"
   },
   "getPortalProblem": {
    "audit": {
@@ -1710,6 +1752,16 @@
    "method": "GET",
    "path": "/api/v1/orders",
    "permission": "orders:read"
+  },
+  "listPasswordResetRequests": {
+   "audit": {
+    "action": "R",
+    "category": "security"
+   },
+   "idempotency": null,
+   "method": "GET",
+   "path": "/api/v1/password-reset-requests",
+   "permission": "password-resets:read"
   },
   "listPatientAppointments": {
    "audit": {
@@ -2456,6 +2508,17 @@
    "path": "/api/v1/portal/me/messages/{threadId}/replies",
    "permission": "portal-messages:create"
   },
+  "requestPasswordHelp": {
+   "audit": {
+    "action": "C",
+    "actor": "anonymous",
+    "category": "security"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/auth/password-help",
+   "permission": "public"
+  },
   "requestPortalChange": {
    "audit": {
     "action": "C",
@@ -2467,6 +2530,17 @@
    "method": "POST",
    "path": "/api/v1/portal/me/change-requests",
    "permission": "portal-profile:request-change"
+  },
+  "requestPortalPasswordHelp": {
+   "audit": {
+    "action": "C",
+    "actor": "anonymous",
+    "category": "security"
+   },
+   "idempotency": "required",
+   "method": "POST",
+   "path": "/api/v1/portal/password-help",
+   "permission": "public"
   },
   "rescheduleAppointment": {
    "audit": {

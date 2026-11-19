@@ -369,6 +369,152 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
           description: 500. `internal-error` (unexpected error).
+  /auth/password-help:
+    post:
+      operationId: requestPasswordHelp
+      summary: Ask for help with a forgotten password (staff)
+      description: '**Demo servers only (D123).** The staff "Forgot password?" form, reached from the link on Keycloak''s sign-in page. The user gives a username or email (`login`, an identifier only); an ADM approves or declines the request in the front office (`approvePasswordResetRequest`), and on approval Keycloak sends its own reset email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers). Our API never sees a password or a reset link (D3). **Same answer for any valid input:** `200` with a one-time `statusToken`, whether or not the account exists or already has an open request, so the form can''t be used to probe accounts; a request for no account reads `waiting` until it expires. One open request per account. The token is returned once, kept by the page (the URL fragment or memory, never a query string), and read back only in a POST body (`getPasswordHelpStatus`); only its hash is stored, and it expires with the request after 24 hours. Public: no session yet, so the `Origin` header must be the app''s host instead of a CSRF token; rate-limited per IP and per login. `404` unless the server runs with `SHRI_DEMO=true` and password help switched on (never in production). Audited as `security`, actor `anonymous`; the login is never logged.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: C
+        category: security
+        actor: anonymous
+      x-idempotency: required
+      x-storage: admin
+      x-release: P1
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordHelpRequest'
+            examples:
+              byUsername:
+                summary: By username
+                value:
+                  login: demo.ma
+      responses:
+        '200':
+          description: 200. Received. The same answer for any valid input; the token is shown only here.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordHelpReceipt'
+              examples:
+                received:
+                  summary: Received
+                  value:
+                    statusToken: ph-example-token-01
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key header is required).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (password help is off on this server).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (the body doesn't match the schema); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests from this address or for this login).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /auth/password-help/status:
+    post:
+      operationId: getPasswordHelpStatus
+      summary: Read a password-help request's status (staff)
+      description: |-
+        **Demo servers only (D123).** The status page of `requestPasswordHelp`: informational only, with no password action,
+          so it can't become a takeover link. The token goes in the body, never in a URL (D13). `waiting` (not decided yet,
+          also for a request that matched no account), `approved` ("check your email for a link to set a new password"), `declined`,
+          `expired` (24 hours passed, or the link's own lifespan), and `unavailable` for a token that is unknown or malformed;
+          the answer never says whether an account exists. Public, `Origin`-checked and rate-limited per IP, like the request.
+          Not audited (it reads no account data).
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-storage: admin
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordHelpStatusQuery'
+            examples:
+              read:
+                summary: Read the status
+                value:
+                  statusToken: ph-example-token-01
+      responses:
+        '200':
+          description: 200. The request's status.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordHelpStatus'
+              examples:
+                waiting:
+                  summary: Waiting for the administrator
+                  value:
+                    status: waiting
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (password help is off on this server).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (the body doesn't match the schema).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests from this address).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /me:
     get:
       operationId: getMe
@@ -1199,6 +1345,239 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableContent'
           description: 422. `validation-failed` (a body field or a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /password-reset-requests:
+    get:
+      operationId: listPasswordResetRequests
+      summary: List password-help requests
+      description: |-
+        **Demo servers only (D123).** The password-help requests of staff and patients for the administrator's approval screen in the front office admin area: pending
+          first, then newest. Each names the account and how it was asked for, masked: a mobile number shows only its last
+          4 digits, never the whole number. The request's IP shows only its prefix (/24 for IPv4, /48 for IPv6). A request
+          that matched no account is never listed. ADM only. Audited as `security`.
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: password-resets:read
+      x-audit:
+        action: R
+        category: security
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only requests in this status. All statuses when absent.
+          schema:
+            $ref: '#/components/schemas/PasswordResetRequestStatus'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 200. One page of requests, pending first, then newest.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetRequestList'
+              examples:
+                pending:
+                  summary: One pending request
+                  value:
+                    items:
+                      - id: 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+                        realm: patient
+                        accountDisplayName: Kaia401 Lindgren118
+                        requestedWith:
+                          kind: mobile
+                          display: •••• 0142
+                        requestedAt: '2035-11-20T09:30:00Z'
+                        expiresAt: '2035-11-21T09:30:00Z'
+                        requestIpPrefix: 203.0.113.0/24
+                        status: pending
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `invalid-cursor` (the cursor is expired or tampered with).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `password-resets:read`).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (password help is off on this server).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (a parameter is invalid).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /password-reset-requests/{resetRequestId}/approve:
+    parameters:
+      - name: resetRequestId
+        in: path
+        required: true
+        description: The password-help request's ID (named so no credential-like word is in the URL).
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: approvePasswordResetRequest
+      summary: Approve a password-help request
+      description: |-
+        **Demo servers only (D123).** Approves a pending request: core asks Keycloak to send its own reset email to the account's
+          email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers), and the requester's status
+          page reads `approved`. The API never sees the password or the link (D3). Only a `pending` request can be approved;
+          anything else is `409` with its `currentState`. ADM only. Audited as `security`.
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: password-resets:approve
+      x-audit:
+        action: U
+        category: security
+      x-idempotency: required
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 200. Approved; Keycloak's reset email is on its way.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `idempotency-key-missing` (the Idempotency-Key header is required).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `password-resets:approve`); `csrf-check-failed`.
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such request in this clinic, or password help is off on this server).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the request isn't pending; `currentState` says what it is); `idempotency-request-in-progress`.
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `idempotency-key-reused` (the Idempotency-Key was used with a different request).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+          description: 503. `service-unavailable` (Keycloak didn't accept the reset email; the request stays pending).
+  /password-reset-requests/{resetRequestId}/decline:
+    parameters:
+      - name: resetRequestId
+        in: path
+        required: true
+        description: The password-help request's ID (named so no credential-like word is in the URL).
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: declinePasswordResetRequest
+      summary: Decline a password-help request
+      description: '**Demo servers only (D123).** Declines a pending request with a reason from a fixed list; nothing is sent, and the requester''s status page reads `declined` (never the reason). Only a `pending` request can be declined; anything else is `409` with its `currentState`. ADM only. Audited as `security`.'
+      tags:
+        - platform
+      x-owner: thulasi
+      x-permission: password-resets:approve
+      x-audit:
+        action: U
+        category: security
+      x-idempotency: required
+      x-storage: admin
+      x-release: P1
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetDecline'
+            examples:
+              notConfirmed:
+                summary: Identity not confirmed
+                value:
+                  reasonCode: identity-not-confirmed
+      responses:
+        '200':
+          description: 200. Declined.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing`.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          description: 401. `unauthenticated` (no valid session); `session-expired` (the session ended).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `permission-denied` (the role lacks `password-resets:approve`); `csrf-check-failed`.
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (no such request in this clinic, or password help is off on this server).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `invalid-state-transition` (the request isn't pending; `currentState` says what it is); `idempotency-request-in-progress`.
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (`reasonCode` is missing or not on the list); `idempotency-key-reused`.
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -23472,6 +23851,152 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
           description: 503. `service-unavailable` (the patient realm is unavailable).
+  /portal/password-help:
+    post:
+      operationId: requestPortalPasswordHelp
+      summary: Ask for help with a forgotten password (patients)
+      description: '**Demo servers only (D123).** The patient portal''s "Forgot password?" form, for patient accounts with a password (Linda and the other seeded portal patients). The patient gives a username or the mobile number on the chart (`login`, an identifier only; the administrator sees the number masked); an ADM approves or declines the request in the front office (`approvePasswordResetRequest`), and on approval Keycloak sends its own reset email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers). Our API never sees a password or a reset link (D3). **Same answer for any valid input:** `200` with a one-time `statusToken`, whether or not the account exists or already has an open request, so the form can''t be used to probe accounts; a request for no account reads `waiting` until it expires. One open request per account. The token is returned once, kept by the page (the URL fragment or memory, never a query string), and read back only in a POST body (`getPasswordHelpStatus`); only its hash is stored, and it expires with the request after 24 hours. Public: no session yet, so the `Origin` header must be the app''s host instead of a CSRF token; rate-limited per IP and per login. `404` unless the server runs with `SHRI_DEMO=true` and password help switched on (never in production). Audited as `security`, actor `anonymous`; the login is never logged.'
+      tags:
+        - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: C
+        category: security
+        actor: anonymous
+      x-idempotency: required
+      x-storage: admin
+      x-release: P1
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalPasswordHelpRequest'
+            examples:
+              byUsername:
+                summary: By username
+                value:
+                  login: kaia.lindgren@example.com
+      responses:
+        '200':
+          description: 200. Received. The same answer for any valid input; the token is shown only here.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordHelpReceipt'
+              examples:
+                received:
+                  summary: Received
+                  value:
+                    statusToken: ph-example-token-01
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key header is required).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (password help is off on this server).
+        '409':
+          $ref: '#/components/responses/Conflict'
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (the body doesn't match the schema); `idempotency-key-reused` (the Idempotency-Key was used with a different body).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests from this address or for this login).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
+  /portal/password-help/status:
+    post:
+      operationId: getPortalPasswordHelpStatus
+      summary: Read a password-help request's status (patients)
+      description: |-
+        **Demo servers only (D123).** The status page of `requestPortalPasswordHelp`: informational only, with no password
+          action, so it can't become a takeover link. The token goes in the body, never in a URL (D13). `waiting` (not decided
+          yet, also for a request that matched no account), `approved` ("check your email for a link to set a new password"),
+          `declined`, `expired` (24 hours passed, or the link's own lifespan), and `unavailable` for a token that is unknown
+          or malformed; the answer never says whether an account exists. Public, `Origin`-checked and rate-limited per IP,
+          like the request. Not audited (it reads no account data).
+      tags:
+        - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-storage: admin
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordHelpStatusQuery'
+            examples:
+              read:
+                summary: Read the status
+                value:
+                  statusToken: ph-example-token-01
+      responses:
+        '200':
+          description: 200. The request's status.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+            RateLimit:
+              $ref: '#/components/headers/RateLimit'
+            RateLimit-Policy:
+              $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordHelpStatus'
+              examples:
+                waiting:
+                  summary: Waiting for the administrator
+                  value:
+                    status: waiting
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: '#/components/responses/Forbidden'
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: '#/components/responses/NotFound'
+          description: 404. `not-found` (password help is off on this server).
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+          description: 422. `validation-failed` (the body doesn't match the schema).
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+          description: 429. `rate-limited` (too many requests from this address).
+        '500':
+          $ref: '#/components/responses/InternalError'
+          description: 500. `internal-error` (unexpected error).
   /portal/auth/demo-sign-in:
     post:
       operationId: signInToPortalForDemo
@@ -26940,6 +27465,70 @@ components:
           $ref: '#/components/schemas/BuildInfo'
           description: The API build serving this session (Q31). Shown to signed-in users only, for support and bug reports; never returned by /health or any public operation.
           x-phi: none
+    PasswordHelpRequest:
+      description: Body of the staff "Forgot password?" form (D123).
+      type: object
+      additionalProperties: false
+      required:
+        - login
+      properties:
+        login:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: The staff user's username or email, as an identifier only. Never logged.
+          x-phi: none
+    PasswordHelpReceipt:
+      description: The answer to a password-help request, the same for any valid input (D123).
+      type: object
+      required:
+        - statusToken
+        - expiresAt
+      properties:
+        statusToken:
+          type: string
+          minLength: 16
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+          description: Opaque, random and single-purpose; shown only in this answer, read back only in a POST body, and only its hash is stored. It opens the status page and nothing else.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the request, and its token, expire (24 hours).
+          x-phi: none
+    PasswordHelpStatusQuery:
+      description: Body to read a password-help request's status (D123).
+      type: object
+      additionalProperties: false
+      required:
+        - statusToken
+      properties:
+        statusToken:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The token from the request's answer.
+          x-phi: none
+    PasswordHelpStatus:
+      description: 'A password-help request as its requester sees it: `waiting`, `approved` (check your email for a link to set a new password), `declined`, `expired`, or `unavailable` for an unknown token.'
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - waiting
+            - approved
+            - declined
+            - expired
+            - unavailable
+          description: The request's state, as the requester sees it.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When a waiting request expires. Absent once decided, or for an unknown token.
+          x-phi: none
     MePracticeSettings:
       description: Practice settings every signed-in user may read (D39).
       type: object
@@ -27285,6 +27874,147 @@ components:
         nextCursor:
           $ref: '#/components/schemas/Cursor'
           description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PasswordResetRequestStatus:
+      description: '`pending` (waiting for an ADM), `approved` (Keycloak sent its reset email), `declined`, `expired` (24 hours passed without a decision).'
+      type: string
+      enum:
+        - pending
+        - approved
+        - declined
+        - expired
+    PasswordHelpLogin:
+      description: How a password-help request named the account, masked for the administrator's screen.
+      type: object
+      required:
+        - kind
+        - display
+      properties:
+        kind:
+          type: string
+          enum:
+            - username
+            - email
+            - mobile
+          description: '`username`, `email`, or `mobile` (patients only).'
+          x-phi: none
+        display:
+          type: string
+          maxLength: 254
+          description: The username or email as given; a mobile number shows only its last 4 digits (`•••• 0142`).
+          x-phi: identifier
+    StaffRef:
+      description: A staff member, for display.
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: User ID.
+          x-phi: internal-id
+        displayName:
+          type: string
+          maxLength: 200
+          description: Name as shown on screens (staff, not patient data).
+          x-phi: none
+    PasswordResetDeclineReason:
+      description: '`identity-not-confirmed` (the administrator couldn''t confirm who asked), `not-requested-by-user` (the account''s owner says they didn''t ask), `duplicate` (another request covers it), `other`.'
+      type: string
+      enum:
+        - identity-not-confirmed
+        - not-requested-by-user
+        - duplicate
+        - other
+    PasswordResetRequest:
+      description: A password-help request as the administrator sees it (D123). Never a password, a link or a token.
+      type: object
+      required:
+        - id
+        - realm
+        - accountDisplayName
+        - requestedWith
+        - requestedAt
+        - expiresAt
+        - status
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+          description: The request's ID.
+          x-phi: internal-id
+        realm:
+          type: string
+          enum:
+            - staff
+            - patient
+          description: '`staff` (a staff account) or `patient` (a patient portal account).'
+          x-phi: none
+        accountDisplayName:
+          type: string
+          maxLength: 200
+          description: The account's display name in Keycloak.
+          x-phi: identifier
+        requestedWith:
+          $ref: '#/components/schemas/PasswordHelpLogin'
+          description: How the requester named the account, masked.
+          x-phi: identifier
+        requestedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was asked for.
+          x-phi: none
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it expires if nobody decides (24 hours).
+          x-phi: none
+        requestIpPrefix:
+          type: string
+          maxLength: 64
+          description: The requester's IP address prefix only (/24 for IPv4, /48 for IPv6), never the whole address.
+          x-phi: none
+        status:
+          $ref: '#/components/schemas/PasswordResetRequestStatus'
+          description: The request's state.
+          x-phi: none
+        decidedAt:
+          $ref: '#/components/schemas/Timestamp'
+          description: When it was approved or declined.
+          x-phi: none
+        decidedBy:
+          $ref: '#/components/schemas/StaffRef'
+          description: The administrator who approved or declined it.
+          x-phi: none
+        declineReasonCode:
+          $ref: '#/components/schemas/PasswordResetDeclineReason'
+          description: Why it was declined. Never shown to the requester.
+          x-phi: none
+    PasswordResetRequestList:
+      description: One page of password-help requests, pending first, then newest.
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PasswordResetRequest'
+          description: The items on this page.
+          x-phi: identifier
+        nextCursor:
+          $ref: '#/components/schemas/Cursor'
+          description: Cursor for the next page. Absent on the last page.
+          x-phi: none
+    PasswordResetDecline:
+      description: Body to decline a password-help request.
+      type: object
+      additionalProperties: false
+      required:
+        - reasonCode
+      properties:
+        reasonCode:
+          $ref: '#/components/schemas/PasswordResetDeclineReason'
+          description: Why it's declined, from the fixed list.
           x-phi: none
     AuditCategory:
       description: An audit event's category, as stored.
@@ -28327,22 +29057,6 @@ components:
           $ref: '#/components/schemas/PharmacyAddress'
           description: Address.
           x-phi: clinical
-    StaffRef:
-      description: A staff member, for display.
-      type: object
-      required:
-        - id
-        - displayName
-      properties:
-        id:
-          $ref: '#/components/schemas/Id'
-          description: User ID.
-          x-phi: internal-id
-        displayName:
-          type: string
-          maxLength: 200
-          description: Name as shown on screens (staff, not patient data).
-          x-phi: none
     PatientConsent:
       description: 'The current consent of one kind: the latest `active` consent of that kind (`GET /patients/{patientId}/consents` has the full history).'
       type: object
@@ -39520,6 +40234,19 @@ components:
         email:
           $ref: '#/components/schemas/EmailAddress'
           description: The email to sign in with; verified by the patient realm before the first sign-in.
+          x-phi: identifier
+    PortalPasswordHelpRequest:
+      description: Body of the patient portal's "Forgot password?" form (D123).
+      type: object
+      additionalProperties: false
+      required:
+        - login
+      properties:
+        login:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: The patient's username, or the mobile number on the chart, as an identifier only. Never logged.
           x-phi: identifier
     DemoSignInRequest:
       description: 'Body for the demo sign-in (D121, demo servers only): the mobile number on the patient''s chart and her date of birth, checked together; neither is used on its own.'
