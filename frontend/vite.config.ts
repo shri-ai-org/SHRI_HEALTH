@@ -80,7 +80,7 @@ export default defineConfig({
           environment: 'jsdom',
           globals: true,
           setupFiles: ['../src/test/setup.ts'],
-          include: ['shri-health/**/*.test.ts', 'src/pages/register/**/*.test.tsx', 'src/pages/password-help/**/*.test.tsx'],
+          include: ['shri-health/**/*.test.ts', 'shri-health/admin/**/*.test.tsx', 'src/pages/register/**/*.test.tsx', 'src/pages/password-help/**/*.test.tsx'],
           css: false,
         },
       },

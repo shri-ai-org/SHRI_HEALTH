@@ -14,6 +14,7 @@ import { sectionsFor, useAdminAccess, type AdminSection } from './access'
 import { AuditTrailPage } from './AuditTrailPage'
 import { FhirRecordPage } from './FhirRecordPage'
 import { IntegrationsPage } from './IntegrationsPage'
+import { PasswordResetsPage } from './PasswordResetsPage'
 import { UsersRolesPage } from './UsersRolesPage'
 
 const PAGES: Record<AdminSection['path'], ComponentType> = {
@@ -21,6 +22,7 @@ const PAGES: Record<AdminSection['path'], ComponentType> = {
   audit: AuditTrailPage,
   fhir: FhirRecordPage,
   integrations: IntegrationsPage,
+  'password-resets': PasswordResetsPage,
 }
 
 function AdminTabs({ sections }: { sections: AdminSection[] }) {
@@ -59,7 +61,14 @@ export function AdminArea() {
   const sections = permissions ? sectionsFor(permissions) : []
   return (
     <div>
-      <PageHeader title="Administration" subtitle="Read only: users and roles, the audit trail, a patient's FHIR record and partner messages." tabs={isAdmin && sections.length > 0 ? <AdminTabs sections={sections} /> : undefined} />
+      <PageHeader
+        title="Administration"
+        subtitle={
+          sections.some((s) => s.path === 'password-resets')
+            ? "Users and roles, the audit trail, a patient's FHIR record and partner messages (read only), and password reset approvals."
+            : "Read only: users and roles, the audit trail, a patient's FHIR record and partner messages."
+        }
+        tabs={isAdmin && sections.length > 0 ? <AdminTabs sections={sections} /> : undefined} />
       <div className="mt-4 sm:mt-5">
         {!isAdmin ? (
           <NoAccess />
