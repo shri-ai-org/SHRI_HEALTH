@@ -82,9 +82,8 @@ def test_anything_else_is_no_number(typed: str) -> None:
 
 def test_every_refusal_is_the_same_answer() -> None:
     refused = demo.refused()
-    assert refused.status == 422 and refused.code == "business-rule-violation"
-    assert refused.extensions["errors"] == [{"in": "body", "pointer": "/mobileNumber",
-                                             "code": "not-allowed-value"}]
+    assert refused.status == 401 and refused.code == "unauthenticated"
+    assert "errors" not in refused.extensions  # it never says which field or reason (#458)
 
 
 # -------------------------------------------------------------------------- the guard
@@ -165,7 +164,7 @@ def test_a_malformed_body_is_a_validation_failure() -> None:
         assert response.status_code == 422 and response.json()["code"] == "validation-failed"
 
 
-def test_a_refusal_is_the_one_422_audited_without_the_number_or_birth_date(
+def test_a_refusal_is_the_one_401_audited_without_the_number_or_birth_date(
         monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     audited: list[str] = []
 
@@ -180,8 +179,8 @@ def test_a_refusal_is_the_one_422_audited_without_the_number_or_birth_date(
     client = _client(_settings(environment="test"))
     with caplog.at_level(logging.DEBUG):
         response = _post(client)
-    assert response.status_code == 422 and response.json()["errors"] == [
-        {"in": "body", "pointer": "/mobileNumber", "code": "not-allowed-value"}]
+    assert response.status_code == 401 and response.json()["code"] == "unauthenticated"
+    assert "errors" not in response.json()
     assert audited == ["refused"] and portal.PORTAL_COOKIE not in response.headers.get(
         "set-cookie", "")
     logged = caplog.text
@@ -223,4 +222,4 @@ def test_the_route_is_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(demo, "sign_in", no_chart)
     monkeypatch.setattr(demo, "audit_refused", audit)
     client = _client(_settings(environment="test", portal_demo_sign_in_number_limit=2))
-    assert [_post(client).status_code for _ in range(3)] == [422, 422, 429]
+    assert [_post(client).status_code for _ in range(3)] == [401, 401, 429]

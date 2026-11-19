@@ -5,7 +5,8 @@ the real sign-in (ADR-0013, D85) returns after the demo.
 The rules (D121, Thulasi's review on #433):
 - **Off unless switched on**, and the switch needs SHRI_DEMO=true outside production, or the API
   refuses to start (Settings._demo_sign_in_only_on_a_demo_server). Off, the route isn't there (404).
-- **One answer for every refusal** (422 on `/mobileNumber`), so charts can't be probed.
+- **One answer for every refusal:** `401 unauthenticated` (contract #458), so charts can't be probed;
+  only a body that doesn't match the schema is `422`.
 - **Rate-limited per client IP and per number.** The guard keeps only a keyed hash of the number.
 - **The number and the date of birth are never logged or audited.** A sign-in is audited naming
   the patient; a refusal names no one (a clinic-less `access-denied` row, as for enrolment).
@@ -38,7 +39,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import Settings
 from app.core.db import Database
-from app.core.errors import AppError, ServiceUnavailable, ValidationFailed, field_error
+from app.core.errors import AppError, ServiceUnavailable, Unauthorized
 from app.core.portal_sign_in import (
     PortalSessionRow,
     _patient_session,
@@ -85,11 +86,13 @@ def normalize_mobile(typed: str) -> str | None:
     return digits if _E164_DIGITS.fullmatch(digits) else None
 
 
-def refused() -> ValidationFailed:
+class DemoSignInRefused(Unauthorized):
+    """A refused demo sign-in: the one 401 for every reason (#458), never saying which."""
+
+
+def refused() -> DemoSignInRefused:
     """The one answer for every reason the demo sign-in can't open a chart."""
-    return ValidationFailed("We couldn't sign you in with those details",
-                            code="business-rule-violation",
-                            errors=[field_error("body", "/mobileNumber", "not-allowed-value")])
+    return DemoSignInRefused("We couldn't sign you in with those details")
 
 
 class DemoSignInGuard:
