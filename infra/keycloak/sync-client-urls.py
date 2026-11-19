@@ -11,8 +11,13 @@ the stock theme without the "Sign in to your account" heading), for the same rea
 imported before the theme existed keeps the stock one. Only that one realm setting changes, and
 only when it differs, so running it again changes nothing.
 
+On a demo host only (SHRI_DEMO=true, from deploy.sh), it also points each existing realm's
+outgoing mail (smtpServer) at the demo mail catcher, Mailpit (service `mailpit`, port 1025, inside
+the compose network; no TLS, no authentication), from no-reply@SHRI_HOSTNAME, so no demo mail
+leaves the host. Anywhere else smtpServer is left as it is. Again only when it differs.
+
     KC_URL=http://127.0.0.1:8081/kc KC_ADMIN=admin KC_ADMIN_PASSWORD=... PUBLIC_URL=https://... \
-        python3 -I infra/keycloak/sync-client-urls.py
+        [SHRI_DEMO=true SHRI_HOSTNAME=dep.example.org] python3 -I infra/keycloak/sync-client-urls.py
 
 Standard library only. The admin password comes from the environment, never the command line,
 and no token or password is printed.
@@ -20,6 +25,7 @@ and no token or password is printed.
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -60,27 +66,54 @@ def _call(token: str, method: str, path: str, body: Any = None) -> Any:
 
 
 LOGIN_THEME = "shri"
+DEMO = os.environ.get("SHRI_DEMO", "false") == "true"
 
 
-def _sync_theme(token: str, realm: str) -> None:
-    """The realm's login theme to ours (idempotent); a realm that doesn't exist is skipped."""
+def _demo_smtp() -> dict[str, str]:
+    """Mailpit inside the compose network (infra/deploy/docker-compose.deploy.yml). Keycloak keeps
+    smtpServer values as strings, so the comparison below sees them as it returns them."""
+    hostname = os.environ.get("SHRI_HOSTNAME", "").lower()
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", hostname):
+        sys.exit("SHRI_DEMO=true needs SHRI_HOSTNAME (a lower-case hostname) for the from address")
+    return {"host": "mailpit", "port": "1025", "from": f"no-reply@{hostname}",
+            "fromDisplayName": "Shri Health (demo)", "ssl": "false", "starttls": "false",
+            "auth": "false"}
+
+
+def _sync_realm(token: str, realm: str) -> None:
+    """The realm's login theme to ours and, on a demo host only, its mail to Mailpit
+    (idempotent); a realm that doesn't exist is skipped."""
     try:
         current = _call(token, "GET", realm)
     except urllib.error.HTTPError as err:
         if err.code == 404:
             return
         raise
+    change: dict[str, Any] = {}
     if current.get("loginTheme") == LOGIN_THEME:
         print(f"{realm}: login theme already {LOGIN_THEME}")
+    else:
+        change["loginTheme"] = LOGIN_THEME
+    if DEMO:
+        smtp = _demo_smtp()
+        current_smtp = current.get("smtpServer") or {}
+        if all(current_smtp.get(key) == value for key, value in smtp.items()):
+            print(f"{realm}: mail already to the demo mail catcher")
+        else:
+            change["smtpServer"] = smtp
+    if not change:
         return
-    _call(token, "PUT", realm, {"realm": realm, "loginTheme": LOGIN_THEME})
-    print(f"{realm}: login theme now {LOGIN_THEME}")
+    _call(token, "PUT", realm, {"realm": realm, **change})
+    if "loginTheme" in change:
+        print(f"{realm}: login theme now {LOGIN_THEME}")
+    if "smtpServer" in change:
+        print(f"{realm}: mail now to the demo mail catcher (mailpit:1025)")
 
 
 def main() -> int:
     token = _token()
     for realm in dict.fromkeys(r for r, *_ in CLIENTS):
-        _sync_theme(token, realm)
+        _sync_realm(token, realm)
     for realm, client_id, redirect, post_logout in CLIENTS:
         try:
             found = _call(token, "GET", f"{realm}/clients?clientId={client_id}")

@@ -88,6 +88,13 @@
       "digest": "sha256:741e6c447241220e0792a901befcaec1d55a755c5097fc9cd88d7fd8be251a5c",
       "use": "Development: clamd for the upload scan (the file service talks to it over TCP; nothing is linked).",
       "source": "https://github.com/Cisco-Talos/clamav (COPYING.txt, GPL-2.0; the image has no licence label); image built 2026-08-03. 1.5.4 (2026-10-26) is too new for the 7-day rule"
+    },
+    "axllent/mailpit": {
+      "licence": "MIT",
+      "version": "v1.33.1",
+      "digest": "sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce",
+      "use": "Demo hosts only (infra/deploy, profile mailpit, SHRI_DEMO=true; refused in production): catches Keycloak's mail, never delivers it.",
+      "source": "https://github.com/axllent/mailpit (OCI label org.opencontainers.image.licenses=MIT); release 2026-11-07. v1.34.0 (2026-11-17) is too new for the 7-day rule"
     }
   }
 }

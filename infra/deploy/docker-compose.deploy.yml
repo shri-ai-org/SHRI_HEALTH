@@ -9,6 +9,7 @@
 # - API and worker: ENVIRONMENT staging, real staff sign-in; patient sign-in off for now (the X-Dev-*
 #   stand-ins are refused outside development and test), images tagged with the commit.
 # - The simulated payer and pharmacy: only when SHRI_DEMO=true, never in production.
+# - Mailpit, the demo mail catcher: only when SHRI_DEMO=true (its profile), never in production.
 # - Nginx: one public HTTPS port, the hostname and certificate from the settings; the internal
 #   S3 port is not published.
 #
@@ -208,6 +209,9 @@ services:
         VITE_FEATURE_AI_MORNING_BRIEF: ${SHRI_WEB_AI:-off}
         VITE_FEATURE_AI_DIFFERENTIAL: ${SHRI_WEB_AI:-off}
         VITE_FEATURE_DEMO_SIGN_IN: ${SHRI_WEB_DEMO_SIGN_IN:-off}
+        # The screens' password help (reset by email): "on" only with SHRI_DEMO=true (deploy.sh),
+        # where Keycloak's mail goes to Mailpit; "off" everywhere else.
+        VITE_FEATURE_PASSWORD_HELP: ${SHRI_WEB_PASSWORD_HELP:-off}
     # SHRI_BIND is 127.0.0.1 behind a shared host's Nginx (deploy.sh sets it from SHRI_PUBLIC_URL),
     # so only that host reaches us; 0.0.0.0 on a host of our own.
     ports: !override
@@ -237,6 +241,36 @@ services:
       default: {}
       backend:
         aliases: [api.anthropic.com]
+    restart: unless-stopped
+
+  mailpit:
+    # The demo mail catcher: Keycloak's mail (and later the API's) is caught here and shown in its
+    # web UI, never delivered. Demo hosts only: the "mailpit" profile, which deploy.sh switches
+    # on (COMPOSE_PROFILES) only with SHRI_DEMO=true and refuses in production.
+    profiles: ["mailpit"]
+    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    mem_limit: 128m
+    # SMTP on 1025 inside the compose networks only (Keycloak on default, the API on backend): no
+    # SMTP port is published. The web UI only on this host's loopback; behind a shared host its
+    # Nginx serves it at /mail/ (deploy.sh host-nginx). backend alone can't publish a port.
+    networks: [default, backend]
+    ports:
+      - "127.0.0.1:${SHRI_MAILPIT_UI_PORT:-8025}:8025"
+    environment:
+      MP_SMTP_BIND_ADDR: 0.0.0.0:1025
+      MP_UI_BIND_ADDR: 0.0.0.0:8025
+      MP_WEBROOT: ${SHRI_MAILPIT_WEBROOT:-/mail/}
+      # The UI and its API need the demo-admin password (htpasswd file, deploy.sh init-env).
+      MP_UI_AUTH_FILE: /etc/mailpit/ui.htpasswd
+      MP_MAX_MESSAGES: "500"
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
+    volumes:
+      - ${SHRI_MAILPIT_AUTH_FILE:?run through deploy.sh}:/etc/mailpit/ui.htpasswd:ro
+    # Messages live in a temporary database under /tmp: gone at every restart.
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   code-loader:
