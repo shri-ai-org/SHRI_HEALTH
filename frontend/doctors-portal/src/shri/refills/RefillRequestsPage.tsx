@@ -99,7 +99,7 @@ function RequestRow({ row, onAsk }: { row: RefillRow; onAsk: RefillRequestsViewP
         <span className="text-[14px] font-semibold text-sh-text">{row.drug ?? 'Medication'}</span>
         {row.directions && <span className="text-[13px] text-sh-text-2">{row.directions}</span>}
         <span className="text-[13px] text-sh-text-2">
-          <Link to={`/patient/${row.patientId}`} className="font-medium text-sh-text underline-offset-2 hover:underline">
+          <Link to={`/patient/${row.patientId}`} className="inline-flex min-h-[44px] items-center font-medium text-sh-text underline-offset-2 hover:underline">
             {who}
           </Link>
           {row.mrn ? ` · ${row.mrn}` : ''}
@@ -231,6 +231,7 @@ export function RefillRequestsView(props: RefillRequestsViewProps) {
             id="refill-decline-reason"
             value={reason}
             aria-invalid={reasonMissing || undefined}
+            aria-describedby={reasonMissing ? 'refill-decline-reason-error' : undefined}
             onChange={(e) => {
               setReason(e.target.value as DeclineReason | '')
               if (e.target.value) setReasonMissing(false)
