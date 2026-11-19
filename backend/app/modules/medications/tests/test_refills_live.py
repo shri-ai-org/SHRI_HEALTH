@@ -77,9 +77,10 @@ def _portal_may_publish() -> bool:
 
 @pytest.fixture
 def portal_publishes() -> None:
-    if not _portal_may_publish():
-        pytest.skip("needs refill-request.received in admin.event_log's portal_own_event "
-                    "policy (Anand, #424)")
+    # 0029 (#424) adds refill-request.received to portal_own_event; without it every portal
+    # request answers 500, so this fails rather than skips.
+    assert _portal_may_publish(), ("admin.event_log's portal_own_event must allow "
+                                   "refill-request.received (0029, #424)")
 
 
 def _key() -> dict[str, str]:
@@ -255,6 +256,10 @@ def test_a_patient_asks_once_per_key_and_once_per_prescription(
     assert other.status_code == 409 and other.json()["code"] == "invalid-state-transition"
     assert [(e["pointer"], e["code"]) for e in other.json()["errors"]] == [
         ("/prescriptionId", "refill-already-requested")]
+    # The replay ran no write: one request row for this prescription, never two.
+    saved = _sql(practice, "SELECT count(*) FROM clinical.medication_request WHERE "
+                 "intent = 'proposal' AND prior_prescription_id = :p", p=here)
+    assert saved[0][0] == 1
     events = _sql(practice, "SELECT type, patient_id, data FROM admin.event_log "
                   "WHERE subject = :s", s=f"refill-request/{asked.json()['id']}")
     assert [(e.type, e.patient_id, e.data["status"]) for e in events] == [
