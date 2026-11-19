@@ -252,7 +252,7 @@ def test_function_shape(admin_engine: Engine) -> None:
         # void: a later change cannot quietly turn it into "is this patient restricted?"
         assert rettype == "void"
         assert definer and owner == "shri_migrator"
-        assert config == ["search_path=pg_catalog, clinical, audit"]
+        assert config == ["search_path=pg_catalog, pg_temp"]   # 0030 (was clinical, audit too)
         for role in ("shri_app", "shri_fhir_reader", "shri_integration", "shri_reporting"):
             assert c.execute(text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
                              {"r": role, "f": FUNCTION}).scalar_one() == (

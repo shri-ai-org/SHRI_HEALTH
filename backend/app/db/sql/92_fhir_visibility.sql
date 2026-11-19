@@ -113,9 +113,11 @@ CREATE POLICY fhir_hide_restricted ON clinical.specimen AS RESTRICTIVE FOR SELEC
 -- facade (and anyone who takes it over) cannot use it to learn which: the client gets the
 -- same 404 either way (D22). Restricted: a security event (access denied). Not found: an
 -- ordinary failed read, so the compliance officer's security log holds only restricted hits.
+-- Every name in the body is schema-qualified, so search_path is pinned to pg_catalog, pg_temp
+-- like every definer function (migration 0030; 0006 created it with pg_catalog, clinical, audit).
 CREATE FUNCTION audit.record_fhir_lookup_denied(p_resource_type text, p_resource_id uuid)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER
-SET search_path = pg_catalog, clinical, audit AS $$
+SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_tenant uuid := NULLIF(current_setting('app.current_tenant_id', true), '')::uuid;
   v_user uuid := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
