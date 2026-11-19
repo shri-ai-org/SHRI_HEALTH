@@ -49,7 +49,9 @@ export default defineConfig({
       env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'md',
              VITE_FEATURE_AI_NOTE_DRAFT: 'on', VITE_FEATURE_AI_ASSISTANT: 'on',
              VITE_FEATURE_AI_CHART_SUMMARY: 'on',
-             VITE_FEATURE_AI_MORNING_BRIEF: 'on', VITE_FEATURE_AI_DIFFERENTIAL: 'on' },
+             VITE_FEATURE_AI_MORNING_BRIEF: 'on', VITE_FEATURE_AI_DIFFERENTIAL: 'on',
+             // Refill requests (e2e/doctorRefills.e2e.ts).
+             VITE_FEATURE_REFILL_REQUESTS: 'on' },
     },
     {
       // The front office as the development front desk (fd), for the desk's screens

@@ -412,6 +412,26 @@ export const SCREENS: ScreenSpec[] = [
     permission: 'op.encounter.read',
   },
   {
+    // SHRI_HEALTH: patients' refill requests from the portal (#415's API; Thulasi on #85, 19 Nov).
+    // Routed and on the rail only with the API and VITE_FEATURE_REFILL_REQUESTS=on (ShriApp, NavRail).
+    id: 'S-06-21',
+    module: 'M-06',
+    name: 'Refill requests',
+    route: '/refills',
+    archetype: 'ARC-01',
+    tier: 'T1',
+    personas: ['P-04', 'P-05'],
+    ai: [],
+    zones: SHELL_RAIL,
+    density: 'compact',
+    nightDefault: false,
+    z7b: 'GP-17',
+    patientScoped: false,
+    oneLiner: 'Approve or decline what patients asked to refill.',
+    navSection: null,
+    permission: 'rx.sign',
+  },
+  {
     id: 'S-06-16',
     module: 'M-06',
     name: 'Prescriptions',
