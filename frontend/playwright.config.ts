@@ -89,6 +89,8 @@ export default defineConfig({
               SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443',
               SHRI_DEV_USER: 'fd',
               SHRI_DEV_PATIENT: portalPatient,
+              // The public "Forgot password?" pages (e2e/portalPasswordHelp.e2e.ts).
+              VITE_FEATURE_PASSWORD_HELP: 'on',
               ...(process.env.SHRI_E2E_PORTAL_CLINIC ? { SHRI_DEV_PATIENT_CLINIC: process.env.SHRI_E2E_PORTAL_CLINIC } : {}),
             },
           },

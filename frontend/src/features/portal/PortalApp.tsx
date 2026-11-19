@@ -3,7 +3,10 @@ import { API_BASE, onUnauthenticated, setCsrfSessionPath, setCsrfToken } from '.
 import type { PortalSession } from '../../api/generated/model'
 import { IdleTimeoutWarning, Spinner } from '../../design-system'
 import { PortalApiContext, type PortalApi } from './api/portalApi'
-import { demoSignInOn, pathEnabled } from './features'
+import { demoSignInOn, pathEnabled, REAL_API } from './features'
+import { notYetConnected, PASSWORD_HELP_PATHS, PASSWORD_HELP_STATUS_PATH, passwordHelpOn } from './passwordHelp'
+import { PasswordHelpRequestPage, PasswordHelpStatusPage } from './pages/auth/PasswordHelpPages'
+import { PasswordHelpPreviewBar, previewHandlers } from './pages/auth/PasswordHelpPreview'
 import './portal.css'
 import { PortalShell } from './PortalShell'
 import { matchPath, PortalRouter, useRouter } from './router'
@@ -158,6 +161,19 @@ function AutoSignIn({ api }: { api: PortalApi }) {
   )
 }
 
+/** The two password-help pages. With the real API, the handlers that aren't connected yet (no
+ *  contract on main), so they show "unavailable" rather than anything made up; development mock
+ *  builds get a preview strip to show every state. */
+function PasswordHelpRoute({ path }: { path: string }) {
+  const [handlers] = useState(() => (REAL_API ? notYetConnected : previewHandlers()))
+  return (
+    <>
+      {path === PASSWORD_HELP_STATUS_PATH ? <PasswordHelpStatusPage handlers={handlers} /> : <PasswordHelpRequestPage handlers={handlers} />}
+      {REAL_API ? null : <PasswordHelpPreviewBar />}
+    </>
+  )
+}
+
 export function PortalApp({ api }: { api: PortalApi }) {
   return (
     <PortalApiContext.Provider value={api}>
@@ -262,6 +278,10 @@ function Gate({ api }: { api: PortalApi }) {
 
   const session = state.kind === 'signed-in' ? state.session : null
   const sessionApi = useMemo<SessionApi | null>(() => (session ? { session, signOut, refresh } : null), [session, signOut, refresh])
+
+  // "Forgot password?" (#85; demo servers only, VITE_FEATURE_PASSWORD_HELP): public pages that need
+  // no session, so they show whether or not someone is signed in.
+  if (passwordHelpOn() && PASSWORD_HELP_PATHS.includes(path)) return <PasswordHelpRoute path={path} />
 
   if (state.kind === 'checking') {
     return (
