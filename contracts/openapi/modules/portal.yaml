@@ -2671,7 +2671,6 @@ paths:
                 summary: A refill of lisinopril
                 value:
                   prescriptionId: 0e1f2a3b-4c5d-4e6f-9a7b-8c9d0e1f2a3b
-                  note: Down to my last week of tablets.
       responses:
         '201':
           description: Created. The request, open.
@@ -4332,7 +4331,7 @@ components:
           description: Cursor for the next page. Absent on the last page.
           x-phi: none
     PortalRefillRequestCreate:
-      description: Body to ask for a refill.
+      description: Body to ask for a refill. It names the prescription only, with no free text (Vimal, 17 Nov 2026).
       type: object
       additionalProperties: false
       required:
@@ -4342,8 +4341,3 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The prescription to refill (an `id` with `source` `prescription` from `GET /portal/me/medications`).
           x-phi: internal-id
-        note:
-          type: string
-          maxLength: 500
-          description: A note for the practice.
-          x-phi: clinical

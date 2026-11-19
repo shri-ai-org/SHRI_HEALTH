@@ -17,14 +17,9 @@
 import type { Id } from './id';
 
 /**
- * Body to ask for a refill.
+ * Body to ask for a refill. It names the prescription only, with no free text (Vimal, 17 Nov 2026).
  */
 export interface PortalRefillRequestCreate {
   /** The prescription to refill (an `id` with `source` `prescription` from `GET /portal/me/medications`). */
   prescriptionId: Id;
-  /**
-     * A note for the practice.
-     * @maxLength 500
-     */
-  note?: string;
 }
