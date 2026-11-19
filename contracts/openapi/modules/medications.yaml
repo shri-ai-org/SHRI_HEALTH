@@ -1324,9 +1324,10 @@ paths:
         a new **draft** prescription (intent `order`, `priorPrescription` set) with the same drug, directions, quantity, days''
         supply, refills and pharmacy, returned as `newPrescriptionId`. The prescriber then runs the safety check and sign-and-send
         on that draft as for any prescription, so the allergy and duplicate-medication alerts still apply (D99) and it goes
-        to the pharmacy through the outbox (D25). **Decline** sets the request `cancelled` with the reason in `statusReason`,
-        which the patient sees. Only MD and APP may do this in the MVP: a user who holds `refill-requests:respond` but has
-        neither role gets `403 permission-denied` (D110; for the clinical advisors to confirm, Q21).'
+        to the pharmacy through the outbox (D25). **Decline** sets the request `cancelled` with a fixed reason code; the patient
+        sees that code''s fixed wording (`declineReason`), never clinician free text. Only MD and APP may do this in the MVP:
+        a user who holds `refill-requests:respond` but has neither role gets `403 permission-denied` (D110; for the clinical
+        advisors to confirm, Q21).'
       tags:
       - medications
       x-owner: thulasi
@@ -1358,7 +1359,7 @@ paths:
                 summary: Decline
                 value:
                   decision: decline
-                  reason: Please book a visit first; your blood pressure needs a recheck.
+                  reason: needs-visit
       responses:
         '200':
           description: The refill request, answered.
@@ -2150,7 +2151,7 @@ components:
         declineReason:
           type: string
           maxLength: 500
-          description: Why it was declined; the patient sees it.
+          description: Why it was declined, in the fixed patient wording of the decline code; the patient sees it.
           x-phi: clinical
         newPrescriptionId:
           $ref: ../components/schemas/Id.yaml
@@ -2194,7 +2195,13 @@ components:
           x-phi: clinical
         reason:
           type: string
-          minLength: 3
-          maxLength: 500
-          description: Why it is declined, in words for the patient. Required to decline.
+          enum:
+          - needs-visit
+          - needs-lab-work
+          - no-longer-recommended
+          - contact-the-office
+          description: 'Why it is declined, as a fixed code; required to decline. The patient sees the code''s fixed wording
+            (`declineReason`), never clinician free text: `needs-visit` (book a visit so the clinician can review the medicine),
+            `needs-lab-work` (new lab results are needed first), `no-longer-recommended` (the clinician no longer recommends
+            the medicine), `contact-the-office` (contact the office about the request).'
           x-phi: clinical

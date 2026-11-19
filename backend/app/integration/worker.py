@@ -205,11 +205,14 @@ async def _notify(event: str, message: OutboundMessage, session: AsyncSession, d
 
 
 def adapters(settings: Settings) -> dict[str, Adapter]:
-    """The partner adapters by name (admin.integration_endpoint.adapter): for now the simulated
-    payer and pharmacy, when enabled (simulated.py; never in production)."""
-    from app.integration.simulated import simulated_adapters  # it builds on this module
+    """The partner adapters by name (admin.integration_endpoint.adapter): the simulated payer and
+    pharmacy, when enabled (simulated.py; never in production), and the email sender, when it
+    has somewhere to send (mail.py: Brevo for the team's addresses, Mailpit for the rest)."""
+    from app.integration.mail import email_adapters  # both build on this module
+    from app.integration.simulated import simulated_adapters
 
     found: dict[str, Adapter] = dict(simulated_adapters(settings))
+    found.update(email_adapters(settings))
     return found
 
 

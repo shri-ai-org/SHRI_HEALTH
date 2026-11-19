@@ -24,6 +24,9 @@ ARG VITE_FEATURE_AI_MORNING_BRIEF=off
 ARG VITE_FEATURE_AI_DIFFERENTIAL=off
 # The patient portal's demo sign-in (D121): "on" only for SHRI_DEMO_SIGN_IN=true on a demo host.
 ARG VITE_FEATURE_DEMO_SIGN_IN=off
+# The screens' password help (reset by email): "on" only with SHRI_DEMO=true, where Keycloak's
+# mail goes to Mailpit (deploy.sh); "off" everywhere else.
+ARG VITE_FEATURE_PASSWORD_HELP=off
 WORKDIR /web
 COPY package.json package-lock.json .npmrc tsconfig.json tsconfig.app.json tsconfig.node.json ./
 # The apps import the shared session code (src/api) and the dev proxy's types (dev/).

@@ -31,6 +31,48 @@ compose_cmd() {
 
 secret() { openssl rand -hex "${1:-32}"; }
 
+# Mailpit's web UI credential (demo hosts): user demo-admin, a random password in
+# DIR/mailpit/ui-password and its htpasswd line (apr1, read by Mailpit and by the host's Nginx) in
+# DIR/mailpit/ui.htpasswd, both mode 600. Kept when they exist. The password never reaches a
+# command line (openssl reads it on stdin) and is never printed.
+mailpit_credential() {
+    local dir="$1/mailpit" password
+    [ -s "$dir/ui-password" ] && [ -s "$dir/ui.htpasswd" ] && return 0
+    (
+        umask 077
+        mkdir -p "$dir"
+        password="$(secret 24)"
+        printf '%s\n' "$password" >"$dir/ui-password"
+        printf 'demo-admin:%s\n' "$(printf '%s\n' "$password" | openssl passwd -apr1 -stdin)" >"$dir/ui.htpasswd"
+    )
+    chmod 700 "$dir"
+    chmod 600 "$dir/ui-password" "$dir/ui.htpasswd"
+    grep -q '^demo-admin:\$apr1\$' "$dir/ui.htpasswd" || die "could not write Mailpit's credential in $dir"
+}
+
+# The worker's email (integration/mail.py), demo hosts only: SHRI_EMAIL_TEAM_ALLOWLIST (the team's
+# own addresses, comma-separated) go out through Brevo, from SHRI_EMAIL_FROM_ADDRESS; everyone else
+# to Mailpit. Elsewhere all three are empty, so the worker sends no email. Brevo's key is never in
+# the settings file: it is BREVO_API_KEY in OpenBao (README, set-secret.sh).
+email_settings() {
+    local address='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+'
+    SHRI_WORKER_EMAIL_TEAM_ALLOWLIST="" SHRI_WORKER_EMAIL_FROM_ADDRESS="" SHRI_WORKER_MAILPIT_SMTP_HOST=""
+    if [ "${SHRI_DEMO:-false}" = true ]; then
+        SHRI_WORKER_MAILPIT_SMTP_HOST=mailpit
+        if [ -n "${SHRI_EMAIL_TEAM_ALLOWLIST:-}" ]; then
+            [[ "$SHRI_EMAIL_TEAM_ALLOWLIST" =~ ^$address(,$address)*$ ]] \
+                || die "SHRI_EMAIL_TEAM_ALLOWLIST is email addresses separated by commas (no spaces)"
+            [[ "${SHRI_EMAIL_FROM_ADDRESS:-}" =~ ^$address$ ]] \
+                || die "SHRI_EMAIL_TEAM_ALLOWLIST needs SHRI_EMAIL_FROM_ADDRESS (a sender Brevo has verified)"
+            SHRI_WORKER_EMAIL_TEAM_ALLOWLIST="$SHRI_EMAIL_TEAM_ALLOWLIST"
+            SHRI_WORKER_EMAIL_FROM_ADDRESS="$SHRI_EMAIL_FROM_ADDRESS"
+        fi
+    elif [ -n "${SHRI_EMAIL_TEAM_ALLOWLIST:-}" ]; then
+        die "SHRI_EMAIL_TEAM_ALLOWLIST needs SHRI_DEMO=true (Brevo signs no BAA; never with real patients)"
+    fi
+    export SHRI_WORKER_EMAIL_TEAM_ALLOWLIST SHRI_WORKER_EMAIL_FROM_ADDRESS SHRI_WORKER_MAILPIT_SMTP_HOST
+}
+
 init_env() {
     local file="$1"
     [ -e "$file" ] && die "$file exists; edit it instead"
@@ -67,6 +109,12 @@ SHRI_DEMO_AI_SCREENS=false
 # true: the patient portal's demo sign-in, mobile number + date of birth with no code or password
 # (D121; patients without a portal account). Only with SHRI_DEMO=true; the API refuses it otherwise.
 SHRI_DEMO_SIGN_IN=false
+# The worker's email (demo hosts only): these team addresses (comma-separated, no spaces) get real
+# mail through Brevo, from SHRI_EMAIL_FROM_ADDRESS (a sender Brevo has verified); every other
+# address goes to Mailpit. Empty: all mail goes to Mailpit. Brevo's key is BREVO_API_KEY in OpenBao
+# (README), never here.
+SHRI_EMAIL_TEAM_ALLOWLIST=
+SHRI_EMAIL_FROM_ADDRESS=
 # Leave empty: the demo patients are then booked on the day the seed runs, in the clinic's time
 # zone (San Jose), so every rehearsal has a full day, and the reset on 20 Nov after 13:30 IST gives
 # the demo day. A date (YYYY-MM-DD, seed/demo.py) only to rehearse a particular day; never left
@@ -81,6 +129,9 @@ TLS_KEY_FILE=
 SHRI_STATE_DIR=$(cd "$(dirname "$file")" && pwd)/shri-state
 # Keycloak's admin console, on this host's loopback only (reach it over an SSH tunnel).
 SHRI_KC_ADMIN_PORT=8081
+# Mailpit's web UI (demo hosts only: the mail Keycloak sends), on this host's loopback only.
+# Its demo-admin password is in SHRI_STATE_DIR/mailpit/ui-password, never in this file.
+SHRI_MAILPIT_UI_PORT=8025
 
 POSTGRES_DB=shri_health
 POSTGRES_USER=shri
@@ -113,7 +164,13 @@ HOOK_SECRET_ERX=$(secret)
 DEMO_PASSWORD=$(secret 12)
 EOF
     chmod 600 "$file"
+    # Into the default state dir; `up` writes one there too if SHRI_STATE_DIR is moved.
+    local state
+    state="$(cd "$(dirname "$file")" && pwd)/shri-state"
+    (umask 077; mkdir -p "$state")
+    mailpit_credential "$state"
     echo "Wrote $file (mode 600). Set SHRI_HOSTNAME, SHRI_HTTPS_PORT, SHRI_DEMO and TLS_* there."
+    echo "Mailpit's demo-admin password (demo hosts): $state/mailpit/ui-password (mode 600)."
 }
 
 load_env() {
@@ -131,7 +188,7 @@ load_env() {
     case "${SHRI_ENVIRONMENT:-staging}" in staging|production) ;; *) die "SHRI_ENVIRONMENT is staging or production";; esac
     case "${SHRI_DEMO:-false}" in true|false) ;; *) die "SHRI_DEMO is true or false";; esac
     if [ "${SHRI_ENVIRONMENT:-staging}" = production ] && [ "${SHRI_DEMO:-false}" = true ]; then
-        die "the demo (simulated partners, synthetic seed) is never deployed to production"
+        die "the demo (simulated partners, synthetic seed, the Mailpit mail catcher) is never deployed to production"
     fi
     # Patient sign-in: the API gets the patient realm's client secrets only when it is on;
     # without them its sign-in and enrolment routes answer 503. Keycloak always has them.
@@ -167,6 +224,21 @@ load_env() {
         false) export SHRI_API_DEMO_SIGN_IN=false SHRI_WEB_DEMO_SIGN_IN=off ;;
         *) die "SHRI_DEMO_SIGN_IN is true or false" ;;
     esac
+    # Mailpit, the demo mail catcher (its compose profile, switched on here only), and the screens'
+    # password help that relies on it: demo hosts only, never production. The profile is
+    # deploy.sh's alone, so a settings file or shell can't switch it on behind these checks.
+    [ -z "${COMPOSE_PROFILES:-}" ] \
+        || die "COMPOSE_PROFILES is set by deploy.sh (Mailpit only with SHRI_DEMO=true): remove it from $ENV_FILE and the shell"
+    if [ "${SHRI_DEMO:-false}" = true ]; then
+        [ "${SHRI_ENVIRONMENT:-staging}" != production ] \
+            || die "Mailpit (the demo mail catcher) never runs in production: SHRI_ENVIRONMENT=production needs SHRI_DEMO=false"
+        export COMPOSE_PROFILES=mailpit SHRI_WEB_PASSWORD_HELP=on
+    else
+        unset COMPOSE_PROFILES
+        export SHRI_WEB_PASSWORD_HELP=off
+    fi
+    SHRI_MAILPIT_UI_PORT="${SHRI_MAILPIT_UI_PORT:-8025}"
+    [[ "$SHRI_MAILPIT_UI_PORT" =~ ^[1-9][0-9]{0,4}$ ]] || die "SHRI_MAILPIT_UI_PORT is a port number"
     SHRI_DEMO_DAY="${SHRI_DEMO_DAY:-}"
     if [ -n "$SHRI_DEMO_DAY" ]; then
         [ "${SHRI_DEMO:-false}" = true ] || die "SHRI_DEMO_DAY needs SHRI_DEMO=true (it moves the demo data)"
@@ -217,6 +289,21 @@ load_env() {
     export SHRI_BUILD_DAY_VERSION
     SHRI_BUILD_VERSION="$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$REPO/backend/pyproject.toml" | head -1)"
     mkdir -p "$SHRI_STATE_DIR" && chmod 700 "$SHRI_STATE_DIR"
+    # Mailpit's UI: under the public base path (so its links work behind a shared host's path) and
+    # behind the demo-admin password, made here if this state dir has none yet (a demo host only).
+    SHRI_MAILPIT_WEBROOT="$SHRI_BASE_PATH/mail/"
+    SHRI_MAILPIT_AUTH_FILE="$SHRI_STATE_DIR/mailpit/ui.htpasswd"
+    if [ "${SHRI_DEMO:-false}" = true ]; then mailpit_credential "$SHRI_STATE_DIR"; fi
+    export SHRI_MAILPIT_UI_PORT SHRI_MAILPIT_WEBROOT SHRI_MAILPIT_AUTH_FILE
+    # The partner worker's OpenBao token (read secret/shri-health/api only, for BREVO_API_KEY):
+    # made once in the state dir (mode 600), never in the settings file or on a command line.
+    if [ ! -s "$SHRI_STATE_DIR/openbao-worker-token" ]; then
+        (umask 077; secret >"$SHRI_STATE_DIR/openbao-worker-token")
+    fi
+    chmod 600 "$SHRI_STATE_DIR/openbao-worker-token"
+    SHRI_OPENBAO_WORKER_TOKEN="$(cat "$SHRI_STATE_DIR/openbao-worker-token")"
+    export SHRI_OPENBAO_WORKER_TOKEN
+    email_settings
     case "${TLS_MODE:-self-signed}" in
         self-signed)
             sh "$DEPLOY/tls/make-self-signed.sh" "$SHRI_HOSTNAME" "$SHRI_STATE_DIR/tls" >/dev/null
@@ -242,6 +329,7 @@ unseal() {
     # The key and token reach the script on stdin, never on a command line.
     out="$( {
         printf 'export OPENBAO_API_TOKEN=%s\n' "$OPENBAO_API_TOKEN"
+        printf 'export OPENBAO_WORKER_TOKEN=%s\n' "$SHRI_OPENBAO_WORKER_TOKEN"
         if [ -f "$state" ]; then sed -n 's/^\(BAO_[A-Z_]*\)=\([A-Za-z0-9.+\/=_-]*\)$/export \1=\2/p' "$state"; fi
         cat "$DEPLOY/openbao/init-unseal.sh"
     } | $DC exec -T openbao sh -s)"
@@ -350,8 +438,9 @@ behind_host() { [ -n "${SHRI_SITE_URL:-}" ]; }
 # Refuses to start if a port or a network we need belongs to something else on this host (a
 # shared host runs other apps): never stops, moves or reuses what isn't this project's.
 guard_ours() {
-    local port net name subnets
-    for port in "$SHRI_HTTPS_PORT" "${SHRI_KC_ADMIN_PORT:-8081}"; do
+    local port net name subnets ports=("$SHRI_HTTPS_PORT" "${SHRI_KC_ADMIN_PORT:-8081}")
+    [ "${SHRI_DEMO:-false}" = true ] && ports+=("$SHRI_MAILPIT_UI_PORT")
+    for port in "${ports[@]}"; do
         if ss -Htln "sport = :$port" | grep -q .; then
             docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' \
                 | grep -q ":$port->" || die "port $port is in use by something that isn't $PROJECT: choose another"
@@ -371,6 +460,7 @@ sync_clients() {
     wait_for "$EDGE_URL/kc/realms/shri-staff/.well-known/openid-configuration" "Keycloak"
     KC_URL="http://127.0.0.1:${SHRI_KC_ADMIN_PORT:-8081}/kc" KC_ADMIN="$KEYCLOAK_ADMIN" \
         KC_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" PUBLIC_URL="$SHRI_PUBLIC_URL" \
+        SHRI_DEMO="${SHRI_DEMO:-false}" SHRI_HOSTNAME="$SHRI_HOSTNAME" \
         python3 -I "$REPO/infra/keycloak/sync-client-urls.py"
 }
 
@@ -500,6 +590,29 @@ check() {
         die "a port of ours is open beyond 127.0.0.1: $mapping"
     done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' \
         | tr ',' '\n' | sed 's/^ *//' | grep -- '->' || true)
+    # Mailpit: on a demo host, its one published port is the UI on 127.0.0.1 (never its SMTP
+    # port, never another address), and the UI and its API refuse anyone without the demo-admin
+    # password. Anywhere else it must not run at all.
+    local mp_maps mp_code
+    mp_maps="$(docker ps --filter "label=com.docker.compose.project=$PROJECT" \
+        --filter "label=com.docker.compose.service=mailpit" --format '{{.Ports}}' \
+        | tr ',' '\n' | sed 's/^ *//' | grep -- '->' || true)"
+    if [ "${SHRI_DEMO:-false}" = true ]; then
+        [ "$mp_maps" = "127.0.0.1:$SHRI_MAILPIT_UI_PORT->8025/tcp" ] \
+            || die "Mailpit must publish only its UI, on 127.0.0.1:$SHRI_MAILPIT_UI_PORT (it has: ${mp_maps:-nothing})"
+        local mp="http://127.0.0.1:$SHRI_MAILPIT_UI_PORT$SHRI_MAILPIT_WEBROOT"
+        for _ in $(seq 1 30); do
+            mp_code="$(curl -sS -o /dev/null -w '%{http_code}' "$mp" 2>/dev/null || true)"
+            [ "$mp_code" = 000 ] || break
+            sleep 1
+        done
+        [ "$mp_code" = 401 ] || die "Mailpit's UI answers $mp_code without the demo-admin password (401 expected)"
+        # The password reaches curl on stdin (-K -), never its command line.
+        curl -fsS -o /dev/null -K - "${mp}api/v1/info" <<<"user = \"demo-admin:$(cat "$SHRI_STATE_DIR/mailpit/ui-password")\"" \
+            || die "Mailpit's UI refuses the demo-admin password in $SHRI_STATE_DIR/mailpit/ui-password"
+    elif [ -n "$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=mailpit")" ]; then
+        die "Mailpit runs on a host that isn't a demo host (SHRI_DEMO=false): run deploy.sh up to remove it"
+    fi
     if behind_host; then
         # The public address, through the host's Nginx and its real certificate (the system's
         # trust store; CHECK_PUBLIC_CACERT for a test host's own).
@@ -524,6 +637,17 @@ check() {
                 || die "Keycloak's page at $P doesn't get its policy: rerun deploy.sh host-nginx and install the file (README)"
             printf '%s' "$headers" | tr -d '\r' | grep -qi "^x-frame-options: DENY" \
                 || die "Keycloak's page at $P is missing X-Frame-Options"
+            if [ "${SHRI_DEMO:-false}" = true ]; then
+                # Mailpit's UI at $P/mail/ (host-nginx): the host's password prompt first. Mailpit
+                # asks for the same password itself, so an older site file only leaves it unserved.
+                headers="$(curl -sS ${CHECK_PUBLIC_CACERT:+--cacert "$CHECK_PUBLIC_CACERT"} -o /dev/null -D - "$P/mail/" 2>/dev/null || true)"
+                if printf '%s' "$headers" | tr -d '\r' | grep -qi '^HTTP/[0-9.]* 401'; then
+                    printf '%s' "$headers" | tr -d '\r' | grep -qi '^x-robots-tag: noindex' \
+                        || die "$P/mail/ is missing X-Robots-Tag: noindex: rerun deploy.sh host-nginx and install the file"
+                else
+                    say "$P/mail/ doesn't ask for the demo-admin password: the host's Nginx site predates Mailpit (deploy.sh host-nginx, README)"
+                fi
+            fi
             say "Public address $P: TLS, health, sign-in, headers and the dev header refusal checked"
         else
             say "Public address $P not reachable yet: the host's Nginx site isn't in place (deploy.sh host-nginx, README)"
@@ -586,6 +710,46 @@ EOF
     printf '%s' "$kc_proxy" | grep -q "proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/kc/;" \
         && printf '%s' "$kc_proxy" | grep -q "script-src 'self' 'unsafe-inline'" \
         || die "host-nginx: could not build the /kc/ block"
+    # Mailpit's UI at <base path>/mail/, on a demo host only: the host's Nginx asks for the
+    # demo-admin password (the htpasswd hash only, copied here; the password stays in the state
+    # dir), and Mailpit checks it again. Its webroot is this path, so the path goes through as is.
+    local mail=""
+    rm -f "$dir/mail.htpasswd"
+    if [ "${SHRI_DEMO:-false}" = true ]; then
+        (umask 077; cp "$SHRI_MAILPIT_AUTH_FILE" "$dir/mail.htpasswd")
+        mail="$(cat <<EOF
+location ^~ $SHRI_MAILPIT_WEBROOT {
+    # Mailpit, the demo mail catcher ($PROJECT, demo host only): written by deploy.sh host-nginx.
+    auth_basic "Shri Health demo mail";
+    auth_basic_user_file /etc/nginx/shri/$PROJECT-mail.htpasswd;
+    proxy_pass http://127.0.0.1:$SHRI_MAILPIT_UI_PORT;   # no URI: Mailpit's webroot is $SHRI_MAILPIT_WEBROOT
+    proxy_redirect off;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;                     # its live updates (WebSocket) check the origin
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Forwarded-For \$remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Dev-User "";
+    proxy_set_header X-Dev-Patient "";
+    proxy_set_header X-Dev-Patient-Clinic "";
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+    client_max_body_size 1m;
+    proxy_hide_header Cache-Control;
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header X-Robots-Tag;
+    add_header Cache-Control "no-store" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;   # its message preview is a same-origin frame
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+}
+
+EOF
+)"
+    fi
     [ "$SHRI_PUBLIC_PORT" = 443 ] || listen="$SHRI_PUBLIC_PORT"
     if [ -z "$SHRI_BASE_PATH" ]; then
         file="$dir/$SHRI_HOSTNAME.conf"
@@ -613,6 +777,7 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     server_tokens off;
 
+$mail
     location ^~ /kc/ {
 $kc_proxy
     }
@@ -632,6 +797,7 @@ location = $SHRI_BASE_PATH {
     return 301 $SHRI_BASE_PATH/;
 }
 
+$mail
 location ^~ $SHRI_BASE_PATH/kc/ {
 $kc_proxy
 }
@@ -642,6 +808,7 @@ $proxy
 EOF
     fi
     say "Wrote $file and $dir/upstream.crt (README: the one-time sudo commands)"
+    [ -z "$mail" ] || say "and $dir/mail.htpasswd for Mailpit's /mail/ (demo host; README: Mailpit)"
 }
 
 up() {
@@ -668,6 +835,11 @@ up() {
     # Nginx renders its template only when it starts, and compose doesn't restart it for a
     # changed mounted file: recreate it so this commit's template (and certificate) is what runs.
     $DC up -d --no-deps --force-recreate nginx
+    # A host that stopped being a demo host: compose leaves a service of an inactive profile
+    # running, so Mailpit (and the mail it caught) is removed here.
+    if [ "${SHRI_DEMO:-false}" != true ]; then
+        $DC rm --stop --force mailpit >/dev/null 2>&1 || true
+    fi
     say "Migrations (shri_migrator)"
     migrate
     sync_clients

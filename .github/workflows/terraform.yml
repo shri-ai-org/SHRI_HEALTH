@@ -1,29 +1,24 @@
 # OpenTofu checks (D75: OpenTofu, MPL-2.0, replaces Terraform): fmt, validate and the mock-provider
 # tests in infra/terraform/tests/. No cloud credentials: nothing here plans against or changes a
-# real account. Runs only when infra/terraform/
-# or this workflow changes, to save Free-plan minutes. Every Action is pinned by commit SHA, and
+# real account. Runs on every pull request and every merge to main. Every Action is pinned by commit SHA, and
 # OpenTofu itself by version and SHA-256 (checked against OpenTofu's GPG-signed SHA256SUMS, key
 # E3E6E43D84CB852EADB0051D0C0AF313E5FD9F80).
 name: terraform
 
 on:
   pull_request:
-    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    # Every pull request runs, drafts included (D106's CI-minutes rules withdrawn, 19 Nov 2026).
     types: [opened, synchronize, reopened, ready_for_review]
-    # Markdown alone doesn't run this; docs.yml checks its links.
-    paths: ["infra/terraform/**", "!**/*.md", ".github/workflows/terraform.yml"]
   push:
     branches: [main]
-    paths: ["infra/terraform/**", "!**/*.md", ".github/workflows/terraform.yml"]
 
 permissions:
   contents: read
 
 concurrency:
-  # A draft's skipped run has its own group, so it never cancels the real run started when the
-  # PR is marked ready a few seconds after a push (#214, #213). Outside a PR (a merge to main)
-  # each commit has its own group, so a newer merge never cancels or drops an earlier run.
-  group: terraform-${{ github.event.pull_request.number || github.sha }}${{ github.event.pull_request.draft && '-draft' || '' }}
+  # One group per pull request. Outside a PR (a merge to main) each commit has its own group, so a
+  # newer merge never cancels or drops an earlier run.
+  group: terraform-${{ github.event.pull_request.number || github.sha }}
   # Cancel superseded PR runs only; every commit on main gets a complete run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -35,8 +30,6 @@ env:
 
 jobs:
   check:
-    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:

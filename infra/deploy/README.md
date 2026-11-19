@@ -15,6 +15,7 @@ The development stack (`infra/compose/docker-compose.yml`) with the overlay `doc
 | PostgreSQL, SeaweedFS, ClamAV | As in development; no port published |
 | Egress proxy | **The API and the worker have no route to the internet** (the internal `backend` network). Their one way out is this Nginx stream proxy (`egress/nginx.conf`), and only to `api.anthropic.com` over HTTPS: it passes the connection on by its TLS name without decrypting it, so the API checks Anthropic's real certificate; any other name is refused. Its log shows each connection (time, name, bytes), never content. A real partner is added to its list when chosen. The code load (`deploy.sh reset`) runs as the `code-loader` service, which has internet |
 | Simulated payer and pharmacy | Only with `SHRI_DEMO=true`; refused when `SHRI_ENVIRONMENT=production` (by `deploy.sh` and by the API's settings) |
+| Mailpit (the demo mail catcher) | Only with `SHRI_DEMO=true`; never in production. Catches Keycloak's mail (password reset) and shows it in a web UI; nothing is ever delivered. See [Mailpit](#mailpit-demo-hosts-only) |
 
 ## Host setup (once)
 
@@ -162,6 +163,7 @@ Run by `up` and `check`. It passes only if all of these hold:
 - patient sign-in answers 503 when `SHRI_PATIENT_SIGN_IN` is not `true`; when it is, sign-in starts at the patient realm's public address, comes back to the portal callback with the patient login cookie on this mode's path, and Keycloak shows its sign-in page;
 - a download URL's token never reaches Nginx's log (a probe request, then the last two minutes of the log).
 - `/` serves the screens, a screen route gets the same page, and the page carries the security headers (CSP, frame denial, HSTS, `no-store`).
+- nothing of ours listens beyond `127.0.0.1` except our edge on a host of our own; on a demo host Mailpit publishes only its UI on `127.0.0.1:SHRI_MAILPIT_UI_PORT`, which refuses requests without the `demo-admin` password (401) and accepts it; on any other host Mailpit isn't running.
 
 ## Demo reset (between rehearsals)
 
@@ -195,6 +197,42 @@ sh infra/deploy/openbao/set-secret.sh <settings file> CLAUDE_API_KEY
 3. Run `deploy.sh up` again so the API reads it.
 
 **Fictional data only** while the AI calls go to the Claude API: there is no BAA with Anthropic yet. Use a key made for this server, with a spending limit, and delete it in the Anthropic console if it may have leaked; then store the new one the same way. Anyone with OpenBao's root token (`openbao.env`) or root on the server can read it, so keep server access to the developers.
+
+## Email from the worker (Brevo for the team, Mailpit for everyone else)
+
+The partner worker sends the API's email (portal invitations, later others) through the outbox (D25; `backend/app/integration/mail.py`). **Demo hosts only:** with `SHRI_DEMO=false`, or in production, it sends none.
+
+- **Who gets real mail:** only the addresses in `SHRI_EMAIL_TEAM_ALLOWLIST` (the team's own, comma-separated), through Brevo's transactional API, from `SHRI_EMAIL_FROM_ADDRESS` (a sender Brevo has verified). **Every other address**, including every fictional patient, goes to Mailpit (below) and never leaves the server. An empty allowlist sends everything to Mailpit. CI and development have no allowlist and no key.
+- **Brevo's key** is `BREVO_API_KEY` in OpenBao, stored as for the Claude key, never in the settings file:
+
+  ```bash
+  sh infra/deploy/openbao/set-secret.sh <settings file> BREVO_API_KEY
+  ```
+
+  The worker reads it at startup with its own OpenBao token, which can only read `secret/shri-health/api` (no Transit, so it can't decrypt fields or files). `deploy.sh` makes that token in `SHRI_STATE_DIR/openbao-worker-token` (mode 600). An environment variable named `BREVO_API_KEY` is ignored, so the key can't come from anywhere but OpenBao.
+- **Its one way out** is the egress proxy, which allows only `api.anthropic.com` and `api.brevo.com`, by name, never decrypted (`egress/nginx.conf`).
+- **Never logged:** the key, the addresses, the subjects and the text. The worker logs only the message ID, where it went (`brevo` or `mailpit`) and a short error code.
+- **Before real patients:** a provider that signs a BAA (Q15) replaces Brevo, as configuration only. Brevo's free plan signs none.
+
+## Mailpit (demo hosts only)
+
+On a demo host, the mail Keycloak sends (password reset, for the screens' password help) must be seen by the presenter but must never reach a real mailbox. Mailpit (`axllent/mailpit`, MIT, pinned by digest in `.github/licences/allowed.json`) catches it and shows it in a web UI. **Production never runs it.**
+
+- **Demo only:** it is the compose profile `mailpit`, which `deploy.sh` switches on (`COMPOSE_PROFILES`) only with `SHRI_DEMO=true`. `deploy.sh` refuses `SHRI_DEMO=true` with `SHRI_ENVIRONMENT=production`, and refuses a `COMPOSE_PROFILES` set by the settings file or the shell. On a host that stops being a demo host, `up` removes the container, and `check` fails if one still runs.
+- **Mail in, never out:** SMTP on `mailpit:1025` inside the compose networks only (Keycloak and the worker); no SMTP port is published, and Mailpit relays nothing. On every `up`, `infra/keycloak/sync-client-urls.py` sets both realms' outgoing mail to it (no TLS, no authentication, from `no-reply@SHRI_HOSTNAME`), only on a demo host. Messages are kept in memory (`/tmp`), at most 500, and are gone at every restart.
+- **The screens' password help** (`VITE_FEATURE_PASSWORD_HELP`) is built `on` only with `SHRI_DEMO=true`, `off` everywhere else.
+- **Web UI:** on this host's loopback only, `127.0.0.1:SHRI_MAILPIT_UI_PORT` (8025), under `/mail/` (the base path first in path mode). `check` fails if Mailpit publishes anything else, or if its UI answers without the password.
+- **The credential:** user `demo-admin`, a random password made by `deploy.sh init-env` (or by `up` on a demo host whose state dir has none) in `SHRI_STATE_DIR/mailpit/ui-password`, with its hash in `ui.htpasswd` next to it, both mode 600. It is never printed and never in the settings file, the repository, GitHub or a chat. Read it on the server: `cat /etc/shri/shri-state/mailpit/ui-password`. To change it, delete both files and run `up` (and `host-nginx`) again.
+
+**Opening it:**
+- **Behind a shared host's Nginx** (`SHRI_SITE_URL`): `deploy.sh host-nginx` adds a `/mail/` location for it to the site file on a demo host, and writes the hash as `host-nginx/mail.htpasswd`. The host's Nginx asks for the `demo-admin` password (and Mailpit checks it again), sends `Cache-Control: no-store` and `X-Robots-Tag: noindex`, and proxies to `127.0.0.1:8025`. Install the hash once, with the site file:
+
+  ```bash
+  sudo install -D -m 640 -o root -g www-data /etc/shri/shri-state/host-nginx/mail.htpasswd /etc/nginx/shri/shri-deploy-mail.htpasswd
+  ```
+
+  Then open `https://dep.shri-ai.org/mail/`. It is the host's Nginx rather than our edge because only the host's Nginx can reach Mailpit's port on `127.0.0.1`, and our edge serves every demo and non-demo host alike.
+- **A host of our own** (the laptop): no public path. Open `http://127.0.0.1:8025/mail/` on the laptop, or over an SSH tunnel (`ssh -L 8025:127.0.0.1:8025 …`), as for Keycloak's admin console.
 
 ## Admin access
 

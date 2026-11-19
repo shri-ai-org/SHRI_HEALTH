@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type { RefillRequestResponseDecision } from './refillRequestResponseDecision';
+import type { RefillRequestResponseReason } from './refillRequestResponseReason';
 
 /**
  * Body to approve or decline a refill request. `reason` is required to decline.
@@ -22,10 +23,6 @@ import type { RefillRequestResponseDecision } from './refillRequestResponseDecis
 export interface RefillRequestResponse {
   /** `approve` (creates a draft prescription) or `decline`. */
   decision: RefillRequestResponseDecision;
-  /**
-     * Why it is declined, in words for the patient. Required to decline.
-     * @minLength 3
-     * @maxLength 500
-     */
-  reason?: string;
+  /** Why it is declined, as a fixed code; required to decline. The patient sees the code's fixed wording (`declineReason`), never clinician free text: `needs-visit` (book a visit so the clinician can review the medicine), `needs-lab-work` (new lab results are needed first), `no-longer-recommended` (the clinician no longer recommends the medicine), `contact-the-office` (contact the office about the request). */
+  reason?: RefillRequestResponseReason;
 }

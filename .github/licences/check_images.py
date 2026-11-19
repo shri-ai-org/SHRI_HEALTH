@@ -3,8 +3,8 @@ and check-npm.mjs).
 
 Every image we run that we don't build ourselves must be listed under `images` in allowed.json,
 with a licence D75 allows (`allowed`, after `aliases`), a version, and the digest it's pinned to.
-Each reference in the compose file and the workflows must carry exactly that tag and digest, so a
-moved tag or an unlisted image fails CI. Our own images (`shri-health/…`, built from a pinned
+Each reference in the compose files (development and the deploy overlay) and the workflows must
+carry exactly that tag and digest, so a moved tag or an unlisted image fails CI. Our own images (`shri-health/…`, built from a pinned
 Dockerfile) are skipped.
 
 Standard library only. Run from anywhere:  python .github/licences/check_images.py
@@ -24,7 +24,8 @@ IMAGES: dict[str, dict[str, str]] = POLICY.get("images", {})
 # "scope": "separate-program" may also use these.
 SEPARATE = set(POLICY.get("separate_programs", {}).get("licences", []))
 
-FILES = [ROOT / "infra/compose/docker-compose.yml", *sorted((ROOT / ".github/workflows").glob("*.yml"))]
+FILES = [ROOT / "infra/compose/docker-compose.yml", ROOT / "infra/deploy/docker-compose.deploy.yml",
+         *sorted((ROOT / ".github/workflows").glob("*.yml"))]
 OWN = "shri-health/"
 # An image reference: `image:` lines in compose, and any registry-qualified reference elsewhere.
 COMPOSE_IMAGE = re.compile(r"^\s*image:\s*['\"]?([^\s'\"#]+)", re.MULTILINE)
@@ -38,7 +39,7 @@ def references() -> list[tuple[str, str]]:
     for path in FILES:
         text = path.read_text(encoding="utf-8")
         refs = set(QUALIFIED.findall(text))
-        if path.name == "docker-compose.yml":
+        if path.name.startswith("docker-compose"):
             refs |= set(COMPOSE_IMAGE.findall(text))
         found += [(path.relative_to(ROOT).as_posix(), ref) for ref in sorted(refs)
                   if not ref.startswith(OWN)]

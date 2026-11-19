@@ -1,35 +1,29 @@
 # Keycloak image and staff realm check (D75, issue #55; SECURITY_MODEL §2.1): build
 # infra/keycloak/Dockerfile, which verifies the pinned Keycloak and Temurin checksums while it
 # builds, then start it in dev mode with the staff realm imported and check the realm's settings.
-# Runs only when infra/keycloak/ or this workflow changes, to save Free-plan minutes. Every Action is
+# Runs on every pull request and every merge to main. Every Action is
 # pinned by commit SHA.
 name: keycloak
 
 on:
   pull_request:
-    # No CI on drafts: a PR runs only once it's ready for review, and again on each push to it.
+    # Every pull request runs, drafts included (D106's CI-minutes rules withdrawn, 19 Nov 2026).
     types: [opened, synchronize, reopened, ready_for_review]
-    # Markdown alone doesn't run this; docs.yml checks its links.
-    paths: ["infra/keycloak/**", "!**/*.md", ".github/workflows/keycloak.yml"]
   push:
     branches: [main]
-    paths: ["infra/keycloak/**", "!**/*.md", ".github/workflows/keycloak.yml"]
 
 permissions:
   contents: read
 
 concurrency:
-  # A draft's skipped run has its own group, so it never cancels the real run started when the
-  # PR is marked ready a few seconds after a push (#214, #213). Outside a PR (a merge to main)
-  # each commit has its own group, so a newer merge never cancels or drops an earlier run.
-  group: keycloak-${{ github.event.pull_request.number || github.sha }}${{ github.event.pull_request.draft && '-draft' || '' }}
+  # One group per pull request. Outside a PR (a merge to main) each commit has its own group, so a
+  # newer merge never cancels or drops an earlier run.
+  group: keycloak-${{ github.event.pull_request.number || github.sha }}
   # Cancel superseded PR runs only; every commit on main gets a complete run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
-    # Skipped on a draft PR (it runs when the PR is marked ready for review); always on main.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
