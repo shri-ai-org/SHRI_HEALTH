@@ -218,14 +218,17 @@ paths:
   /portal/enrollments:
     post:
       operationId: enrollInPortal
-      summary: Enroll with an invitation code
-      description: 'Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the
-        patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account"
-        email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an
-        account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts
-        cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries.
-        Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal
-        host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).'
+      summary: Enroll from an email invitation
+      description: 'Redeems an emailed invitation (D124, amending D85 and ADR-0013 §3). The patient opens the link (`/portal/invite#t=…`);
+        the page keeps the token from the URL fragment, never a query string (D13), and sends it back only in this body, with
+        the patient''s date of birth. With a matching date of birth core creates the patient realm account, with the chart''s
+        email (the one the invitation went to) as its username, links it to the chart once, and answers with Keycloak''s own
+        one-time set-password link for that account: the browser goes straight to Keycloak''s page and the patient sets the
+        password and second factor there, never here (D3); no second email. The link is single use and valid for 7 days; 5
+        wrong dates of birth lock it. Every failure gives the same answer, so links, accounts and charts cannot be probed;
+        rate-limited per address and per invitation. Public: there is no session yet, so there is no CSRF token either; instead
+        the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented
+        in core (ADR-0013 Consequences).'
       tags:
       - portal
       x-owner: thulasi
@@ -250,17 +253,26 @@ paths:
               enroll:
                 summary: Enroll
                 value:
-                  invitationCode: K7Q2-9MZD-4TXH
+                  invitationToken: inv-example-token-0001
                   birthDate: '1984-07-19'
-                  email: maria.ortiz@example.com
       responses:
-        '204':
-          description: '204. Enrolled: the realm sends its set-up email. Nothing else is returned.'
+        '200':
+          description: '200. Enrolled: go to Keycloak''s set-password page.'
           headers:
             X-Request-ID: *id006
             Cache-Control: *id002
             RateLimit: *id007
             RateLimit-Policy: *id008
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResult'
+              examples:
+                setPassword:
+                  summary: Set the password next
+                  value:
+                    next: set-password
+                    redirectUrl: https://dep.example.invalid/kc/realms/shri-patients/login-actions/action-token?key=example
         '400': &id014
           $ref: ../components/responses/BadRequest.yaml
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -273,8 +285,8 @@ paths:
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
           description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
-            `/invitationCode` `not-allowed-value` for every reason the code can''t be used: unknown, expired, used, revoked,
-            its chart merged into another or no longer active, or the date of birth doesn''t match); `idempotency-key-reused`
+            `/invitationToken` `not-allowed-value` for every reason the link can''t be used: unknown, expired, used, revoked,
+            locked, its chart merged into another or no longer active, or the date of birth doesn''t match); `idempotency-key-reused`
             (the Idempotency-Key was used with a different body).'
         '429': *id003
         '500': *id004
@@ -2789,32 +2801,45 @@ components:
           description: The patient's date of birth, checked with the mobile number.
           x-phi: identifier
     EnrollmentRequest:
-      description: Body to enroll with a front-desk invitation code (ADR-0013 §3, D85). The code was given in person after
-        an ID check; the date of birth is checked with it, never used on its own; the email becomes the sign-in name.
+      description: Body to enroll from an emailed invitation (D124). The token came from the link; the date of birth is checked
+        with it, never used on its own; the account's username is the chart's email, not typed here.
       type: object
       additionalProperties: false
       required:
-      - invitationCode
+      - invitationToken
       - birthDate
-      - email
       properties:
-        invitationCode:
+        invitationToken:
           type: string
-          maxLength: 14
-          description: 'The invitation code as printed (`K7Q2-9MZD-4TXH`), in any case and with or without the dashes. The
-            server normalizes it before checking: upper case, dashes removed, and Crockford''s look-alikes read as digits
-            (`I` and `L` as `1`, `O` as `0`). A code that is still not valid gets the same answer as any other failure.'
-          x-phi: identifier
-          minLength: 12
-          pattern: ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$
+          minLength: 16
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+          description: The token from the invitation link's fragment (`#t=…`). Only its hash is stored; never logged.
+          x-phi: none
         birthDate:
           $ref: ../components/schemas/Date.yaml
-          description: The patient's date of birth, checked with the code.
+          description: The patient's date of birth, checked with the token.
           x-phi: identifier
-        email:
-          $ref: ../components/schemas/EmailAddress.yaml
-          description: The email to sign in with; verified by the patient realm before the first sign-in.
-          x-phi: identifier
+    EnrollmentResult:
+      description: Where the browser goes after enrolling (D124).
+      type: object
+      required:
+      - next
+      - redirectUrl
+      properties:
+        next:
+          type: string
+          enum:
+          - set-password
+          description: '`set-password`: open `redirectUrl`, Keycloak''s page to set the password and second factor.'
+          x-phi: none
+        redirectUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Keycloak's one-time set-password link for the new account, short-lived. Open it at once; never store
+            or log it.
+          x-phi: none
     PortalName:
       description: A name as the patient sees it.
       type: object
