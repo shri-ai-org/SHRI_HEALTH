@@ -202,6 +202,26 @@ def test_the_list_refuses(client: Any, practice: Practice, rx: Rx) -> None:
 
 
 # ----------------------------------------------------------------------- the whole way
+def test_a_renewal_never_warns_against_the_prescription_it_renews(client: Any,
+                                                                  practice: Practice,
+                                                                  rx: Rx) -> None:
+    """A refill's approved draft names its original in prior_prescription_id (#415); the
+    duplicate-medication rule skips that one, and still warns about any other entry."""
+    kaia = practice.patients["kaia"]
+    original = client("ma").post(f"{API}/patients/{kaia}/medications",
+                                 json={"medication": AMOXICILLIN}, headers=_key()).json()
+    draft = _draft(client, practice, rx).json()
+    url = f"{API}/prescriptions/{draft['id']}/safety-check"
+    warned = client("md").post(url).json()["alerts"]
+    assert [a["medicationId"] for a in warned if a["kind"] == "duplicate-medication"] == [
+        original["id"]]
+    _sql(practice, "UPDATE clinical.medication_request SET prior_prescription_id = :o "
+         "WHERE id = :d", o=original["id"], d=draft["id"])
+    checked = client("md").post(url)
+    assert checked.status_code == 200, checked.text
+    assert "duplicate-medication" not in {a["kind"] for a in checked.json()["alerts"]}
+
+
 def test_draft_check_override_sign_and_send(client: Any, practice: Practice,
                                            rx: Rx) -> None:
     kaia = practice.patients["kaia"]

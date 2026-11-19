@@ -267,10 +267,13 @@ def is_known_permission(permission: str) -> bool:
 # of the staff matrix and never a staff permission: portal routes check these with
 # deps.require_patient(), staff routes with require(), and neither accepts the other's session.
 # portal-messages:create (writing to and replying to the care team) and portal-records:export
-# (the patient's own record as PDF or FHIR R4) came with the portal batch's contract (#398).
+# (the patient's own record as PDF or FHIR R4) came with the portal batch's contract (#398);
+# portal-refill-requests:create (asking to refill one of their own prescriptions) with the
+# refills contract (#400).
 PATIENT_PERMISSIONS: frozenset[str] = _expand(
     "portal-profile:read|request-change", "portal-appointments:read|create|cancel|reschedule",
     "portal-booking:read", "portal-records:read|export", "portal-messages:create",
+    "portal-refill-requests:create",
 )
 
 

@@ -337,6 +337,10 @@ def _has_changes(session: Session) -> bool:
 
 @event.listens_for(Session, "before_commit")
 def _write_with_the_commit(session: Session) -> None:
+    if session.in_nested_transaction():
+        # A SAVEPOINT's release (begin_nested(), as the store's helpers use to name a refused
+        # constraint) fires before_commit and after_commit too; only the real commit counts.
+        return
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
     if session.info.get(AUDIT_COMMITTED):
         if _has_changes(session):
@@ -356,6 +360,8 @@ def _write_with_the_commit(session: Session) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _committed(session: Session) -> None:
+    if session.in_nested_transaction():  # a SAVEPOINT released: nothing is committed yet
+        return
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
     session.info[_CHANGED_SINCE_COMMIT] = False
     if trail is not None and trail._committing:
@@ -365,6 +371,8 @@ def _committed(session: Session) -> None:
 
 @event.listens_for(Session, "after_rollback")
 def _rolled_back(session: Session) -> None:
+    if session.in_nested_transaction():  # back to a SAVEPOINT: earlier changes still stand
+        return
     session.info[_CHANGED_SINCE_COMMIT] = False
     trail: AuditTrail | None = session.info.get(TRAIL_STATE)
     if trail is not None:

@@ -188,18 +188,19 @@ def test_the_portal_csrf_key_is_not_the_staff_one() -> None:
 
 
 # --------------------------------------------------------------- require_patient (PAT)
-def test_pat_holds_only_the_ten_portal_permissions() -> None:
+def test_pat_holds_only_the_eleven_portal_permissions() -> None:
     assert PATIENT_PERMISSIONS == {
         "portal-profile:read", "portal-profile:request-change", "portal-appointments:read",
         "portal-appointments:create", "portal-appointments:cancel",
         "portal-appointments:reschedule", "portal-booking:read", "portal-records:read",
-        "portal-records:export", "portal-messages:create"}
+        "portal-records:export", "portal-messages:create", "portal-refill-requests:create"}
 
 
-@pytest.mark.parametrize("permission", ["portal-messages:create", "portal-records:export"])
+@pytest.mark.parametrize("permission", ["portal-messages:create", "portal-records:export",
+                                        "portal-refill-requests:create"])
 def test_the_portal_batchs_permissions_are_the_patients_and_never_staffs(permission: str) -> None:
-    """#398's two new patient permissions: PAT holds them, no staff role does, and a staff
-    route can't ask for them (D84)."""
+    """The portal batch's new patient permissions (#398, #400): PAT holds them, no staff role
+    does, and a staff route can't ask for them (D84)."""
     from app.core.permissions import ROLE_PERMISSIONS
 
     assert permission in PATIENT_PERMISSIONS
@@ -207,7 +208,8 @@ def test_the_portal_batchs_permissions_are_the_patients_and_never_staffs(permiss
     require_patient(permission)  # a portal route may ask for it
 
 
-@pytest.mark.parametrize("permission", ["portal-messages:create", "portal-records:export"])
+@pytest.mark.parametrize("permission", ["portal-messages:create", "portal-records:export",
+                                        "portal-refill-requests:create"])
 async def test_the_new_permissions_refuse_a_session_without_the_pat_role(permission: str) -> None:
     check = require_patient(permission)
     me = PortalPatient(patient_id=uuid4(), organization_id=uuid4())

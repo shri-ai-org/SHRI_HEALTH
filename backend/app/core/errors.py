@@ -80,6 +80,9 @@ FIELD_CODES = frozenset({
     # Signing a prescription (#93, D97; T51): no safety check on this version of the draft, and
     # a high alert without an override.
     "safety-check-stale", "override-required",
+    # Asking for a refill from the portal (#400): not an active signed prescription, an open
+    # request already, or Schedule II (no refills).
+    "not-active", "refill-already-requested", "not-refillable",
 })
 
 

@@ -46,10 +46,14 @@ CODE = {"allergy": "ALGY", "duplicate-medication": "DUPTHPY"}
 
 @dataclass
 class FakeSession:
-    """What tenant_db yields here: the clinic it is scoped to, and its commits."""
+    """What tenant_db (or portal_db) yields here: the clinic it is scoped to, its user (staff)
+    or patient (the portal's session, which sees that patient's chart only, never a draft), and
+    its commits."""
 
     tenant_id: UUID
     commits: int = 0
+    user_id: UUID | None = None
+    patient_id: UUID | None = None
 
     async def commit(self) -> None:
         self.commits += 1

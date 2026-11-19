@@ -16,6 +16,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
 
+from ..patients.schemas import PatientSummary
+
 
 def _text(max_length: int, *, min_length: int = 0) -> StringConstraints:
     return StringConstraints(min_length=min_length, max_length=max_length)
@@ -209,3 +211,44 @@ class SafetyCheckResult(Out):
     prescription_id: UUID
     checked_at: datetime
     alerts: list[SafetyAlert]
+
+
+# ------------------------------------------------------------------------ refill requests
+RefillStatus = Literal["requested", "approved", "declined"]
+
+
+class ClinicianRef(Out):
+    """encounters.yaml ClinicianRef: a practitioner, for display (staff, not patient data)."""
+    id: UUID
+    display_name: str = Field(max_length=200)
+
+
+class RefillRequest(Out):
+    """A patient's refill request as staff see it (#400). For a restricted chart the user may
+    not open (D37), ``restricted`` is true and ``patient``, ``display``, ``dosageText`` and
+    ``note`` are left out."""
+    id: UUID
+    type: str = Field(default="renewal", max_length=32)
+    status: RefillStatus
+    patient_id: UUID
+    patient: PatientSummary | None = None
+    prescription_id: UUID
+    display: str | None = Field(default=None, max_length=500)
+    dosage_text: str | None = Field(default=None, max_length=500)
+    requested_at: datetime
+    note: str | None = Field(default=None, max_length=500)
+    responded_at: datetime | None = None
+    responded_by: ClinicianRef | None = None
+    decline_reason: str | None = Field(default=None, max_length=500)
+    new_prescription_id: UUID | None = None
+    restricted: bool
+
+
+class RefillRequestList(Out):
+    items: list[RefillRequest] = Field(max_length=100)
+    next_cursor: str | None = None
+
+
+class RefillRequestResponse(Closed):
+    decision: Literal["approve", "decline"]
+    reason: Annotated[str, _text(500, min_length=3)] | None = None
