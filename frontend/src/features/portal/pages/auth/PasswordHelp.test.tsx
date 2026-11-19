@@ -97,6 +97,10 @@ describe('the request form', () => {
     })
     expect(sent).toEqual([])
     expect(screen.getAllByText('Enter your username or mobile number.').length).toBeGreaterThan(0)
+    // Focus goes to the field, which reads its error out (aria-describedby).
+    const field = screen.getByLabelText(/Username or mobile number/)
+    expect(document.activeElement).toBe(field)
+    expect(field.getAttribute('aria-describedby')).toContain('password-help-identifier-error')
   })
 
   it.each([

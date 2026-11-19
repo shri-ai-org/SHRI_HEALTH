@@ -21,6 +21,8 @@ export const SENT_TITLE = 'Request sent'
 export const SENT_TEXT =
   "If that account can use password help, your clinic will see your request. Once it's approved, you'll get an email with a link to set a new password."
 
+const FIELD_ID = 'password-help-identifier'
+
 const linkClass = 'inline-flex min-h-11 items-center font-semibold text-primary-700 underline-offset-2 hover:underline'
 
 /** Back to the portal's sign-in page (the portal root starts it). */
@@ -53,6 +55,8 @@ export function PasswordHelpRequestView({ state, onSubmit }: { state: RequestFor
     const value = identifier.trim()
     setMissing(!value)
     if (value) onSubmit(value)
+    // Empty: focus goes to the field, whose error it then reads out (aria-describedby).
+    else document.getElementById(FIELD_ID)?.focus()
   }
 
   if (state.kind === 'sent') {
@@ -83,7 +87,7 @@ export function PasswordHelpRequestView({ state, onSubmit }: { state: RequestFor
         ) : null}
       </div>
       <Field
-        id="password-help-identifier"
+        id={FIELD_ID}
         label="Username or mobile number"
         hint="The username you sign in with, or the mobile number on your record."
         required
