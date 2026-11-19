@@ -1,17 +1,15 @@
-// The record's Prescriptions page with the API: what each medicine's "by" and "since" read.
-import type { PrescriberNames } from '../../../shri-health/prescribers'
+// The record's Prescriptions page with the API: what each medicine's pharmacy and "since" read.
+import type { PharmacyNames } from '../../../shri-health/prescribers'
 import { formatDate } from '../../../shri-health/format'
 
 /**
- * Who it is by: the prescriber's name for a signed medicine (getPrescription), "Prescriber
- * unavailable" when that lookup failed, and the list's own words ("Prescribed here", "Reported") for a
- * medicine with no prescription. recordedBy is never shown as a prescriber: for a reported medicine it
- * is whoever entered it.
+ * The pharmacy line of a signed medicine (getPrescription's pharmacyName): "Pharmacy: …" once read,
+ * and nothing while it is read, when the lookup failed, when the prescription names no pharmacy, or
+ * for a medicine with no prescription. A name is never made up.
  */
-export function prescriberText(m: { prescriptionId?: string; by: string }, names: PrescriberNames): string | undefined {
-  if (!m.prescriptionId) return m.by
-  if (!(m.prescriptionId in names)) return undefined
-  return names[m.prescriptionId] ?? 'Prescriber unavailable'
+export function pharmacyText(m: { prescriptionId?: string }, pharmacies: PharmacyNames): string | undefined {
+  const name = m.prescriptionId ? pharmacies[m.prescriptionId] : undefined
+  return name ? `Pharmacy: ${name}` : undefined
 }
 
 /**

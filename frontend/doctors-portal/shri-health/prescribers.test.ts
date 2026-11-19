@@ -2,10 +2,10 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../../src/api/client'
-import { prescriberText } from '../src/shri/logic/medicationDisplay'
-import { forgetPrescribers, usePrescriberNames } from './prescribers'
+import { pharmacyText } from '../src/shri/logic/medicationDisplay'
+import { forgetPharmacies, usePharmacyNames } from './prescribers'
 
-// The record's Prescriptions page: each signed medicine's prescriber from its prescription
+// The record's Prescriptions page: each signed medicine's pharmacy from its prescription
 // (getPrescription). A plain stand-in, not a vi.fn, so a refused lookup can reject. Synthetic only.
 const answers: Record<string, () => Promise<unknown>> = {}
 const asked: string[] = []
@@ -16,51 +16,59 @@ vi.mock('../../src/api/generated/endpoints/medications/medications', () => ({
   },
 }))
 
-const named = (name: string) => () => Promise.resolve({ status: 200, data: { id: 'rx', prescriberDisplayName: name } })
+const atPharmacy = (name: string) => () => Promise.resolve({ status: 200, data: { id: 'rx', pharmacyName: name } })
 const forbidden = () => Promise.reject(new ApiError({ type: 'about:blank', title: 'Forbidden', status: 403, code: 'forbidden' } as never, new Headers()))
 
 beforeEach(() => {
-  forgetPrescribers()
+  forgetPharmacies()
   asked.length = 0
 })
 
-describe('the prescriber of each medicine', () => {
-  it('names the prescriber of each prescribed medicine, reading each prescription once, together', async () => {
-    answers.rx1 = named('Dr. Example Prescriber MD')
-    answers.rx2 = named('Example Nurse Practitioner, NP')
-    const { result } = renderHook(() => usePrescriberNames(['rx1', 'rx2', 'rx1']))
+describe('the pharmacy of each medicine', () => {
+  it('names the pharmacy of each prescribed medicine, reading each prescription once, together', async () => {
+    answers.rx1 = atPharmacy('Example Pharmacy (synthetic)')
+    answers.rx2 = atPharmacy('Second Example Pharmacy (synthetic)')
+    const { result } = renderHook(() => usePharmacyNames(['rx1', 'rx2', 'rx1']))
     await waitFor(() => expect(Object.keys(result.current)).toHaveLength(2))
-    expect(prescriberText({ prescriptionId: 'rx1', by: 'Prescribed here' }, result.current)).toBe('Dr. Example Prescriber MD')
-    expect(prescriberText({ prescriptionId: 'rx2', by: 'Prescribed here' }, result.current)).toBe('Example Nurse Practitioner, NP')
+    expect(pharmacyText({ prescriptionId: 'rx1' }, result.current)).toBe('Pharmacy: Example Pharmacy (synthetic)')
+    expect(pharmacyText({ prescriptionId: 'rx2' }, result.current)).toBe('Pharmacy: Second Example Pharmacy (synthetic)')
     expect(asked.sort()).toEqual(['rx1', 'rx2'])
   })
 
-  it('shows nothing yet while a name is being read (the page shows its placeholder)', () => {
-    answers.rx1 = () => new Promise(() => undefined)
-    const { result } = renderHook(() => usePrescriberNames(['rx1']))
-    expect(prescriberText({ prescriptionId: 'rx1', by: 'Prescribed here' }, result.current)).toBeUndefined()
+  it('keeps a pharmacy read for the page: opening it again asks nothing more', async () => {
+    answers.rx1 = atPharmacy('Example Pharmacy (synthetic)')
+    const first = renderHook(() => usePharmacyNames(['rx1']))
+    await waitFor(() => expect(first.result.current.rx1).toBe('Example Pharmacy (synthetic)'))
+    const again = renderHook(() => usePharmacyNames(['rx1']))
+    await waitFor(() => expect(again.result.current.rx1).toBe('Example Pharmacy (synthetic)'))
+    expect(asked).toEqual(['rx1'])
   })
 
-  it('keeps the list’s own words for a medicine with no prescription, and never looks one up', () => {
-    const { result } = renderHook(() => usePrescriberNames([]))
-    expect(prescriberText({ by: 'Prescribed here' }, result.current)).toBe('Prescribed here')
-    expect(prescriberText({ by: 'Reported' }, result.current)).toBe('Reported')
+  it('shows no pharmacy line while it is being read', () => {
+    answers.rx1 = () => new Promise(() => undefined)
+    const { result } = renderHook(() => usePharmacyNames(['rx1']))
+    expect(pharmacyText({ prescriptionId: 'rx1' }, result.current)).toBeUndefined()
+  })
+
+  it('never looks one up for a medicine with no prescription (a reported one)', () => {
+    const { result } = renderHook(() => usePharmacyNames([]))
+    expect(pharmacyText({}, result.current)).toBeUndefined()
     expect(asked).toEqual([])
   })
 
-  it('says "Prescriber unavailable" for one refused lookup, and still names the others', async () => {
+  it('shows no pharmacy line for one refused lookup, and still names the others', async () => {
     answers.rx1 = forbidden
-    answers.rx2 = named('Dr. Example Prescriber MD')
-    const { result } = renderHook(() => usePrescriberNames(['rx1', 'rx2']))
+    answers.rx2 = atPharmacy('Example Pharmacy (synthetic)')
+    const { result } = renderHook(() => usePharmacyNames(['rx1', 'rx2']))
     await waitFor(() => expect(Object.keys(result.current)).toHaveLength(2))
-    expect(prescriberText({ prescriptionId: 'rx1', by: 'Prescribed here' }, result.current)).toBe('Prescriber unavailable')
-    expect(prescriberText({ prescriptionId: 'rx2', by: 'Prescribed here' }, result.current)).toBe('Dr. Example Prescriber MD')
+    expect(pharmacyText({ prescriptionId: 'rx1' }, result.current)).toBeUndefined()
+    expect(pharmacyText({ prescriptionId: 'rx2' }, result.current)).toBe('Pharmacy: Example Pharmacy (synthetic)')
   })
 
-  it('says "Prescriber unavailable" when the prescription has no prescriber name', async () => {
+  it('shows no pharmacy line when the prescription names no pharmacy', async () => {
     answers.rx1 = () => Promise.resolve({ status: 200, data: { id: 'rx1' } })
-    const { result } = renderHook(() => usePrescriberNames(['rx1']))
+    const { result } = renderHook(() => usePharmacyNames(['rx1']))
     await waitFor(() => expect(result.current.rx1).toBeNull())
-    expect(prescriberText({ prescriptionId: 'rx1', by: 'Prescribed here' }, result.current)).toBe('Prescriber unavailable')
+    expect(pharmacyText({ prescriptionId: 'rx1' }, result.current)).toBeUndefined()
   })
 })

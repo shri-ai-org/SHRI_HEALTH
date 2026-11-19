@@ -11,7 +11,7 @@ import { clinicDate } from './format'
 import { read } from './resource'
 import { useEffect, useState } from 'react'
 
-/** `prescriptionId`: our prescription, whose prescriber the page reads (getPrescription). */
+/** `prescriptionId`: our prescription, whose pharmacy the page reads (getPrescription). */
 export type CurrentMedicine = RxItem & { id: string; since: Date; by: string; prescriptionId?: string }
 
 export interface MedicationList {
@@ -21,8 +21,13 @@ export interface MedicationList {
 
 const STATUS: Record<string, RxItem['status'] | undefined> = { active: 'Active', completed: 'Completed', stopped: 'Stopped' }
 
-/** Who put it on the list: our prescription, or what the patient reported. The recorder's name isn't in the API yet (#93). */
-const byOf = (m: Medication) => (m.source === 'prescription' ? 'Prescribed here' : 'Reported')
+/**
+ * Who it is by: the prescriber the list names for a signed prescription (prescriberDisplayName, #438),
+ * "Prescriber unavailable" when it names none, and "Reported" for what the patient reported.
+ * recordedBy is never shown as a prescriber: for a reported medicine it is whoever entered it.
+ */
+const byOf = (m: Medication) =>
+  m.source === 'prescription' ? (m.prescriberDisplayName ?? 'Prescriber unavailable') : 'Reported'
 
 function itemOf(m: Medication): RxItem {
   return {

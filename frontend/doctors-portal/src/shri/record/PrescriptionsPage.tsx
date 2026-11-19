@@ -26,8 +26,8 @@ import { Card, Chip, CountBubble, Icon, Pill } from '../ui/primitives'
 import { RecordFrame } from './RecordFrame'
 import { medicationsFor } from '../../../shri-health/medications'
 import { encounterOfToday } from '../../../shri-health/opd'
-import { usePrescriberNames } from '../../../shri-health/prescribers'
-import { prescriberText, sinceText } from '../logic/medicationDisplay'
+import { usePharmacyNames } from '../../../shri-health/prescribers'
+import { pharmacyText, sinceText } from '../logic/medicationDisplay'
 
 const REAL_API = typeof __SHRI_REAL_API__ !== 'undefined' && __SHRI_REAL_API__
 
@@ -79,13 +79,11 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
   const list = REAL_API ? medicationsFor(p.id) : undefined
   const active = list ? list.current : activeMedicines(p.id)
   const history = list ? list.history : prescriptionsFor(p.id)
-  // Each signed medicine's prescriber, read together and filled in as they arrive (getPrescription).
-  const names = usePrescriberNames(REAL_API ? [...active, ...history].map(prescriptionOf).filter((id): id is string => Boolean(id)) : [])
-  /** "by …": the prescriber with the API (a quiet placeholder while it is read); the sample's own otherwise. */
-  const byText = (m: { by: string }) => {
-    if (!REAL_API) return m.by
-    return prescriberText({ by: m.by, prescriptionId: prescriptionOf(m) }, names) ?? 'Finding the prescriber…'
-  }
+  // Each signed medicine's pharmacy, read together and filled in as they arrive (getPrescription).
+  // The prescriber's name ("by") already comes with the list (listMedications).
+  const pharmacies = usePharmacyNames(REAL_API ? [...active, ...history].map(prescriptionOf).filter((id): id is string => Boolean(id)) : [])
+  /** The pharmacy line with the API; none for the sample screens. */
+  const pharmacyLine = (m: object) => (REAL_API ? pharmacyText({ prescriptionId: prescriptionOf(m) }, pharmacies) : undefined)
 
   return (
     <>
@@ -123,10 +121,11 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                     {[m.route, m.frequency, m.duration].filter(Boolean).join(' · ')}
                   </span>
                   {m.note && <span className="block text-[12px] text-sh-text-3">{m.note}</span>}
+                  {pharmacyLine(m) && <span className="block text-[12px] text-sh-text-3">{pharmacyLine(m)}</span>}
                 </span>
                 <span className="flex flex-wrap items-center gap-[8px] text-[12px] tabular-nums text-sh-text-3">
                   {REAL_API && <Chip word={m.status} tone={STATUS_TONE[m.status]} />}
-                  since {sinceDay(m.since)} · {byText(m)}
+                  since {sinceDay(m.since)} · {m.by}
                 </span>
               </li>
             ))}
@@ -152,9 +151,10 @@ function Prescriptions({ patient: p }: { patient: Patient }) {
                 <p className="flex flex-wrap items-center justify-between gap-[8px]">
                   <span className="text-[14px] font-semibold text-sh-text">{r.context}</span>
                   <span className="text-[12px] tabular-nums text-sh-text-3">
-                    {REAL_API ? `${sinceText(r.at)} ${clinicTime(r.at)}` : `${formatDate(r.at)} ${formatTime(r.at)}`} · {byText(r)}
+                    {REAL_API ? `${sinceText(r.at)} ${clinicTime(r.at)}` : `${formatDate(r.at)} ${formatTime(r.at)}`} · {r.by}
                   </span>
                 </p>
+                {pharmacyLine(r) && <p className="mt-[2px] text-[12px] text-sh-text-3">{pharmacyLine(r)}</p>}
                 <ul className="mt-[8px] flex flex-col gap-[6px]">
                   {r.items.map((it) => (
                     <li key={it.drug} className="flex flex-wrap items-start justify-between gap-[8px] text-[13px]">
