@@ -16,7 +16,9 @@ permissions:
 concurrency:
   # One group per pull request. Outside a PR (a merge to main) each commit has its own group, so a
   # newer merge never cancels or drops an earlier run.
-  group: contracts-${{ github.event.pull_request.number || github.sha }}
+  # A label other than breaking-change-approved (stage:*, needs:*) gets its own group, so its skipped
+  # run never cancels the real one.
+  group: contracts-${{ github.event.pull_request.number || github.sha }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'breaking-change-approved' && '-label' || '' }}
   # Cancel superseded PR runs only; every commit on main gets a complete run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
