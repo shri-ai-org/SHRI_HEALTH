@@ -60,9 +60,9 @@ schema changes, never for serving a request.
 | `shri_integration` | the partner worker | narrow: order tables it reads to match a result, result tables it files into (select, insert, update; never delete; 0004), the three `integration_*` admin tables, `admin.erx_transaction` read with a column-limited update of the status, error message, vendor message ID, updater and `updated_at` (0015, for a pharmacy's answer; `set_transmission_status` runs as it), read-only what the NewRx and the eligibility request it builds at send time need, `admin.tenant`'s `id` and `timezone` only, and a column-limited update of `admin.eligibility_check` to time a request out (0018; `gen_db_rules.INTEGRATION_READ_TABLES`), the columns `finish_operation` reads and sets on an operation assigned to it (0005, 0018), and `audit.audit_event` `INSERT` only (0004). Replies are filed as `shri_app`, by the inbound handlers |
 | `shri_reporting` | approved reports | nothing yet — no reporting views exist; grants come when they do |
 | `shri_migrator` | migrations only, and the development and test seed (`app.db.seed`; on staging only with `SEED_ALLOW_STAGING=1`, the synthetic-only test server, #187); never production onboarding, which needs its own design | owns all three schemas |
-| `shri_maintenance` | the scheduled purges only (D23) | `USAGE` on `admin` and `EXECUTE` on the purge functions: `admin.purge_expired_runtime_rows()` (0005) and the file purge's `admin.list_unusable_files(integer)` and `admin.delete_unusable_files(uuid[])` (0014); no table privileges |
+| `shri_maintenance` | the scheduled purges only (D23) | `USAGE` on `admin` and `EXECUTE` on the purge functions: `admin.purge_expired_runtime_rows()` (0005) and the file purge's `admin.list_unusable_files(integer)` and `admin.delete_unusable_files(uuid[])` (0014), and the export purge's `admin.list_expired_exports(integer)` and `admin.delete_expired_exports(uuid[])` (0032); no table privileges |
 | `shri_public` | the public pre-registration form (D96), the only write without a sign-in | `USAGE` on `admin` and `EXECUTE` on `admin.submit_pre_registration()`; no table privileges (0009) |
-| `shri_portal` | the patient portal's requests (`portal_db`, D93) | the chart in `app.current_patient_id` only, through generated RESTRICTIVE policies (`gen_db_rules.portal_sql`); bookings, cancellations and change requests; `audit_event` insert-only; no DELETE anywhere (0011); its messages only through `EXECUTE` on `admin.portal_message_threads`, `portal_message_thread`, `portal_create_message` and `portal_reply_to_thread` (0031), no privilege on `work_item`, `work_item_event` or `work_item_reply` |
+| `shri_portal` | the patient portal's requests (`portal_db`, D93) | the chart in `app.current_patient_id` only, through generated RESTRICTIVE policies (`gen_db_rules.portal_sql`); bookings, cancellations and change requests; `audit_event` insert-only; no DELETE anywhere (0011); its messages only through `EXECUTE` on `admin.portal_message_threads`, `portal_message_thread`, `portal_create_message` and `portal_reply_to_thread` (0031), no privilege on `work_item`, `work_item_event` or `work_item_reply`; "My records" only through `EXECUTE` on `admin.portal_clinic()` and `admin.portal_record_export(...)` (0032), no privilege on `binary_object` or `portal_record_export` |
 
 `shri_app`, `shri_integration` and `shri_fhir_reader` also have `USAGE` (never `CREATE`) on
 schema `public`, where the rule functions that every trigger calls live (migration 0003). The
@@ -325,8 +325,8 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
 - **Files (API_STANDARDS §15, migration 0012):** `admin.binary_object.purpose` is the contract's
   `FilePurpose`, and `state` its file state: `pending-upload` → `quarantined` → `clean` or
   `rejected`. Only a clean file is attached or downloaded. An uploaded file is clean only after a
-  clean scan; a receipt, after-visit summary or imaging file, made by the server, is clean from
-  the start. An `imaging` file (0023) is a report's illustrative image from the demo seed, its
+  clean scan; a receipt, after-visit summary, imaging file or export, made by the server, is
+  clean from the start (an `export`, 0032, is a patient's "My records" file; see below). An `imaging` file (0023) is a report's illustrative image from the demo seed, its
   bytes checked against `seed/images/manifest.json`; it is never scanned, so no upload may name
   that purpose, and it is attached through `diagnostic_report_presented_form` and read with
   `results:read`.
@@ -344,6 +344,15 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     admin.delete_unusable_files(:ids)`, which deletes only rows still unusable and old and
     skips a row another table still references; the job deletes those rows' objects before it
     commits. The 24 hours are fixed in the functions. Every update of a file sets `updated_at`.
+  - **Exports (migration 0032):** a patient's "My records" file, purpose `export`, written only
+    by `admin.portal_record_export()` (below) with `retention_until` 24 hours after its expiry,
+    and one `admin.portal_record_export` row (clinic, patient, file, `format` `pdf` or
+    `fhir-r4`, `expires_at` 15 minutes after `created_at`; no service role has any privilege
+    on it, `gen_db_rules.DEFINER_ONLY`). The same job then calls `SELECT * FROM
+    admin.list_expired_exports(:limit)` and `SELECT id FROM admin.delete_expired_exports(:ids)`
+    as `shri_maintenance`: exports 24 hours past their expiry go, export row and file row
+    together (or neither) and then the object; never a file of another purpose. Narrow
+    policies TO `shri_migrator` (`migrator_export_purge*`) give the two functions that reach.
 - **Idempotency-Key for portal writes (migration 0020):** `admin.idempotency_record` names
   exactly one owner, a staff `user_id` or, for the patient portal's writes, the session's
   `patient_id` (`ck_idempotency_record_one_owner`; the patient keeps the clinic-carrying key).
@@ -427,8 +436,16 @@ in `docs/contract_mapping.yaml`, shown in the data dictionary's "Contract to col
     one file's storage fields (`id, bucket, storage_key, wrapped_data_key, size_bytes, sha256,
     content_type, purpose, document_reference_id`) only for a clean `after-visit-summary` file
     on a current, non-draft, non-PSY document of the session patient with no active hold;
-    otherwise no row, the same 404 either way. shri_portal has no privilege on
-    `admin.binary_object` itself.
+    otherwise no row, the same 404 either way. Since 0032 it also gives a clean `export` file of
+    the session patient whose `portal_record_export` row has not expired
+    (`document_reference_id` NULL). shri_portal has no privilege on `admin.binary_object` itself.
+  - **"My records" (migration 0032):** `SELECT name, timezone FROM admin.portal_clinic()` gives
+    the session clinic's name and zone (for the PDF's header). `SELECT
+    admin.portal_record_export(:file_id, :format, :storage_key, :wrapped_data_key,
+    :size_bytes, :sha256)` records the export the API has just sealed and stored under
+    `<clinic>/<file>` and returns its `expires_at`. `P0002` no session patient; `P0001`
+    `portal_record_export_format`, `portal_record_export_file` (another key, no wrapped key,
+    or not 1 byte to 10 MiB) or `portal_record_export_rate_limited` (more than 10 in an hour).
   - **Where a prescription went (migration 0026):** `SELECT * FROM
     admin.portal_prescription_transmissions()` gives `medication_request_id`, `pharmacy_name`
     and `transmission_status` for each signed prescription of the session patient (never a

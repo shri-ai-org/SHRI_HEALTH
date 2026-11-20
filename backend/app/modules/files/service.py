@@ -2,12 +2,13 @@
 
 **Request an upload** (``createUploadUrl``): the purpose decides what may be uploaded. The demo's
 two uploaded purposes, ``insurance-card`` and ``identity``, take JPEG or PNG up to 10 MB
-(``MAX_IMAGE_BYTES``, 10 MiB; M13). ``receipt``, ``after-visit-summary`` and ``imaging`` are
-made by the server, never uploaded: an imaging file is never scanned (0023), so no upload may
-arrive under it. Every other purpose has no upload rule yet and is refused the same way,
-``422 business-rule-violation`` naming the field. The file's row is written ``pending-upload``
-in the quarantine bucket, with the declared size and SHA-256, and the answer is a link to
-``PUT`` the bytes there, valid for ``UPLOAD_LINK_LIFETIME``. Client file names are never stored.
+(``MAX_IMAGE_BYTES``, 10 MiB; M13). ``receipt``, ``after-visit-summary``, ``imaging`` and ``export``
+(0032) are made by the server, never uploaded: an imaging file or an export is never scanned (0023,
+0032), so no upload may arrive under either. Every other purpose has no upload rule yet and is
+refused the same way, ``422 business-rule-violation`` naming the field. The file's row is written
+``pending-upload`` in the quarantine bucket, with the declared size and SHA-256, and the answer is a
+link to ``PUT`` the bytes there, valid for ``UPLOAD_LINK_LIFETIME``. Client file names are never
+stored.
 
 **Finish an upload** (``completeUpload``), in this order:
 

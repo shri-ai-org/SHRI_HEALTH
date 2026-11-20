@@ -33,7 +33,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import ADMIN_SCHEMA, AdminMixin, Base, UUIDPKMixin, VersionedMixin, enum_type
 from app.db.models.admin.runtime import CIPHERTEXT, SHA256_HEX
-from app.db.models.enums import ChangeRequestStatus, HoldReason, PortalAccountStatus
+from app.db.models.enums import (
+    ChangeRequestStatus,
+    HoldReason,
+    PortalAccountStatus,
+    RecordExportFormat,
+)
 
 #: Failed redemptions after which an invitation is revoked (ADR-0013 §3).
 MAX_INVITATION_TRIES = 5
@@ -290,3 +295,29 @@ class ReleaseHold(Base, AdminMixin):
     lifted_at: Mapped[datetime | None]
     lifted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey(f"{ADMIN_SCHEMA}.app_user.id"))
+
+
+class PortalRecordExport(Base, AdminMixin):
+    """A patient's "My records" download (getPortalRecordDownloadUrl, D105; 0032): which file
+    holds it, whose it is, its format and until when the portal serves it (15 minutes). The
+    file is an ``admin.binary_object`` with purpose ``export``, made by the server, encrypted
+    like every stored file. Only ``admin.portal_record_export()`` writes a row (shri_portal has
+    no privilege on this table or on ``binary_object``); ``admin.portal_file()`` serves the
+    file to its own patient until it expires; the maintenance job removes the row and its file
+    24 hours after that (``admin.delete_expired_exports``). A copy, never part of the chart."""
+    __tablename__ = "portal_record_export"
+    __table_args__ = (
+        UniqueConstraint("binary_object_id"),
+        CheckConstraint("expires_at > created_at", name="expires_after_creation"),
+        # The patient's recent exports (the function's rate limit) and the purge's listing.
+        Index("ix_portal_record_export_patient_recent", "tenant_id", "patient_id", "created_at"),
+        Index("ix_portal_record_export_expires_at", "expires_at", "id"),
+    )
+
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clinical.patient.id"),
+                                                  nullable=False)
+    binary_object_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(f"{ADMIN_SCHEMA}.binary_object.id"), nullable=False)
+    format: Mapped[RecordExportFormat] = mapped_column(enum_type(RecordExportFormat),
+                                                       nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)

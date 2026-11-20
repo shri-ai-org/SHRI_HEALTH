@@ -336,9 +336,9 @@ CREATE TABLE admin.binary_object (
 	CONSTRAINT ck_binary_object_sha256_format CHECK (sha256 ~ '^[0-9a-f]{64}$'), 
 	CONSTRAINT ck_binary_object_size CHECK (size_bytes >= 0), 
 	CONSTRAINT ck_binary_object_scanned_at CHECK ((scan_status = 'pending') = (scanned_at IS NULL)), 
-	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary', 'imaging') OR state = 'clean'), 
+	CONSTRAINT ck_binary_object_generated_clean CHECK (purpose NOT IN ('receipt', 'after-visit-summary', 'imaging', 'export') OR state = 'clean'), 
 	CONSTRAINT ck_binary_object_key_when_clean CHECK (state = 'clean' OR wrapped_data_key IS NULL), 
-	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary', 'imaging')), 
+	CONSTRAINT ck_binary_object_clean_when_scanned CHECK (state <> 'clean' OR scan_status = 'clean' OR purpose IN ('receipt', 'after-visit-summary', 'imaging', 'export')), 
 	CONSTRAINT fk_binary_object_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_binary_object_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_binary_object_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
@@ -1787,6 +1787,34 @@ CREATE INDEX ix_portal_invitation_tenant_id ON admin.portal_invitation (tenant_i
 CREATE UNIQUE INDEX uq_portal_invitation_code_hmac ON admin.portal_invitation (code_hmac);
 
 CREATE UNIQUE INDEX uq_portal_invitation_one_open ON admin.portal_invitation (patient_id) WHERE used_at IS NULL AND revoked_at IS NULL;
+
+CREATE TABLE admin.portal_record_export (
+	patient_id UUID NOT NULL, 
+	binary_object_id UUID NOT NULL, 
+	format VARCHAR(40) NOT NULL, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_portal_record_export PRIMARY KEY (id), 
+	CONSTRAINT uq_portal_record_export_binary_object_id UNIQUE (binary_object_id), 
+	CONSTRAINT ck_portal_record_export_expires_after_creation CHECK (expires_at > created_at), 
+	CONSTRAINT fk_portal_record_export_patient_id_patient FOREIGN KEY(patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_portal_record_export_binary_object_id_binary_object FOREIGN KEY(binary_object_id) REFERENCES admin.binary_object (id), 
+	CONSTRAINT fk_portal_record_export_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_portal_record_export_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_portal_record_export_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT ck_portal_record_export_format_codes CHECK (format IN ('pdf', 'fhir-r4'))
+);
+
+CREATE INDEX ix_portal_record_export_expires_at ON admin.portal_record_export (expires_at, id);
+
+CREATE INDEX ix_portal_record_export_patient_recent ON admin.portal_record_export (tenant_id, patient_id, created_at);
+
+CREATE INDEX ix_portal_record_export_tenant_id ON admin.portal_record_export (tenant_id);
 
 CREATE TABLE admin.remittance (
 	payer_id UUID NOT NULL, 
@@ -8408,6 +8436,10 @@ ALTER TABLE admin.portal_change_request ADD CONSTRAINT fk_portal_change_request_
 ALTER TABLE admin.portal_change_request ADD CONSTRAINT fk_portal_change_request_work_item_id_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id);
 
 ALTER TABLE admin.portal_invitation ADD CONSTRAINT fk_portal_invitation_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
+
+ALTER TABLE admin.portal_record_export ADD CONSTRAINT fk_portal_record_export_binary_object_id_tenant FOREIGN KEY(tenant_id, binary_object_id) REFERENCES admin.binary_object (tenant_id, id);
+
+ALTER TABLE admin.portal_record_export ADD CONSTRAINT fk_portal_record_export_patient_id_tenant FOREIGN KEY(tenant_id, patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE admin.portal_session ADD CONSTRAINT fk_portal_session_account_id_same_patient FOREIGN KEY(patient_id, account_id) REFERENCES admin.portal_account (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 

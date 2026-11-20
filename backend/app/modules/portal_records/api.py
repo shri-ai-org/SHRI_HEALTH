@@ -64,8 +64,14 @@ async def download_portal_file_content(
     crypto: Annotated[FileCrypto, Depends(file_crypto)],
     tokens: Annotated[PortalDownloadTokens, Depends(portal_download_tokens)],
 ) -> StreamingResponse:
-    """Only a clean after-visit summary of the session patient's (``service.serve_file``);
-    anything else, the same 404."""
+    """Only a clean after-visit summary, or an unexpired "My records" export, of the session
+    patient's (``service.serve_file``); anything else, the same 404."""
     content = await service.serve_file(db, files, store, crypto, tokens, patient, file_id, token)
     return StreamingResponse(content.body, media_type=content.content_type,
                              headers=content.headers)
+
+
+# "My records" (getPortalRecordDownloadUrl; records_api.py), on this module's router.
+from .records_api import router as _records_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_records_router)

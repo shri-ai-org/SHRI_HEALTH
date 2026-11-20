@@ -1170,3 +1170,8 @@ class ChangeRequestStatus(StrEnum):     # D91: a patient's edit waits for the fr
 class HoldReason(StrEnum):              # D90: the only two reasons to hold an item
     RISK_OF_HARM = "risk-of-harm"
     PATIENT_REQUEST = "patient-request"
+
+
+class RecordExportFormat(StrEnum):      # getPortalRecordDownloadUrl's format (0032)
+    PDF = "pdf"
+    FHIR_R4 = "fhir-r4"

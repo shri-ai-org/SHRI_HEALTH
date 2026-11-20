@@ -104,8 +104,9 @@ _PORTAL_FILE = text("SELECT id, storage_key, wrapped_data_key, content_type, pur
 
 @dataclass(frozen=True)
 class PortalFile:
-    """The one file ``admin.portal_file()`` (0025) hands the portal: a clean after-visit summary
-    of the session patient's, on a current, released, unheld document."""
+    """The one file ``admin.portal_file()`` (0025, 0032) hands the portal: a clean after-visit
+    summary of the session patient's, on a current, released, unheld document, or a clean,
+    unexpired "My records" export of hers."""
 
     id: UUID
     storage_key: str

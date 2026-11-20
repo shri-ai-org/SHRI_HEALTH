@@ -992,6 +992,10 @@ ALTER TABLE admin.portal_invitation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.portal_invitation FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.portal_invitation USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+ALTER TABLE admin.portal_record_export ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.portal_record_export FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.portal_record_export USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
 GRANT SELECT, INSERT, UPDATE ON admin.portal_session TO shri_app;
 ALTER TABLE admin.portal_session ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.portal_session FORCE ROW LEVEL SECURITY;

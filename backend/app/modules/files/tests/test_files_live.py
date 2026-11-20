@@ -312,6 +312,25 @@ def test_complete_without_bytes_and_by_others(client: Callable[[str], TestClient
     assert _row(admin, file_id).state == "pending-upload"
 
 
+@pytest.mark.parametrize("purpose", sorted(storage.GENERATED_PURPOSES))
+def test_no_upload_under_a_server_made_purpose(client: Callable[[str], TestClient],
+                                               admin: Engine, clinics: dict[UUID, UUID],
+                                               purpose: str) -> None:
+    """A receipt, after-visit summary, imaging file or "My records" export (0032) is made by the
+    server and clean without a scan, so createUploadUrl refuses its purpose with the contract's
+    422 business-rule-violation at /purpose, and no file row is written."""
+    asked = client("fd").post("/api/v1/files/upload-url", json={
+        "purpose": purpose, "contentType": "image/jpeg", "sizeBytes": len(JPEG),
+        "sha256": hashlib.sha256(JPEG).hexdigest()})
+    assert asked.status_code == 422, asked.text
+    body = asked.json()
+    assert body["code"] == "business-rule-violation"
+    assert body["errors"] == [{"in": "body", "pointer": "/purpose", "code": "not-allowed-value"}]
+    with admin.connect() as c:
+        assert not c.execute(text("SELECT count(*) FROM admin.binary_object WHERE tenant_id = :t"),
+                             {"t": clinics[CLINIC_A]}).scalar_one()
+
+
 def _clean_file(admin: Engine, clinic: UUID, owner: UUID, purpose: str, tmp_path: Path) -> UUID:
     """A clean file in the store, as a finished scan (or the server) leaves it."""
     file_id = uuid.uuid4()

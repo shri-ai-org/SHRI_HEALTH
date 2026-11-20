@@ -43,12 +43,15 @@ class BinaryObject(Base, AdminMixin):
     ``state`` follows the upload flow (API_STANDARDS §15): ``pending-upload`` → ``quarantined``
     → ``clean`` or ``rejected``. Only a clean file is attached or downloaded. A file the server
     makes itself (a receipt, an after-visit summary, an imaging report's illustrative image from
-    the demo seed) is never uploaded, so it is clean from the start (0023). ``wrapped_data_key``
+    the demo seed, a patient's "My records" export) is never uploaded, so it is clean from the
+    start (0023, 0032). ``wrapped_data_key``
     is the file's data key, encrypted by core (envelope encryption); it is set once the file is
     clean, never before. A file that is not clean 24 hours after its
     last change (an upload never completed, a stuck scan, a rejected file) goes, row and stored
-    bytes, through ``admin.list_unusable_files`` and ``admin.delete_unusable_files``, the only
-    way a row leaves this table (migration 0014); a row still referenced is kept."""
+    bytes, through ``admin.list_unusable_files`` and ``admin.delete_unusable_files`` (migration
+    0014; a row still referenced is kept), and an export 24 hours after it expired through
+    ``admin.list_expired_exports`` and ``admin.delete_expired_exports`` (0032): the only ways a
+    row leaves this table."""
     __tablename__ = "binary_object"
     __table_args__ = (
         # per tenant: a global unique would leak other tenants' keys through 23505 errors
@@ -57,12 +60,12 @@ class BinaryObject(Base, AdminMixin):
         CheckConstraint(SHA256.format(col="sha256"), name="sha256_format"),
         CheckConstraint("size_bytes >= 0", name="size"),
         CheckConstraint("(scan_status = 'pending') = (scanned_at IS NULL)", name="scanned_at"),
-        CheckConstraint("purpose NOT IN ('receipt', 'after-visit-summary', 'imaging') "
+        CheckConstraint("purpose NOT IN ('receipt', 'after-visit-summary', 'imaging', 'export') "
                         "OR state = 'clean'",
                         name="generated_clean"),
         CheckConstraint("state = 'clean' OR wrapped_data_key IS NULL", name="key_when_clean"),
         CheckConstraint("state <> 'clean' OR scan_status = 'clean' "
-                        "OR purpose IN ('receipt', 'after-visit-summary', 'imaging')",
+                        "OR purpose IN ('receipt', 'after-visit-summary', 'imaging', 'export')",
                         name="clean_when_scanned"),
         # The purge's listing (0014): files that are not clean, oldest change first.
         Index("ix_binary_object_unusable", "updated_at", "id",

@@ -2,10 +2,11 @@
 (downloadPortalFileContent; D105, D84, D93).
 
 Core's portal token comes first: genuine, unexpired, unused, and this session patient's, this
-file's and this clinic's (core uses it up), or ``404``. Then ``admin.portal_file()`` (0025), as
-``shri_portal``, must give the file: a clean after-visit summary of the session patient on a
-current, released, non-PSY document with no active hold. Any other file, an imaging one
-included, another patient's, a held or preliminary summary, is the same ``404``, so none can be
+file's and this clinic's (core uses it up), or ``404``. Then ``admin.portal_file()`` (0025, 0032),
+as ``shri_portal``, must give the file: a clean after-visit summary of the session patient on a
+current, released, non-PSY document with no active hold, or a clean "My records" export of the
+session patient that has not expired (15 minutes). Any other file, an imaging one included, another
+patient's, a held or preliminary summary, an expired export, is the same ``404``, so none can be
 probed. The file service decrypts and verifies the whole file before the first byte is sent. The
 ``export`` audit row is core's (x-audit ``patient: session``); this function writes none and never
 commits.

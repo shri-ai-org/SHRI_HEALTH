@@ -18,6 +18,15 @@ database, at any point) leaves at most a row whose object is already gone, which
 removes (deleting a missing object is not an error). A skipped row keeps its object. Batches
 repeat while a full batch deleted something.
 
+**Expired exports (migration 0032).** A patient's "My records" export is served for 15
+minutes; ``EXPORT_PURGE_AFTER`` (24 hours) after that, ``admin.list_expired_exports(batch)`` and
+``admin.delete_expired_exports(ids)`` remove it, in the other order: the stored objects first
+(an object already gone counts as deleted), then, in one transaction, the export rows and their
+file rows together (or neither). An expired export is never served again and nothing changes
+it, so deleting its bytes first can't lose a file anyone still needs; a failure leaves at most
+rows whose objects are gone, which the next run removes. They never touch a file of any other
+purpose. ``main()`` runs both purges. Nothing schedules ``main()`` yet (infra's job, Thulasi).
+
 Not covered: stored objects without any row (the bytes of a generated file whose transaction
 rolled back; storage.py). Finding those means listing the store and asking the database which
 keys have rows, which needs its own function; a later job.
@@ -40,7 +49,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import TextClause, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -56,9 +65,29 @@ PURGE_AFTER = timedelta(hours=24)
 MAINTENANCE_DATABASE_URL_ENV = "MAINTENANCE_DATABASE_URL"
 BATCH = 500
 
-_LIST = text("SELECT id, tenant_id, bucket, storage_key FROM admin.list_unusable_files(:limit)")
-_DELETE = text("SELECT id FROM admin.delete_unusable_files(:ids)").bindparams(
-    bindparam("ids", type_=ARRAY(PgUUID(as_uuid=True))))
+#: How long an export is kept after it stops being served; fixed in migration 0032's functions.
+EXPORT_PURGE_AFTER = timedelta(hours=24)
+
+
+@dataclass(frozen=True)
+class Purge:
+    """One purge's pair of functions: list what is past its window, then delete those rows.
+    ``files_first``: delete the stored objects before the rows (exports; module docstring)."""
+    list: TextClause
+    delete: TextClause
+    files_first: bool = False
+
+
+def _ids(sql: str) -> TextClause:
+    return text(sql).bindparams(bindparam("ids", type_=ARRAY(PgUUID(as_uuid=True))))
+
+
+UNUSABLE = Purge(
+    text("SELECT id, tenant_id, bucket, storage_key FROM admin.list_unusable_files(:limit)"),
+    _ids("SELECT id FROM admin.delete_unusable_files(:ids)"))
+EXPIRED_EXPORTS = Purge(
+    text("SELECT id, tenant_id, bucket, storage_key FROM admin.list_expired_exports(:limit)"),
+    _ids("SELECT id FROM admin.delete_expired_exports(:ids)"), files_first=True)
 
 
 @dataclass
@@ -72,23 +101,27 @@ class PurgeReport:
         return self.listed - self.deleted
 
 
-async def purge_once(engine: AsyncEngine, store: FileStore, *, batch: int = BATCH
-                     ) -> PurgeReport:
+async def purge_once(engine: AsyncEngine, store: FileStore, *, batch: int = BATCH,
+                     kind: Purge = UNUSABLE) -> PurgeReport:
     """One batch (module docstring)."""
     report = PurgeReport()
     async with engine.connect() as conn:
-        files = (await conn.execute(_LIST, {"limit": batch})).all()
+        files = (await conn.execute(kind.list, {"limit": batch})).all()
         await conn.rollback()
         report.listed = len(files)
         purgeable = [file for file in files if _ours(file)]
         if not purgeable:
             return report
+        if kind.files_first:  # an export that expired never comes back, so the bytes go first
+            for file in purgeable:
+                await store.delete(file.storage_key, bucket=file.bucket)  # gone already: fine
         async with conn.begin():
             deleted: set[UUID] = set((await conn.execute(
-                _DELETE, {"ids": [file.id for file in purgeable]})).scalars())
-            for file in purgeable:
-                if file.id in deleted:
-                    await store.delete(file.storage_key, bucket=file.bucket)
+                kind.delete, {"ids": [file.id for file in purgeable]})).scalars())
+            if not kind.files_first:
+                for file in purgeable:
+                    if file.id in deleted:
+                        await store.delete(file.storage_key, bucket=file.bucket)
         report.deleted = len(deleted)
     return report
 
@@ -108,21 +141,23 @@ def _ours(file: Any) -> bool:
     return True
 
 
-async def purge(engine: AsyncEngine, store: FileStore, *, batch: int = BATCH) -> PurgeReport:
+async def purge(engine: AsyncEngine, store: FileStore, *, batch: int = BATCH,
+                kind: Purge = UNUSABLE) -> PurgeReport:
     """Every batch, while a full batch deleted something."""
     total = PurgeReport()
     while True:
-        report = await purge_once(engine, store, batch=batch)
+        report = await purge_once(engine, store, batch=batch, kind=kind)
         total.listed += report.listed
         total.deleted += report.deleted
         if report.listed < batch or report.deleted == 0:
             return total
 
 
-async def _run(url: str, store: FileStore) -> PurgeReport:
+async def _run(url: str, store: FileStore) -> tuple[PurgeReport, PurgeReport]:
     engine = create_async_engine(url, poolclass=NullPool)
     try:
-        return await purge(engine, store)
+        return (await purge(engine, store),
+                await purge(engine, store, kind=EXPIRED_EXPORTS))
     finally:
         await engine.dispose()
 
@@ -135,9 +170,11 @@ def main() -> int:
         log.error("Set %s and the file store's variables (storage.configured_store)",
                   MAINTENANCE_DATABASE_URL_ENV)
         return 2
-    report = asyncio.run(_run(url, store))
+    report, exports = asyncio.run(_run(url, store))
     log.info("File purge: %d deleted, %d kept (still referenced or changed)",
              report.deleted, report.skipped)
+    log.info("Export purge: %d deleted, %d kept (changed since listed)",
+             exports.deleted, exports.skipped)
     return 0
 
 
