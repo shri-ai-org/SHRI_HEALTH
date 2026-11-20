@@ -13,7 +13,11 @@ import type { PortalAccountStatus, PortalAccountStatusStatus, PortalInvitation }
 import { Alert, Badge, Button, ConfirmDialog, Field, formatDateTime, isOverLimit, Modal, ProblemAlert, Spinner, Textarea, useToast, type BadgeTone, type Problem } from '../../design-system'
 
 /** Staff times have no facility here; they show in the workstation's zone. */
-const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
+/**
+ * Times on the panel are clinic time (America/Los_Angeles), as the appointments beside it show
+ * theirs, through the same formatDateTime. Never the browser's own zone.
+ */
+const CLINIC_TZ = 'America/Los_Angeles'
 const REASON_LIMIT = 500
 
 const STATUS: Record<PortalAccountStatusStatus, { label: string; tone: BadgeTone; text: string }> = {
@@ -142,13 +146,13 @@ function AccountCard({ account, onAction }: { account: PortalAccountStatus; onAc
     ...(enrolled || account.status === 'disabled' ? ([['Sign-in email', account.email ?? 'Email unavailable']] as Array<[string, ReactNode]>) : []),
     ...(account.status === 'invited' && account.invitation
       ? ([
-          ['Invitation issued', formatDateTime(account.invitation.issuedAt, LOCAL_TZ)],
-          ['Expires', formatDateTime(account.invitation.expiresAt, LOCAL_TZ)],
+          ['Invitation issued', formatDateTime(account.invitation.issuedAt, CLINIC_TZ)],
+          ['Expires', formatDateTime(account.invitation.expiresAt, CLINIC_TZ)],
         ] as Array<[string, ReactNode]>)
       : []),
-    ...(account.enrolledAt ? ([['Enrolled', formatDateTime(account.enrolledAt, LOCAL_TZ)]] as Array<[string, ReactNode]>) : []),
-    ...(account.factorsResetAt ? ([['Sign-in factors last reset', formatDateTime(account.factorsResetAt, LOCAL_TZ)]] as Array<[string, ReactNode]>) : []),
-    ...(account.disabledAt ? ([['Disabled', formatDateTime(account.disabledAt, LOCAL_TZ)]] as Array<[string, ReactNode]>) : []),
+    ...(account.enrolledAt ? ([['Enrolled', formatDateTime(account.enrolledAt, CLINIC_TZ)]] as Array<[string, ReactNode]>) : []),
+    ...(account.factorsResetAt ? ([['Sign-in factors last reset', formatDateTime(account.factorsResetAt, CLINIC_TZ)]] as Array<[string, ReactNode]>) : []),
+    ...(account.disabledAt ? ([['Disabled', formatDateTime(account.disabledAt, CLINIC_TZ)]] as Array<[string, ReactNode]>) : []),
   ]
 
   return (
@@ -402,7 +406,7 @@ function ReasonDialog({ patientId, kind, onClose, onDone, onStale }: { patientId
  * until when the link works. There is no code or link to show or print.
  */
 function InvitationDialog({ invitation, onClose }: { invitation: PortalInvitation; onClose: () => void }) {
-  const expires = formatDateTime(invitation.expiresAt, LOCAL_TZ)
+  const expires = formatDateTime(invitation.expiresAt, CLINIC_TZ)
   return (
     <Modal
       open

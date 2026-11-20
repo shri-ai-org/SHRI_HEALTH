@@ -52,8 +52,13 @@ describe('PortalAccountPanel', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Issue invitation' }))
     const shown = await screen.findByRole('dialog', { name: 'Invitation sent' })
     expect(within(shown).getByText('k•••@example.com')).toBeInTheDocument()
+    // Clinic time, US format, whatever the browser's zone: 15:00 UTC on 3 Nov is 7:00 AM PST.
+    expect(within(shown).getByText(/until 11\/03\/2026, 7:00 AM PST/)).toBeInTheDocument()
     expect(server.bodies(`POST ${BASE}/portal-invitations`)[0]?.body).toEqual({ idChecked: true })
     expect(await screen.findByText('Invited')).toBeInTheDocument()
+    // The panel's issued and expires times are clinic time too (PDT before 1 Nov, PST after).
+    expect(screen.getByText('10/27/2026, 8:00 AM PDT')).toBeInTheDocument()
+    expect(screen.getByText('11/03/2026, 7:00 AM PST')).toBeInTheDocument()
     // No code, link or print: the invitation went by email.
     expect(within(shown).queryByRole('button', { name: /Print/ })).toBeNull()
     expect(within(shown).queryByText(/portal\/invite|set-up-account/)).toBeNull()
