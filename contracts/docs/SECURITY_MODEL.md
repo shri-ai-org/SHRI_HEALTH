@@ -212,7 +212,8 @@ Legend: ✓ granted · R read part only · – not granted · ‡ pending clinic
 | `ccda:import\|export` | ✓ | – | ✓ | ✓ | ✓ | – | – | – | – | – |
 | `inbox:*`, `messages:create` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | `exports:*` | – | – | – | – | – | – | ✓ | ✓ | – | – |
-| `audit-events:read`, `chart-access-reports:read` | – | – | – | – | – | – | – | ✓ | – | – |
+| `audit-events:read` (ADM since 2026-11-20, Vimal: the admin area's Audit trail tab) | – | – | – | – | – | – | ✓ | ✓ | – | – |
+| `chart-access-reports:read` | – | – | – | – | – | – | – | ✓ | – | – |
 | `patients:break-glass` ‡ | – | ✓ | ✓ | ✓ | ✓ | – | – | ✓ | – | – |
 | `integration-messages:read` (metadata only), `:replay` | – | – | – | – | – | R | ✓ | – | ✓ | – |
 | `communication-preferences:*`, `communications:read` | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | R | – | – |
