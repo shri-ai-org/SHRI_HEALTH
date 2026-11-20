@@ -44,6 +44,9 @@ import type {
   ListPortalVisitSummariesParams,
   ListPortalVitalsParams,
   NotFoundResponse,
+  PasswordHelpReceipt,
+  PasswordHelpStatus,
+  PasswordHelpStatusQuery,
   PortalAllergy,
   PortalAllergyList,
   PortalAppointment,
@@ -63,6 +66,7 @@ import type {
   PortalMessageReply,
   PortalMessageThread,
   PortalMessageThreadList,
+  PortalPasswordHelpRequest,
   PortalProblem,
   PortalProblemList,
   PortalProfile,
@@ -78,6 +82,7 @@ import type {
   PreRegistrationCreate,
   ReplyToPortalMessageThreadHeaders,
   RequestPortalChangeHeaders,
+  RequestPortalPasswordHelpHeaders,
   ReschedulePortalAppointmentHeaders,
   ServiceUnavailableResponse,
   SubmitPreRegistrationHeaders,
@@ -458,6 +463,181 @@ return apiFetch<enrollInPortalResponse>(getEnrollInPortalUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(enrollmentRequest)
+  }
+);}
+
+
+export type requestPortalPasswordHelpResponse200 = {
+  data: PasswordHelpReceipt
+  status: 200
+}
+
+export type requestPortalPasswordHelpResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type requestPortalPasswordHelpResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type requestPortalPasswordHelpResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type requestPortalPasswordHelpResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type requestPortalPasswordHelpResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type requestPortalPasswordHelpResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type requestPortalPasswordHelpResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type requestPortalPasswordHelpResponseSuccess = (requestPortalPasswordHelpResponse200) & {
+  headers: Headers;
+};
+export type requestPortalPasswordHelpResponseError = (requestPortalPasswordHelpResponse400 | requestPortalPasswordHelpResponse403 | requestPortalPasswordHelpResponse404 | requestPortalPasswordHelpResponse409 | requestPortalPasswordHelpResponse422 | requestPortalPasswordHelpResponse429 | requestPortalPasswordHelpResponse500) & {
+  headers: Headers;
+};
+
+export type requestPortalPasswordHelpResponse = (requestPortalPasswordHelpResponseSuccess | requestPortalPasswordHelpResponseError)
+
+export const getRequestPortalPasswordHelpUrl = () => {
+
+
+
+
+  return `/portal/password-help`
+}
+
+/**
+ * **Demo servers only (D123).** The patient portal's "Forgot password?" form, for patient accounts with a password (Linda and the other seeded portal patients). The patient gives a username or the mobile number on the chart (`login`, an identifier only; the administrator sees the number masked); an ADM approves or declines the request in the front office (`approvePasswordResetRequest`), and on approval Keycloak sends its own reset email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers). Our API never sees a password or a reset link (D3). **Same answer for any valid input:** `200` with a one-time `statusToken`, whether or not the account exists or already has an open request, so the form can't be used to probe accounts; a request for no account reads `waiting` until it expires, and so does a mobile number that matches more than one portal account (family members can share one): it matches none, so core never picks an account. One open request per account. The token is returned once, kept by the page (the URL fragment or memory, never a query string), and read back only in a POST body (`getPasswordHelpStatus`); only its hash is stored, and it expires with the request after 24 hours. Public: no session yet, so the `Origin` header must be the app's host instead of a CSRF token; rate-limited per IP and per login, the limiter keeping only a keyed hash of the login, never the login itself (as D96 does for the email). `404` unless the server runs with `SHRI_DEMO=true` and password help switched on (never in production). Audited as `security`, actor `anonymous`; the login is never logged.
+ * @summary Ask for help with a forgotten password (patients)
+ */
+export const requestPortalPasswordHelp = async (portalPasswordHelpRequest: PortalPasswordHelpRequest,
+    headers: RequestPortalPasswordHelpHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<requestPortalPasswordHelpResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<requestPortalPasswordHelpResponse>(getRequestPortalPasswordHelpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',...headers, ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalPasswordHelpRequest)
+  }
+);}
+
+
+export type getPortalPasswordHelpStatusResponse200 = {
+  data: PasswordHelpStatus
+  status: 200
+}
+
+export type getPortalPasswordHelpStatusResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type getPortalPasswordHelpStatusResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getPortalPasswordHelpStatusResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getPortalPasswordHelpStatusResponse422 = {
+  data: UnprocessableContentResponse
+  status: 422
+}
+
+export type getPortalPasswordHelpStatusResponse429 = {
+  data: TooManyRequestsResponse
+  status: 429
+}
+
+export type getPortalPasswordHelpStatusResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getPortalPasswordHelpStatusResponseSuccess = (getPortalPasswordHelpStatusResponse200) & {
+  headers: Headers;
+};
+export type getPortalPasswordHelpStatusResponseError = (getPortalPasswordHelpStatusResponse400 | getPortalPasswordHelpStatusResponse403 | getPortalPasswordHelpStatusResponse404 | getPortalPasswordHelpStatusResponse422 | getPortalPasswordHelpStatusResponse429 | getPortalPasswordHelpStatusResponse500) & {
+  headers: Headers;
+};
+
+export type getPortalPasswordHelpStatusResponse = (getPortalPasswordHelpStatusResponseSuccess | getPortalPasswordHelpStatusResponseError)
+
+export const getGetPortalPasswordHelpStatusUrl = () => {
+
+
+
+
+  return `/portal/password-help/status`
+}
+
+/**
+ * **Demo servers only (D123).** The status page of `requestPortalPasswordHelp`: informational only, with no password
+ *   action, so it can't become a takeover link. The token goes in the body, never in a URL (D13). `waiting` (not decided
+ *   yet, also for a request that matched no account), `approved` ("check your email for a link to set a new password"),
+ *   `declined`, `expired` (24 hours passed, or the link's own lifespan), and `unavailable` for a token that is unknown
+ *   or malformed; the answer never says whether an account exists. Public, `Origin`-checked and rate-limited per IP,
+ *   like the request. Not audited (it reads no account data).
+ * @summary Read a password-help request's status (patients)
+ */
+export const getPortalPasswordHelpStatus = async (passwordHelpStatusQuery: PasswordHelpStatusQuery, options?: Parameters<typeof apiFetch>[1]): Promise<getPortalPasswordHelpStatusResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<getPortalPasswordHelpStatusResponse>(getGetPortalPasswordHelpStatusUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordHelpStatusQuery)
   }
 );}
 

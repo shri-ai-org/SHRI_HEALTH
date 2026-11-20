@@ -104,6 +104,10 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1auth~1logout'
   /auth/session:
     $ref: 'modules/platform.yaml#/paths/~1auth~1session'
+  /auth/password-help:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1password-help'
+  /auth/password-help/status:
+    $ref: 'modules/platform.yaml#/paths/~1auth~1password-help~1status'
   /me:
     $ref: 'modules/platform.yaml#/paths/~1me'
   /events/stream:
@@ -126,6 +130,12 @@ paths:
     $ref: 'modules/platform.yaml#/paths/~1roles'
   /users:
     $ref: 'modules/platform.yaml#/paths/~1users'
+  /password-reset-requests:
+    $ref: 'modules/platform.yaml#/paths/~1password-reset-requests'
+  /password-reset-requests/{resetRequestId}/approve:
+    $ref: 'modules/platform.yaml#/paths/~1password-reset-requests~1{resetRequestId}~1approve'
+  /password-reset-requests/{resetRequestId}/decline:
+    $ref: 'modules/platform.yaml#/paths/~1password-reset-requests~1{resetRequestId}~1decline'
   /audit-events:
     $ref: 'modules/platform.yaml#/paths/~1audit-events'
   /integration-messages:
@@ -480,6 +490,10 @@ paths:
     $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1logout'
   /portal/enrollments:
     $ref: 'modules/portal.yaml#/paths/~1portal~1enrollments'
+  /portal/password-help:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1password-help'
+  /portal/password-help/status:
+    $ref: 'modules/portal.yaml#/paths/~1portal~1password-help~1status'
   /portal/auth/demo-sign-in:
     $ref: 'modules/portal.yaml#/paths/~1portal~1auth~1demo-sign-in'
   /portal/me:

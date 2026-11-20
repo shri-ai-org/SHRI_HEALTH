@@ -279,6 +279,155 @@ paths:
         '429': *id003
         '500': *id004
         '503': *id005
+  /portal/password-help:
+    post:
+      operationId: requestPortalPasswordHelp
+      summary: Ask for help with a forgotten password (patients)
+      description: >-
+        **Demo servers only (D123).** The patient portal's "Forgot password?" form, for patient accounts with a password (Linda and the other seeded portal patients). The patient gives a username or the mobile number on the chart (`login`, an identifier only; the administrator sees the number masked); an ADM approves or declines the request in the front office (`approvePasswordResetRequest`), and on approval Keycloak sends its own reset email (`execute-actions-email`, UPDATE_PASSWORD, short lifespan; Mailpit on demo servers). Our API never sees a password or a reset link (D3). **Same answer for any valid input:** `200` with a one-time `statusToken`, whether or not the account exists or already has an open request, so the form can't be used to probe accounts; a request for no account reads `waiting` until it expires, and so does a mobile number that matches more than one portal account (family members can share one): it matches none, so core never picks an account. One open request per account. The token is returned once, kept by the page (the URL fragment or memory, never a query string), and read back only in a POST body (`getPasswordHelpStatus`); only its hash is stored, and it expires with the request after 24 hours. Public: no session yet, so the `Origin` header must be the app's host instead of a CSRF token; rate-limited per IP and per login, the limiter keeping only a keyed hash of the login, never the login itself (as D96 does for the email). `404` unless the server runs with `SHRI_DEMO=true` and password help switched on (never in production). Audited as `security`, actor `anonymous`; the login is never logged.
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: C
+        category: security
+        actor: anonymous
+      x-idempotency: required
+      x-storage: admin
+      x-release: P1
+      security: []
+      parameters:
+      - $ref: ../components/parameters/IdempotencyKey.yaml
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalPasswordHelpRequest'
+            examples:
+              byUsername:
+                summary: By username
+                value:
+                  login: kaia.lindgren@example.com
+      responses:
+        '200':
+          description: 200. Received. The same answer for any valid input; the token is shown only here.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: platform.yaml#/components/schemas/PasswordHelpReceipt
+              examples:
+                received:
+                  summary: Received
+                  value:
+                    statusToken: ph-example-token-01
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON); `idempotency-key-missing` (the Idempotency-Key
+            header is required).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (password help is off on this server).
+        '409':
+          $ref: ../components/responses/Conflict.yaml
+          description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (the body doesn't match the schema); `idempotency-key-reused` (the Idempotency-Key
+            was used with a different body).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests from this address or for this login).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
+  /portal/password-help/status:
+    post:
+      operationId: getPortalPasswordHelpStatus
+      summary: Read a password-help request's status (patients)
+      description: >-
+        **Demo servers only (D123).** The status page of `requestPortalPasswordHelp`: informational only, with no password
+          action, so it can't become a takeover link. The token goes in the body, never in a URL (D13). `waiting` (not decided
+          yet, also for a request that matched no account), `approved` ("check your email for a link to set a new password"),
+          `declined`, `expired` (24 hours passed, or the link's own lifespan), and `unavailable` for a token that is unknown
+          or malformed; the answer never says whether an account exists. Public, `Origin`-checked and rate-limited per IP,
+          like the request. Not audited (it reads no account data).
+      tags:
+      - portal
+      x-owner: thulasi
+      x-permission: public
+      x-audit:
+        action: R
+        category: none
+        actor: anonymous
+      x-storage: admin
+      x-release: P1
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: platform.yaml#/components/schemas/PasswordHelpStatusQuery
+            examples:
+              read:
+                summary: Read the status
+                value:
+                  statusToken: ph-example-token-01
+      responses:
+        '200':
+          description: 200. The request's status.
+          headers:
+            X-Request-ID:
+              $ref: ../components/headers/XRequestId.yaml
+            Cache-Control:
+              $ref: ../components/headers/CacheControl.yaml
+            RateLimit:
+              $ref: ../components/headers/RateLimit.yaml
+            RateLimit-Policy:
+              $ref: ../components/headers/RateLimitPolicy.yaml
+          content:
+            application/json:
+              schema:
+                $ref: platform.yaml#/components/schemas/PasswordHelpStatus
+              examples:
+                waiting:
+                  summary: Waiting for the administrator
+                  value:
+                    status: waiting
+                    expiresAt: '2035-11-21T09:30:00Z'
+        '400':
+          $ref: ../components/responses/BadRequest.yaml
+          description: 400. `malformed-request` (the body is not parseable JSON).
+        '403':
+          $ref: ../components/responses/Forbidden.yaml
+          description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the app's host).
+        '404':
+          $ref: ../components/responses/NotFound.yaml
+          description: 404. `not-found` (password help is off on this server).
+        '422':
+          $ref: ../components/responses/UnprocessableContent.yaml
+          description: 422. `validation-failed` (the body doesn't match the schema).
+        '429':
+          $ref: ../components/responses/TooManyRequests.yaml
+          description: 429. `rate-limited` (too many requests from this address).
+        '500':
+          $ref: ../components/responses/InternalError.yaml
+          description: 500. `internal-error` (unexpected error).
   /portal/auth/demo-sign-in:
     post:
       operationId: signInToPortalForDemo
@@ -4341,3 +4490,16 @@ components:
           $ref: ../components/schemas/Id.yaml
           description: The prescription to refill (an `id` with `source` `prescription` from `GET /portal/me/medications`).
           x-phi: internal-id
+    PortalPasswordHelpRequest:
+      description: Body of the patient portal's "Forgot password?" form (D123).
+      type: object
+      additionalProperties: false
+      required:
+      - login
+      properties:
+        login:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: The patient's username, or the mobile number on the chart, as an identifier only. Never logged.
+          x-phi: identifier
