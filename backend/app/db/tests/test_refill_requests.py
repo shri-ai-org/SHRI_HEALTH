@@ -236,7 +236,7 @@ async def test_execute_is_shri_portal_s_only_and_no_table_privilege(
                            "shri_integration": False}
         assert c.execute(text(
             "SELECT p.prosecdef AND p.proconfig = "
-            "ARRAY['search_path=clinical, admin, audit, public, pg_temp'] "
+            "ARRAY['search_path=pg_catalog, pg_temp'] "   # 0030 (was the four schemas)
             "AND pg_get_userbyid(p.proowner) = 'shri_migrator' FROM pg_proc p WHERE p.oid = "
             "'admin.portal_request_refill'::regproc")).scalar()
         assert not c.execute(text(

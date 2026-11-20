@@ -45,8 +45,8 @@ def test_a_clinic_table_without_row_security_and_a_superuser_fail(admin_engine: 
 
 def test_a_service_role_or_public_able_to_create_in_a_named_schema_fails(
         admin_engine: Engine) -> None:
-    """0029's writing definer functions pin search_path to clinical, admin, audit, public: only
-    their owner may create there, never another service role or PUBLIC."""
+    """The service roles' search_path names clinical, admin, audit and public: only their owner
+    may create there, never another service role or PUBLIC."""
     name = "only shri_migrator may create in clinical, admin, audit and public"
     for grant in ("GRANT CREATE ON SCHEMA admin TO shri_portal",
                   "GRANT CREATE ON SCHEMA public TO PUBLIC"):
@@ -55,6 +55,32 @@ def test_a_service_role_or_public_able_to_create_in_a_named_schema_fails(
             failed = {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
             tx.rollback()
         assert name in failed, grant
+
+
+@pytest.mark.parametrize("probe", [
+    # a definer function with the old four-schema path (0029's)
+    "CREATE FUNCTION admin.server_check_probe() RETURNS void LANGUAGE sql SECURITY DEFINER "
+    "SET search_path = clinical, admin, audit, public, pg_temp AS 'SELECT NULL'",
+    # a definer function with none
+    "CREATE FUNCTION audit.server_check_probe() RETURNS void LANGUAGE sql SECURITY DEFINER "
+    "AS 'SELECT NULL'",
+    # a trigger function (invoker) with none
+    "CREATE FUNCTION public.server_check_probe() RETURNS trigger LANGUAGE plpgsql "
+    "AS 'BEGIN RETURN NEW; END'",
+    # pg_temp first: a temporary table could shadow one in pg_catalog's place
+    "CREATE FUNCTION clinical.server_check_probe() RETURNS trigger LANGUAGE plpgsql "
+    "SET search_path = pg_temp, pg_catalog AS 'BEGIN RETURN NEW; END'",
+])
+def test_a_trigger_or_definer_function_not_pinned_fails(admin_engine: Engine,
+                                                         probe: str) -> None:
+    """0030: every trigger and definer function runs with search_path pg_catalog, pg_temp."""
+    name = "every trigger and definer function pins search_path to pg_catalog, pg_temp"
+    with admin_engine.connect() as conn, conn.begin() as tx:
+        assert name not in {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
+        conn.execute(text(probe))
+        failed = {c.name for c, v in sc.run(conn, sc.checks(0)) if v != c.expected}
+        tx.rollback()
+    assert name in failed
 
 
 def test_a_query_that_fails_is_a_failed_check_not_a_crash(admin_engine: Engine) -> None:

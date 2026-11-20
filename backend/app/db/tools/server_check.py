@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, create_engine, text
 
-HEAD = "0029"
+HEAD = "0030"
 #: The demo seed's patients: app.db.seed.demo's PATIENTS and its 500 (a test checks it).
 PATIENTS = 512
 PGVECTOR = "0.8.2"   # RDS's version (D31); the server image pins it
@@ -59,10 +59,10 @@ UNFORCED = ("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.re
             "AND NOT (c.relrowsecurity AND c.relforcerowsecurity)")
 
 
-# Who may create objects in the schemas the writing SECURITY DEFINER functions name in their
-# search_path (clinical, admin, audit, public, pg_temp; 0029): only their owner, shri_migrator.
-# Any other service role, or PUBLIC, with CREATE there could shadow a table a trigger names
-# unqualified, so each (schema, role) pair counts, and PUBLIC counts as one.
+# Who may create objects in our four schemas: only their owner, shri_migrator. Since 0030 no
+# trigger or definer function resolves a name through them (the line below), but the service
+# roles' own search_path still names them, so another service role, or PUBLIC, with CREATE
+# there could shadow a table; each (schema, role) pair counts, and PUBLIC counts as one.
 SCHEMA_CREATORS = (
     "SELECT (SELECT count(*) FROM pg_namespace n CROSS JOIN pg_roles r "
     "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
@@ -72,6 +72,17 @@ SCHEMA_CREATORS = (
     "aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a "
     "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
     "AND a.grantee = 0 AND a.privilege_type = 'CREATE')")
+
+#: The only search_path a trigger function or a SECURITY DEFINER function may run with (0030).
+PINNED_SEARCH_PATH = "search_path=pg_catalog, pg_temp"
+
+# Trigger functions and SECURITY DEFINER functions in our four schemas that don't run with
+# search_path pinned to pg_catalog, pg_temp: one that does could be made to find another table or
+# function through a schema on the caller's path (Thulasi's #424 review). None is excepted.
+UNPINNED = ("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname IN ('clinical', 'admin', 'audit', 'public') "
+            "AND (p.prosecdef OR p.prorettype = 'trigger'::regtype) "
+            f"AND NOT coalesce('{PINNED_SEARCH_PATH}' = ANY (p.proconfig), false)")
 
 
 def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Check]:
@@ -89,6 +100,8 @@ def checks(patients: int, head: str = HEAD, pgvector: str = PGVECTOR) -> list[Ch
               "0"),
         Check("only shri_migrator may create in clinical, admin, audit and public",
               SCHEMA_CREATORS, "0"),
+        Check("every trigger and definer function pins search_path to pg_catalog, pg_temp",
+              UNPINNED, "0"),
         Check("demo patients loaded", "SELECT count(*) FROM clinical.patient", str(patients)),
     ]
 

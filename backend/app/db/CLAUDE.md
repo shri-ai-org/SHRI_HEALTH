@@ -569,9 +569,11 @@ pin in `terminology/fetch.py`, in a reviewed PR.
 ## Server tools (`app/db/tools`, the self-managed demo and test servers)
 
 - `python -m app.db.tools.server_check --patients 512` runs, as the master user, read-only, the
-  six database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
+  database checks of server day: Alembic head, pgvector `0.8.2` (D31), row security on
   and forced on every clinic table (those with a `tenant_id`), collation C.UTF-8, no service role
-  bypassing row security or a superuser, and the patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
+  bypassing row security or a superuser, only `shri_migrator` able to create in our four
+  schemas, every trigger and definer function pinned to `pg_catalog, pg_temp` (0030), and the
+  patient count. Each prints PASS or FAIL, and the exit status is 1 if any fails. The URL is
   `SERVER_CHECK_DATABASE_URL`, never printed. A laptop built with another pgvector fails that
   line by design.
 - `backup_db.sh [-U <user>] <database> <dir>`: `pg_dump -Fc` as the master user, checked with
@@ -674,6 +676,11 @@ stays, as the test's only allowed overlap.
 - IDs are UUIDv4 everywhere (D29) — `uuidv7()` is not adopted; it exposes creation time.
 - Collation is C.UTF-8 in every environment (D33).
 - No DELETE on resource tables; corrections use `entered-in-error`.
+- Every trigger function and every `SECURITY DEFINER` function sets `search_path =
+  pg_catalog, pg_temp` and names every table, and every one of our functions, with its schema
+  (`public.shri_changed_columns`, `public.digest`); a table a trigger gets by bare name in its
+  arguments goes through `public.shri_qualified_table()` (migration 0030).
+  `tests/test_search_path_pin.py` and `server_check` fail otherwise, with no exceptions.
 - Schema changes only through a new Alembic revision; never edit `sql_0001/`/`sql_0002/`.
 - Regenerate `sql/*.sql` from the models (`python -m app.db.tools.gen_db_rules`) before writing
   a new migration's embedded SQL — never hand-edit the generated files.
