@@ -4,6 +4,7 @@ for shri_portal (list, read, create, reply) and two for shri_app (reply, read re
 the real roles against the real database. Synthetic data only."""
 from __future__ import annotations
 
+import threading
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -258,12 +259,19 @@ def test_a_message_is_limited_in_size_and_rate(
         thread: uuid.UUID, portal_engine: Engine, chart: dict[str, Any]) -> None:
     with portal_engine.begin() as c:
         _as_patient(c, chart)
-        for subject, body in (("Hi", BODY), (SUBJECT, ""), (SUBJECT, "x" * 4001)):
-            state, _, message = _refusal(
+        for subject, body, refused in (
+                ("Hi", BODY, "message_subject_invalid"),
+                ("x" * 201, BODY, "message_subject_invalid"),
+                ("   \t ", BODY, "message_subject_invalid"), (SUBJECT, "", "message_body_invalid"),
+                (SUBJECT, "x" * 4001, "message_body_invalid"),
+                (SUBJECT, " \n\t  ", "message_body_invalid")):
+            state, constraint, message = _refusal(
                 c, "SELECT admin.portal_create_message(:s, :b)", {"s": subject, "b": body})
-            assert state == "23514" and BODY not in message
-        assert _refusal(c, "SELECT admin.portal_create_message(:s, 'Hi')",
-                        {"s": "x" * 201})[0] == "22001"
+            # Refused before any write, naming only the rule: never the row, as a CHECK would.
+            assert (state, constraint) == ("P0001", refused) and BODY not in message
+            assert SUBJECT not in message
+        assert _refusal(c, "SELECT admin.portal_reply_to_thread(:t, '   ')",
+                        {"t": thread})[:2] == ("P0001", "message_body_invalid")
         for n in range(4):                                         # the thread's first is one
             c.execute(text("SELECT admin.portal_reply_to_thread(:t, :b)"),
                       {"t": thread, "b": f"Reply {n}"})
@@ -354,3 +362,59 @@ def test_the_portal_lists_threads_latest_first_in_pages(
         ids = [r.id for r in _threads(c)]
         page = c.execute(text("SELECT id FROM admin.portal_message_threads(1, 1)")).all()
     assert ids == created[::-1] and [r.id for r in page] == [created[0]]
+
+
+def test_the_checks_on_the_table_hold_even_without_the_functions(
+        thread: uuid.UUID, admin_engine: Engine, chart: dict[str, Any]) -> None:
+    """The owner (as the definer runs) still can't store a blank or oversized message."""
+    for body in ("", "   ", "x" * 4001):
+        with admin_engine.begin() as c:
+            c.execute(text("SET LOCAL ROLE shri_migrator"))
+            c.execute(text("SELECT set_config('app.current_tenant_id', :t, true)"),
+                      {"t": str(chart["tenant"])})
+            assert _refusal(c, "INSERT INTO admin.work_item_reply (id, tenant_id, work_item_id, "
+                               "author_patient_id, body, to_patient) VALUES (gen_random_uuid(), "
+                               ":t, :i, :p, :b, true)",
+                            {"t": chart["tenant"], "i": thread, "p": chart["me"]["pt"].id,
+                             "b": body})[:2] == ("23514", "ck_work_item_reply_body")
+
+
+def test_two_sessions_at_once_never_pass_the_rate_limit_together(
+        thread: uuid.UUID, portal_engine: Engine, admin_engine: Engine,
+        chart: dict[str, Any]) -> None:
+    """Four of five messages are used. Two real connections send at the same moment: the second
+    waits on the per-patient lock until the first commits, then counts five and is refused."""
+    for n in range(3):
+        with portal_engine.begin() as c:
+            _as_patient(c, chart)
+            c.execute(text("SELECT admin.portal_reply_to_thread(:t, :b)"),
+                      {"t": thread, "b": f"Reply {n}"})
+    first = portal_engine.connect()
+    first_tx = first.begin()
+    _as_patient(first, chart)
+    first.execute(text("SELECT admin.portal_reply_to_thread(:t, 'Fifth')"), {"t": thread})
+    outcome: dict[str, Any] = {}
+
+    def second() -> None:
+        with portal_engine.connect() as c, c.begin():
+            _as_patient(c, chart)
+            try:
+                c.execute(text("SELECT admin.portal_reply_to_thread(:t, 'Sixth')"),
+                          {"t": thread})
+                outcome["result"] = "written"
+            except DBAPIError as error:
+                outcome["result"] = getattr(error.orig, "sqlstate", None)
+                outcome["constraint"] = getattr(getattr(error.orig, "diag", None),
+                                                "constraint_name", None)
+
+    racer = threading.Thread(target=second)
+    racer.start()
+    racer.join(timeout=2)
+    assert racer.is_alive()                                    # held on the patient's lock
+    first_tx.commit()
+    first.close()
+    racer.join(timeout=10)
+    assert outcome == {"result": "P0001", "constraint": "portal_message_rate_limited"}
+    with admin_engine.connect() as c:
+        assert c.execute(text("SELECT count(*) FROM admin.work_item_reply WHERE work_item_id = :i"),
+                         {"i": thread}).scalar_one() == 5

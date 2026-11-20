@@ -4,17 +4,17 @@ replyToPortalMessageThread and replyToInboxItem; D77, D81, D84; Anand's go, 20 N
 
   admin.work_item
       `patient-message` joins the item types. ck_work_item_patient_message: such an item has a
-      patient, the subject as its title (3 to 200 characters), no body (its text is in replies,
-      which never change) and no other record. trg_work_item_patient_message: only the portal's
-      functions make one (never a staff insert), and its type, patient, title and body never
-      change; once completed or cancelled (the portal's "closed") it stays closed.
+      patient, the subject as its title (3 to 200 characters, not only spaces), no body (its text is
+      in replies, which never change) and no other record. trg_work_item_patient_message: only the
+      portal's functions make one (never a staff insert), and its type, patient, title and body
+      never change; once completed or cancelled (the portal's "closed") it stays closed.
   admin.work_item_reply
-      One reply on an item's thread: a staff member's or, on a `patient-message` item, the
-      patient's own (exactly one author). Body 1 to 4,000 characters. `to_patient`: a staff
-      reply the patient reads; the patient's own replies are always true. Same-clinic item, and
-      a patient's reply only on her own item (composite keys). Insert-only for every role.
-      Forced row security under the clinic policy, and no service role holds any privilege on
-      it: only the functions below, owned by shri_migrator, read and write it.
+      One reply on an item's thread: a staff member's or, on a `patient-message` item, the patient's
+      own (exactly one author). Body 1 to 4,000 characters, not only spaces. `to_patient`: a staff
+      reply the patient reads; the patient's own replies are always true. Same-clinic item, and a
+      patient's reply only on her own item (composite keys). Insert-only for every role. Forced row
+      security under the clinic policy, and no service role holds any privilege on it: only the
+      functions below, owned by shri_migrator, read and write it.
 
   Every function: SECURITY DEFINER, owner shri_migrator, search_path pinned to pg_catalog,
   pg_temp with every name schema-qualified, nothing for PUBLIC, EXECUTE for one role. The clinic,
@@ -37,11 +37,15 @@ replyToPortalMessageThread and replyToInboxItem; D77, D81, D84; Anand's go, 20 N
     portal_message_thread_full (409, the contract's 500 messages), portal_message_chart_inactive
     (403), portal_message_rate_limited (more than 5 messages in 10 minutes) and
     portal_message_daily_cap (more than 20 in 24 hours), both 429; portal_message_no_queue (the
-    clinic has no active facility). The patient's messages are counted under a per-patient lock.
+    clinic has no active facility); message_subject_invalid or message_body_invalid (422: a subject
+    of 3 to 200 characters, a message of 1 to 4,000, neither only spaces), checked before any
+    write, so no constraint's error ever prints a row. The patient's messages are counted, and
+    the new one written, under one per-patient lock in the same transaction.
   shri_app:
     admin.inbox_reply(p_item_id, p_body, p_to_patient)  a reply by the session's staff user (an
         active user of the clinic) on an open item. to_patient only on a `patient-message` item.
         It never writes a patient's reply. Refusals: P0002 (404); P0001 inbox_item_closed (409),
+        message_body_invalid (422),
         inbox_reply_to_patient_not_allowed (422), inbox_reply_not_staff (403).
     admin.inbox_replies(p_item_id)  an item's replies, oldest first, for the inbox service, which
         applies the item's visibility and the restricted-chart rules (D37) before showing them.
@@ -77,7 +81,8 @@ ALTER TABLE admin.work_item ADD CONSTRAINT ck_work_item_item_type_codes
   CHECK (item_type IN ({TYPES}, 'patient-message'));
 ALTER TABLE admin.work_item ADD CONSTRAINT ck_work_item_patient_message
   CHECK (item_type <> 'patient-message' OR (patient_id IS NOT NULL AND body IS NULL
-         AND char_length(title) >= 3 AND encounter_id IS NULL AND num_nonnulls({SUBJECTS}) = 0));
+         AND char_length(title) >= 3 AND title ~ '[^[:space:]]' AND encounter_id IS NULL
+         AND num_nonnulls({SUBJECTS}) = 0));
 
 CREATE TABLE admin.work_item_reply (
   work_item_id uuid NOT NULL,
@@ -94,7 +99,8 @@ CREATE TABLE admin.work_item_reply (
   CONSTRAINT pk_work_item_reply PRIMARY KEY (id),
   CONSTRAINT ck_work_item_reply_one_author
     CHECK (num_nonnulls(author_user_id, author_patient_id) = 1),
-  CONSTRAINT ck_work_item_reply_body CHECK (char_length(body) BETWEEN 1 AND 4000),
+  CONSTRAINT ck_work_item_reply_body
+    CHECK (char_length(body) BETWEEN 1 AND 4000 AND body ~ '[^[:space:]]'),
   CONSTRAINT ck_work_item_reply_patient_sees_own CHECK (author_patient_id IS NULL OR to_patient),
   CONSTRAINT fk_work_item_reply_item_same_tenant FOREIGN KEY (tenant_id, work_item_id)
     REFERENCES admin.work_item (tenant_id, id),
@@ -155,6 +161,21 @@ REVOKE ALL ON FUNCTION admin.shri_patient_message_guard() FROM PUBLIC;
 CREATE TRIGGER trg_work_item_patient_message BEFORE INSERT OR UPDATE ON admin.work_item
   FOR EACH ROW EXECUTE FUNCTION admin.shri_patient_message_guard();
 """
+
+# A message's size, checked before any write: a refusal names only the constraint, so the
+# server log never holds the row (a CHECK violation's detail would print it).
+BODY_OK = """
+  IF p_body IS NULL OR char_length(p_body) NOT BETWEEN 1 AND 4000
+     OR p_body !~ '[^[:space:]]' THEN
+    RAISE EXCEPTION 'a message is 1 to 4000 characters, not only spaces'
+      USING ERRCODE = 'P0001', CONSTRAINT = 'message_body_invalid';
+  END IF;"""
+SUBJECT_OK = """
+  IF p_subject IS NULL OR char_length(p_subject) NOT BETWEEN 3 AND 200
+     OR p_subject !~ '[^[:space:]]' THEN
+    RAISE EXCEPTION 'a subject is 3 to 200 characters, not only spaces'
+      USING ERRCODE = 'P0001', CONSTRAINT = 'message_subject_invalid';
+  END IF;"""
 
 # The patient's limits (inside the functions, under a per-patient lock): at most 5 messages in
 # 10 minutes and 20 in 24 hours, new threads and replies together.
@@ -240,7 +261,7 @@ BEGIN
                     AND p.tenant_id = v_tenant AND p.active) THEN
     RAISE EXCEPTION 'this chart is not active'
       USING ERRCODE = 'P0001', CONSTRAINT = 'portal_message_chart_inactive';
-  END IF;{LIMITS}
+  END IF;{SUBJECT_OK}{BODY_OK}{LIMITS}
   SELECT a.ext_facility_id INTO v_facility FROM clinical.appointment a
     JOIN admin.facility f ON f.id = a.ext_facility_id AND f.is_active
    WHERE a.tenant_id = v_tenant AND a.subject_patient_id = v_patient
@@ -292,7 +313,7 @@ BEGIN
          AND r.work_item_id = v_item AND r.to_patient) >= 500 THEN
     RAISE EXCEPTION 'this thread is full; start a new message'
       USING ERRCODE = 'P0001', CONSTRAINT = 'portal_message_thread_full';
-  END IF;{LIMITS}
+  END IF;{BODY_OK}{LIMITS}
   INSERT INTO admin.work_item_reply (id, tenant_id, work_item_id, author_patient_id, body,
                                      to_patient)
   VALUES (v_reply, v_tenant, v_item, v_patient, p_body, true);
@@ -329,7 +350,7 @@ BEGIN
   IF coalesce(p_to_patient, false) AND v_type <> 'patient-message' THEN
     RAISE EXCEPTION 'only a patient message is answered to the patient'
       USING ERRCODE = 'P0001', CONSTRAINT = 'inbox_reply_to_patient_not_allowed';
-  END IF;
+  END IF;{BODY_OK}
   INSERT INTO admin.work_item_reply (id, tenant_id, work_item_id, author_user_id, body,
                                      to_patient, created_by_user_id)
   VALUES (v_reply, v_tenant, p_item_id, v_user, p_body, coalesce(p_to_patient, false), v_user);
