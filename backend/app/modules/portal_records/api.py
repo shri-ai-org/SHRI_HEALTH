@@ -69,3 +69,9 @@ async def download_portal_file_content(
     content = await service.serve_file(db, files, store, crypto, tokens, patient, file_id, token)
     return StreamingResponse(content.body, media_type=content.content_type,
                              headers=content.headers)
+
+
+# Secure messages (#398; messages_api.py), on this module's router.
+from .messages_api import router as _messages_router  # noqa: E402 (after this module's routes)
+
+router.include_router(_messages_router)
