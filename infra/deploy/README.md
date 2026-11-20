@@ -92,6 +92,7 @@ infra/deploy/deploy.sh host-nginx /etc/shri/deploy.env   # writes SHRI_STATE_DIR
 
 ```bash
 sudo install -D -m 644 /etc/shri/shri-state/host-nginx/upstream.crt /etc/nginx/shri/shri-deploy-upstream.crt
+sudo install -m 644 /etc/shri/shri-state/host-nginx/log-format.conf /etc/nginx/conf.d/shri-log-format.conf
 sudo certbot certonly --webroot -w /var/www/html -d dep.shri-ai.org   # or --nginx; the certificate
 sudo install -m 644 /etc/shri/shri-state/host-nginx/dep.shri-ai.org.conf /etc/nginx/sites-available/dep.shri-ai.org
 sudo ln -s /etc/nginx/sites-available/dep.shri-ai.org /etc/nginx/sites-enabled/
@@ -100,10 +101,13 @@ sudo nginx -t && sudo systemctl reload nginx
 
 If certbot needs the port-80 block first, install the site file, reload, run certbot, then reload again. **Nothing else on the server changes:** the other sites' files aren't touched.
 
+**The host's access log for our paths** goes to `/var/log/nginx/shri-deploy.access.log` (the project's name), with the path only and never a query string, as our own edge logs: sign-in codes, download tokens (D105) and Keycloak's one-time links stay out of it. `log-format.conf` defines that format once at http level (`conf.d`), because the path mode's file sits inside the host's own server block, where a format can't be defined. Install it before the site file, or `nginx -t` fails with an unknown log format. On a host set up before this, run `host-nginx` again and repeat the install lines.
+
 **A path (`shri-ai.org/dep`):**
 
 ```bash
 sudo install -D -m 644 /etc/shri/shri-state/host-nginx/upstream.crt /etc/nginx/shri/shri-deploy-upstream.crt
+sudo install -m 644 /etc/shri/shri-state/host-nginx/log-format.conf /etc/nginx/conf.d/shri-log-format.conf
 sudo install -D -m 644 /etc/shri/shri-state/host-nginx/shri-ai.org-dep.locations.conf /etc/nginx/shri/shri-ai.org-dep.locations.conf
 sudo nano /etc/nginx/sites-available/shri-ai.org
 #   inside the server block with "listen 443 ssl" (never the port 80 one), add:
