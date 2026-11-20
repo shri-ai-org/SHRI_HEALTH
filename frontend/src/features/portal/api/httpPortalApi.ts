@@ -63,8 +63,11 @@ export function createHttpPortalApi(later: PortalLaterApi): PortalApi {
     signOut: async () => {
       await signOutOfPortal()
     },
-    enroll: async (input, idempotencyKey) => {
-      await ok(enrollInPortal(input, { 'Idempotency-Key': idempotencyKey }), 204)
+    enroll: (input, idempotencyKey) => ok(enrollInPortal(input, { 'Idempotency-Key': idempotencyKey }), 200),
+    openSetPassword: (redirectUrl) => {
+      // Only a web address: the link comes from our API, but nothing else may be opened from here.
+      const url = new URL(redirectUrl, window.location.origin)
+      if (url.protocol === 'https:' || url.protocol === 'http:') window.location.assign(url.href)
     },
     demoSignIn: (input) => ok(signInToPortalForDemo(input), 200),
     accountSecurityUrl: ACCOUNT_SECURITY_URL,

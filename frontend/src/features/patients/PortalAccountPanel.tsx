@@ -1,4 +1,4 @@
-import { KeyRound, Printer, Send } from 'lucide-react'
+import { KeyRound, MailCheck, Send } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import {
@@ -10,24 +10,16 @@ import {
   revokePortalInvitation,
 } from '../../api/generated/endpoints/patients/patients'
 import type { PortalAccountStatus, PortalAccountStatusStatus, PortalInvitation } from '../../api/generated/model'
-import { Badge, Button, ConfirmDialog, Field, formatDateTime, isOverLimit, Modal, ProblemAlert, Spinner, Textarea, useToast, type BadgeTone, type Problem } from '../../design-system'
-import { PORTAL_BASE } from '../portal/router'
+import { Alert, Badge, Button, ConfirmDialog, Field, formatDateTime, isOverLimit, Modal, ProblemAlert, Spinner, Textarea, useToast, type BadgeTone, type Problem } from '../../design-system'
 
 /** Staff times have no facility here; they show in the workstation's zone. */
 const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 const REASON_LIMIT = 500
 
-/**
- * Where the patient sets up their account: the portal's own set-up page, on this host. The portal
- * opens it for a signed-out patient instead of going to sign-in, so the invitation names it directly
- * (no patient data in it). The portal is served from the same host as the staff screens.
- */
-const setUpAccountUrl = () => new URL(`${PORTAL_BASE}/set-up-account`, window.location.origin).href
-
 const STATUS: Record<PortalAccountStatusStatus, { label: string; tone: BadgeTone; text: string }> = {
   none: { label: 'No account', tone: 'neutral', text: 'The patient has no portal account. Issue an invitation after checking their photo ID.' },
   invited: { label: 'Invited', tone: 'info', text: 'An invitation is waiting to be used. Issuing a new one cancels it.' },
-  'pending-setup': { label: 'Setting up', tone: 'info', text: 'The patient used the code and is finishing set-up (email, password, authenticator app).' },
+  'pending-setup': { label: 'Setting up', tone: 'info', text: 'The patient used the invitation and is finishing set-up (password and authenticator app).' },
   active: { label: 'Active', tone: 'success', text: 'The patient can sign in to the portal.' },
   disabled: { label: 'Disabled', tone: 'warning', text: 'The patient cannot sign in. Enable the account to let them sign in again.' },
   suspended: {
@@ -41,8 +33,9 @@ type Action = 'invite' | 'revoke' | 'reset' | 'disable' | 'enable'
 
 /**
  * The patient's portal account as the front desk sees it (ADR-0013, D85, D92; inventory B8a):
- * never a password, factor or code, except the new invitation code, shown once when it is issued.
- * Issuing an invitation and resetting sign-in factors both need an in-person photo ID check.
+ * never a password, factor, code or link. An invitation is emailed to the address on the chart
+ * (D124); the panel shows only where it went, masked, and when it expires. Issuing an invitation
+ * and resetting sign-in factors both need an in-person photo ID check.
  */
 export function PortalAccountPanel({ patientId }: { patientId: string }) {
   const [account, setAccount] = useState<PortalAccountStatus | null>(null)
@@ -100,7 +93,13 @@ export function PortalAccountPanel({ patientId }: { patientId: string }) {
         <IdCheckDialog
           title={account?.status === 'invited' ? 'Issue a new invitation?' : 'Issue a portal invitation?'}
           confirmLabel="Issue invitation"
-          description={account?.status === 'invited' ? 'The invitation already issued stops working.' : 'The code works once, for 72 hours.'}
+          description={
+            account?.status === 'invited'
+              ? 'We email a new invitation to the address on the chart. The one already sent stops working.'
+              : 'We email the invitation to the address on the chart. Its link works once, for 7 days.'
+          }
+          // A chart without an email can't be invited (422 on /email): say what to do, not a generic error.
+          explain={(p) => (p.status === 422 && p.errors?.some((e) => e.pointer === '/email') ? "This chart has no email address. Add the patient's email to their record, then issue the invitation." : null)}
           onClose={() => setAction(null)}
           onStale={reload}
           run={async () => {
@@ -208,6 +207,7 @@ function IdCheckDialog({
   withNote = false,
   doneMessage,
   run,
+  explain,
   onClose,
   onStale,
 }: {
@@ -217,6 +217,8 @@ function IdCheckDialog({
   withNote?: boolean
   doneMessage?: string
   run: (note: string) => Promise<void>
+  /** A plain sentence for a refusal this action can name, instead of the generic Problem copy. */
+  explain?: (problem: Problem) => string | null
   onClose: () => void
   onStale: () => void
 }) {
@@ -279,7 +281,15 @@ function IdCheckDialog({
             {(p) => <Textarea {...p} value={note} limit={REASON_LIMIT} onChange={(e) => setNote(e.target.value)} />}
           </Field>
         ) : null}
-        {problem ? <ProblemAlert problem={problem} /> : null}
+        {problem ? (
+          explain?.(problem) ? (
+            <Alert tone="warning" title="Can't send the invitation">
+              {explain(problem)}
+            </Alert>
+          ) : (
+            <ProblemAlert problem={problem} />
+          )
+        ) : null}
       </div>
     </Modal>
   )
@@ -317,7 +327,7 @@ function RevokeDialog({ patientId, invitationId, onClose, onDone, onStale }: { p
       }}
     >
       <div className="space-y-3">
-        <p>The code stops working at once, for example when the printout was lost.</p>
+        <p>The invitation link stops working at once, for example when it went to the wrong inbox.</p>
         {problem ? <ProblemAlert problem={problem} /> : null}
       </div>
     </ConfirmDialog>
@@ -388,62 +398,31 @@ function ReasonDialog({ patientId, kind, onClose, onDone, onStale }: { patientId
 }
 
 /**
- * The new code, shown once (it is in the issue response only): print it for the patient now. It
- * is never stored in the browser; closing the dialog drops it.
+ * The invitation went by email (D124): the dialog says where, masked as the API returns it, and
+ * until when the link works. There is no code or link to show or print.
  */
 function InvitationDialog({ invitation, onClose }: { invitation: PortalInvitation; onClose: () => void }) {
   const expires = formatDateTime(invitation.expiresAt, LOCAL_TZ)
-  const setUpUrl = setUpAccountUrl()
   return (
     <Modal
       open
-      title="Portal invitation"
+      title="Invitation sent"
       onClose={onClose}
       footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            Done
-          </Button>
-          <Button icon={<Printer aria-hidden="true" size={16} />} onClick={() => printInvitation(invitation.code, expires, setUpUrl)}>
-            Print invitation
-          </Button>
-        </>
+        <Button variant="outline" onClick={onClose}>
+          Done
+        </Button>
       }
     >
       <div className="space-y-3">
-        <p>Give the patient this code. It works once, until {expires}. This is the only time it is shown.</p>
-        <p className="rounded-lg bg-surface-2 py-4 text-center font-mono text-2xl font-semibold tracking-widest text-ink" aria-label={`Invitation code ${invitation.code.split('').join(' ')}`}>
-          {invitation.code}
+        <p className="flex items-start gap-2">
+          <MailCheck aria-hidden="true" size={18} className="mt-0.5 shrink-0" />
+          <span>
+            We emailed the invitation to <span className="font-medium text-ink">{invitation.sentTo}</span>. Its link works once, until {expires}.
+          </span>
         </p>
-        <p className="text-sm text-ink-muted">
-          The patient opens <span className="font-medium break-all text-ink">{setUpUrl}</span> and enters the code, their date of birth and their email.
-        </p>
+        <p className="text-sm text-ink-muted">The patient opens the link, confirms their date of birth, and then chooses a password and sets up an authenticator app.</p>
       </div>
     </Modal>
   )
-}
-
-/** A plain page with only the code and the steps (no patient data), printed from its own window. */
-function printInvitation(code: string, expires: string, setUpUrl: string) {
-  const w = window.open('', '_blank', 'width=640,height=520')
-  if (!w) return
-  const doc = w.document
-  doc.title = 'Portal invitation'
-  const add = (tag: string, text: string, style = '') => {
-    const el = doc.createElement(tag)
-    el.textContent = text
-    if (style) el.setAttribute('style', style)
-    doc.body.append(el)
-  }
-  doc.body.setAttribute('style', 'font-family: system-ui, sans-serif; margin: 2rem')
-  add('h1', 'Your patient portal invitation', 'font-size: 1.4rem')
-  add('p', 'Your invitation code:')
-  add('p', code, 'font-family: monospace; font-size: 2rem; letter-spacing: 0.2em; font-weight: 600')
-  add('p', `It works once, until ${expires}.`)
-  add('p', 'Go to this address and enter this code, your date of birth and your email address:')
-  add('p', setUpUrl, 'font-family: monospace; font-size: 1.1rem; word-break: break-all')
-  add('p', 'We then email you a link to choose a password and set up an authenticator app.')
-  add('p', 'Keep this paper private. If you lose it, ask the front desk for a new code.')
-  w.focus()
-  w.print()
 }

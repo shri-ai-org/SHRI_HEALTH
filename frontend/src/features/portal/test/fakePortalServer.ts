@@ -40,7 +40,10 @@ export const IDS = {
   provider: id(201),
 } as const
 
-export const INVITATION_CODE = 'ABCD-1234-EFGH'
+/** The invitation token in the synthetic emailed link (`/portal/invite#t=…`, D124). */
+export const INVITATION_TOKEN = 'synthetic-invitation-token-0001'
+/** Keycloak's one-time set-password link the fake answers with (an example address only). */
+export const SET_PASSWORD_URL = 'https://kc.example.invalid/kc/realms/shri-patients/login-actions/action-token?key=example'
 export const BIRTH_DATE = '1984-07-19'
 
 const address = { lines: ['200 Example Ave', 'Suite 300'], city: 'Springfield', state: 'IL', postalCode: '62701', country: 'US' as const }
@@ -164,8 +167,9 @@ export function fakePortalServer({ signedIn = true, bookingConflict = false, una
     if (method === 'POST' && path === '/portal/auth/refresh') return json(200, session())
     if (method === 'POST' && path === '/portal/auth/logout') return empty(204)
     if (method === 'POST' && path === '/portal/enrollments') {
-      const code = String(body.invitationCode ?? '').replace(/[\s-]/g, '').toUpperCase()
-      return code === INVITATION_CODE.replace(/-/g, '') && body.birthDate === BIRTH_DATE ? empty(204) : problem(422, 'business-rule-violation')
+      return body.invitationToken === INVITATION_TOKEN && body.birthDate === BIRTH_DATE
+        ? json(200, { next: 'set-password', redirectUrl: SET_PASSWORD_URL })
+        : problem(422, 'business-rule-violation')
     }
 
     if (method === 'GET' && path === '/portal/me') return json(200, profile())

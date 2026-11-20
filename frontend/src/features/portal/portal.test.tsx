@@ -7,7 +7,7 @@ import { createHttpPortalApi } from './api/httpPortalApi'
 import { createMockPortalApi, uid } from './api/mockPortalApi'
 import type { PortalApi } from './api/portalApi'
 import { PortalApp, resetAutoSignInForTests } from './PortalApp'
-import { BIRTH_DATE, fakePortalServer, IDS, INVITATION_CODE, type FakeOptions } from './test/fakePortalServer'
+import { BIRTH_DATE, fakePortalServer, IDS, INVITATION_TOKEN, SET_PASSWORD_URL, type FakeOptions } from './test/fakePortalServer'
 
 // Synthetic data only (fakePortalServer for B8a, mockPortalApi for the later screens).
 
@@ -29,7 +29,8 @@ function cameBackStillSignedOut(trips: number) {
 function setup(path = '/portal', options: FakeOptions = {}) {
   const server = fakePortalServer(options)
   const startSignIn = vi.fn()
-  const api: PortalApi = { ...createHttpPortalApi(createMockPortalApi({ latencyMs: 0 })), startSignIn }
+  const openSetPassword = vi.fn()
+  const api: PortalApi = { ...createHttpPortalApi(createMockPortalApi({ latencyMs: 0 })), startSignIn, openSetPassword }
   window.history.replaceState(null, '', path)
   const user = userEvent.setup()
   render(
@@ -37,7 +38,7 @@ function setup(path = '/portal', options: FakeOptions = {}) {
       <PortalApp api={api} />
     </ToastProvider>,
   )
-  return { server, user, startSignIn }
+  return { server, user, startSignIn, openSetPassword }
 }
 
 async function loaded() {
@@ -418,57 +419,58 @@ describe('documents', () => {
   })
 })
 
-describe('set up your account, before any sign-in (D85, ADR-0013 §3)', () => {
-  // The invitation gives the patient this address (PortalAccountPanel): signed out, it opens set-up,
-  // never the automatic sign-in.
-  async function toSetUp() {
-    const s = setup('/portal/set-up-account', { signedIn: false })
+describe('set up your account from the emailed invitation (D124)', () => {
+  // The email links to `/portal/invite#t=…`: signed out, it opens set-up, never the automatic sign-in.
+  async function toInvite(fragment = `#t=${INVITATION_TOKEN}`) {
+    const s = setup(`/portal/invite${fragment}`, { signedIn: false })
     expect(await screen.findByRole('heading', { level: 1, name: 'Set up your account' })).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/portal/set-up-account')
     expect(s.startSignIn).not.toHaveBeenCalled()
     return s
   }
 
-  async function fill(user: ReturnType<typeof userEvent.setup>, code: string, birthDate: string) {
-    await user.clear(screen.getByLabelText(/Invitation code/))
-    await user.type(screen.getByLabelText(/Invitation code/), code)
+  async function confirm(user: ReturnType<typeof userEvent.setup>, birthDate: string) {
     await user.clear(screen.getByLabelText(/Date of birth/))
-    await user.type(screen.getByLabelText(/Date of birth/), birthDate)
-    await user.clear(screen.getByLabelText(/Email address/))
-    await user.type(screen.getByLabelText(/Email address/), 'ramona980@example.com')
-    await user.click(screen.getByRole('button', { name: 'Set up my account' }))
+    if (birthDate) await user.type(screen.getByLabelText(/Date of birth/), birthDate)
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
   }
 
-  it('asks for the code, date of birth and email, signed out', async () => {
-    const { user } = await toSetUp()
-    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Source code' })).toBeInTheDocument()
+  it('reads the token from the fragment only, and takes it out of the address bar (D13)', async () => {
+    await toInvite()
+    expect(window.location.pathname).toBe('/portal/invite')
+    expect(window.location.hash).toBe('')
+    expect(window.location.search).toBe('')
     expect(await axeViolations()).toEqual([])
-    await user.click(screen.getByRole('button', { name: 'Set up my account' }))
-    expect(screen.getByRole('alert')).toHaveTextContent('There are 3 things to fix')
   })
 
-  it('gives the same answer for a wrong code or a wrong date of birth', async () => {
-    const { user } = await toSetUp()
-    for (const [code, birthDate] of [['WRONG-0000-0000', '07/19/1984'], [INVITATION_CODE, '01/01/1990']] as const) {
-      await fill(user, code, birthDate)
-      await waitFor(() => expect(screen.getByLabelText(/Invitation code/)).toHaveAccessibleDescription(/We couldn't use that code/))
-    }
+  it('never takes the token from a query string', async () => {
+    setup(`/portal/invite?t=${INVITATION_TOKEN}`, { signedIn: false })
+    expect(await screen.findByText('Open the link in your invitation email')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
   })
 
-  it('sends the patient to their email, then to sign-in', async () => {
-    const { server, user, startSignIn } = await toSetUp()
-    await fill(user, INVITATION_CODE.toLowerCase(), '07/19/1984')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Check your email' })).toBeInTheDocument()
+  it('asks only for the date of birth, then goes to the set-password page', async () => {
+    const { server, user, openSetPassword } = await toInvite()
+    expect(screen.queryByLabelText(/Invitation code/)).toBeNull()
+    expect(screen.queryByLabelText(/Email address/)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter your date of birth')
+    await confirm(user, '07/19/1984')
+    await waitFor(() => expect(openSetPassword).toHaveBeenCalledWith(SET_PASSWORD_URL))
     const [enroll] = server.to('POST', '/portal/enrollments')
-    expect(enroll?.body).toEqual({ invitationCode: INVITATION_CODE.toLowerCase(), birthDate: BIRTH_DATE, email: 'ramona980@example.com' })
+    expect(enroll?.body).toEqual({ invitationToken: INVITATION_TOKEN, birthDate: BIRTH_DATE })
     expect(enroll?.headers.get('Idempotency-Key')).toBeTruthy()
-    expect(screen.getByText(/within 12 hours/)).toBeInTheDocument()
-    // The email typed is not shown back.
-    expect(screen.queryByText(/ramona980@example\.com/)).toBeNull()
-    // "Go to sign in" goes straight to the patient realm's form, like any signed-out visit.
-    await user.click(screen.getByRole('link', { name: 'Go to sign in' }))
-    await waitFor(() => expect(startSignIn).toHaveBeenCalledOnce())
+  })
+
+  it('gives the same answer for a wrong date of birth or a link that can\'t be used', async () => {
+    const { user, openSetPassword } = await toInvite('#t=not-a-real-token')
+    await confirm(user, '07/19/1984')
+    await waitFor(() => expect(screen.getByLabelText(/Date of birth/)).toHaveAccessibleDescription(/We couldn't use this invitation/))
+    expect(openSetPassword).not.toHaveBeenCalled()
+  })
+
+  it('opens at the old set-up address too, and says to use the email link', async () => {
+    setup('/portal/set-up-account', { signedIn: false })
+    expect(await screen.findByText('Open the link in your invitation email')).toBeInTheDocument()
   })
 })
 
