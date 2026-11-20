@@ -289,11 +289,11 @@ paths:
         directly and returns it, as `completePortalLogin` does after the realm. Restricted charts (D37), merged or inactive
         patients and patients whose portal account is disabled or suspended never match. **Off everywhere else:** the server
         answers `404` unless it runs with `SHRI_DEMO=true` and the demo sign-in switched on, and the API refuses to start
-        with the switch on without `SHRI_DEMO=true` or in production. Every failure gives the same `422`, so charts can''t
-        be probed; rate-limited per mobile number and per address. Every attempt is audited (`security`): a sign-in names
-        the patient, a refusal names no one. The number and date of birth are never logged. Public: there is no session yet,
-        so the `Origin` header must be the portal host instead of a CSRF token (ADR-0013 §5). The real sign-in (ADR-0013,
-        D85) returns after the demo.'
+        with the switch on without `SHRI_DEMO=true` or in production. Every refusal gives the same `401` `unauthenticated`,
+        so charts can''t be probed (only a body that doesn''t match the schema is `422`); rate-limited per mobile number and
+        per address. Every attempt is audited (`security`): a sign-in names the patient, a refusal names no one. The number
+        and date of birth are never logged. Public: there is no session yet, so the `Origin` header must be the portal host
+        instead of a CSRF token (ADR-0013 §5). The real sign-in (ADR-0013, D85) returns after the demo.'
       tags:
       - portal
       x-owner: thulasi
@@ -337,15 +337,17 @@ paths:
         '403':
           $ref: ../components/responses/Forbidden.yaml
           description: 403. `csrf-check-failed` (the `Origin` header is missing or is not the portal host).
+        '401':
+          $ref: ../components/responses/Unauthorized.yaml
+          description: '401. `unauthenticated`, the one answer for every reason the sign-in can''t open a chart: a number
+            that isn''t a valid phone number, no patient or more than one with that number and date of birth, a restricted,
+            merged or inactive chart, or a disabled or suspended portal account. It never says which.'
         '404':
           $ref: ../components/responses/NotFound.yaml
           description: 404. `not-found` (the demo sign-in is off on this server).
         '422':
           $ref: ../components/responses/UnprocessableContent.yaml
-          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names
-            `/mobileNumber` `not-allowed-value` for every reason the sign-in can''t open a chart: no patient or more than
-            one with that number and date of birth, a restricted, merged or inactive chart, or a disabled or suspended portal
-            account).'
+          description: 422. `validation-failed` (the body doesn't match the schema; a field is missing or malformed).
         '429': *id003
         '500': *id004
         '503': *id005
