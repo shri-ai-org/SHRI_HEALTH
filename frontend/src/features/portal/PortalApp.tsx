@@ -69,7 +69,7 @@ const ROUTES: Route[] = [
   { pattern: '/e-signature', render: () => <ESignaturePage /> },
 ]
 
-const SIGNED_OUT_PATHS = ['/sign-in', '/set-up-account']
+const SIGNED_OUT_PATHS = ['/sign-in', '/set-up-account', '/invite']
 
 // Nobody signed in: the portal goes straight to the patient realm's sign-in form, as the staff
 // apps do (#304, same rule). A guard against a redirect loop: the tab counts its trips to the form
@@ -280,8 +280,9 @@ function Gate({ api }: { api: PortalApi }) {
   }
 
   if (state.kind === 'signed-out') {
-    // Enrolment comes before any sign-in: the realm account doesn't exist until the code is used.
-    if (path === '/set-up-account') return <SetUpAccountPage />
+    // Enrolment comes before any sign-in: the realm account doesn't exist until the invitation is
+    // used. The emailed link opens `/invite#t=…` (D124); `/set-up-account` is kept for older links.
+    if (path === '/invite' || path === '/set-up-account') return <SetUpAccountPage />
     // Sign-in leaves for the realm and comes back through `/portal/auth/callback`, which sets the
     // cookie and returns to the portal. Nobody signed in: straight there (AutoSignIn). Signed out,
     // timed out or ended: the page says why and waits for the patient's click.

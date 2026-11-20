@@ -2113,7 +2113,7 @@ export const getCreatePortalInvitationUrl = (patientId: Id,) => {
 }
 
 /**
- * Issues a single-use invitation code after the front desk has checked the patient's photo ID in person (ADR-0013 §3, D85). One active invitation per patient: issuing a new one revokes the old one. The code is in the response only. Refused while the patient already has an account (one account per chart in P1). Batch B8a (D89).
+ * Invites the patient to the portal by email (D124, amending D85 and ADR-0013 §3), after the front desk has checked the patient's photo ID in person. The invitation goes to the email address on the chart, never to one typed here; a chart with no email is refused (`422`, `errors` names `/email`) until the front desk adds one. The email carries only the clinic's name and a single-use link valid for 7 days (D81: no clinical information); the link's token is stored only as a hash and is never shown, logged or returned. It is queued through the outbox in the same transaction (partner `notification`, D25) and sent by the email sender: Brevo for the team's own addresses, Mailpit for everyone else on demo and development servers. One active invitation per patient: inviting again replaces the open one. Refused while the patient already has a portal account (one account per chart). The invitation only ever creates the portal account for this chart, never a new chart. Batch B8a (D89).
  * @summary Issue a portal invitation
  */
 export const createPortalInvitation = async (patientId: Id,
@@ -2202,7 +2202,7 @@ export const getRevokePortalInvitationUrl = (patientId: Id,
 }
 
 /**
- * Revokes an unused invitation, for example when the printout was lost. Repeating it changes nothing. Batch B8a (D89).
+ * Revokes an unused invitation, for example when it went to an old email address; its link stops working at once. Repeating it changes nothing. Batch B8a (D89).
  * @summary Revoke a portal invitation
  */
 export const revokePortalInvitation = async (patientId: Id,

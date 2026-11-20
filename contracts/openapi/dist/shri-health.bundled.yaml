@@ -4005,7 +4005,7 @@ paths:
     post:
       operationId: createPortalInvitation
       summary: Issue a portal invitation
-      description: 'Issues a single-use invitation code after the front desk has checked the patient''s photo ID in person (ADR-0013 §3, D85). One active invitation per patient: issuing a new one revokes the old one. The code is in the response only. Refused while the patient already has an account (one account per chart in P1). Batch B8a (D89).'
+      description: 'Invites the patient to the portal by email (D124, amending D85 and ADR-0013 §3), after the front desk has checked the patient''s photo ID in person. The invitation goes to the email address on the chart, never to one typed here; a chart with no email is refused (`422`, `errors` names `/email`) until the front desk adds one. The email carries only the clinic''s name and a single-use link valid for 7 days (D81: no clinical information); the link''s token is stored only as a hash and is never shown, logged or returned. It is queued through the outbox in the same transaction (partner `notification`, D25) and sent by the email sender: Brevo for the team''s own addresses, Mailpit for everyone else on demo and development servers. One active invitation per patient: inviting again replaces the open one. Refused while the patient already has a portal account (one account per chart). The invitation only ever creates the portal account for this chart, never a new chart. Batch B8a (D89).'
       x-owner: vimal
       x-permission: portal-invitations:create
       x-audit:
@@ -4040,7 +4040,7 @@ paths:
                   idChecked: true
       responses:
         '201':
-          description: Created. The invitation with its code, shown once.
+          description: Created. The invitation, sent; never its link or token.
           headers:
             Location:
               $ref: '#/components/headers/Location'
@@ -4062,9 +4062,9 @@ paths:
                   summary: Issued
                   value:
                     id: e6f7a8b9-c0d1-4e2f-8a3b-4c5d6e7f8a9b
-                    code: K7Q2-9MZD-4TXH
-                    issuedAt: '2026-11-03T14:30:00Z'
-                    expiresAt: '2035-01-01T14:30:00Z'
+                    sentTo: k•••@example.com
+                    issuedAt: '2035-01-01T14:30:00Z'
+                    expiresAt: '2035-01-08T14:30:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -4082,7 +4082,7 @@ paths:
           description: 409. `patient-merged` (the patient was merged into another record); `invalid-state-transition` (the patient already has a portal account; the problem carries `currentState`).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: 422. `validation-failed` (a body field or a parameter is invalid).
+          description: 422. `validation-failed` (a body field or a parameter is invalid); `business-rule-violation` (`errors` names `/email` `required`, because the chart has no email address to send the invitation to).
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -4091,7 +4091,7 @@ paths:
           description: 500. `internal-error` (unexpected error).
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
-          description: '503. `service-unavailable` (portal invitations are not set up on this server: the invitation secret is not configured).'
+          description: '503. `service-unavailable` (portal invitations are not set up on this server: the invitation secret or the email sender is not configured).'
       tags:
         - patients
   /patients/{patientId}/portal-invitations/{invitationId}/revoke:
@@ -4111,7 +4111,7 @@ paths:
     post:
       operationId: revokePortalInvitation
       summary: Revoke a portal invitation
-      description: Revokes an unused invitation, for example when the printout was lost. Repeating it changes nothing. Batch B8a (D89).
+      description: Revokes an unused invitation, for example when it went to an old email address; its link stops working at once. Repeating it changes nothing. Batch B8a (D89).
       x-owner: vimal
       x-permission: portal-invitations:revoke
       x-audit:
@@ -23410,8 +23410,8 @@ paths:
   /portal/enrollments:
     post:
       operationId: enrollInPortal
-      summary: Enroll with an invitation code
-      description: 'Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account" email (password and second factor are set in the realm, never here, D3). The chart''s existing contacts are told an account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries. Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).'
+      summary: Enroll from an email invitation
+      description: 'Redeems an emailed invitation (D124, amending D85 and ADR-0013 §3). The patient opens the link (`/portal/invite#t=…`); the page keeps the token from the URL fragment, never a query string (D13), and sends it back only in this body, with the patient''s date of birth. With a matching date of birth core creates the patient realm account, with the chart''s email (the one the invitation went to) as its username, links it to the chart once, and answers with Keycloak''s own one-time set-password link for that account: the browser goes straight to Keycloak''s page and the patient sets the password and second factor there, never here (D3); no second email. The link is single use and valid for 7 days; 5 wrong dates of birth lock it. Every failure gives the same answer, so links, accounts and charts cannot be probed; rate-limited per address and per invitation. Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).'
       tags:
         - portal
       x-owner: thulasi
@@ -23436,12 +23436,11 @@ paths:
               enroll:
                 summary: Enroll
                 value:
-                  invitationCode: K7Q2-9MZD-4TXH
+                  invitationToken: inv-example-token-0001
                   birthDate: '1984-07-19'
-                  email: maria.ortiz@example.com
       responses:
-        '204':
-          description: '204. Enrolled: the realm sends its set-up email. Nothing else is returned.'
+        '200':
+          description: '200. Enrolled: go to Keycloak''s set-password page.'
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
@@ -23451,6 +23450,16 @@ paths:
               $ref: '#/components/headers/RateLimit'
             RateLimit-Policy:
               $ref: '#/components/headers/RateLimitPolicy'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResult'
+              examples:
+                setPassword:
+                  summary: Set the password next
+                  value:
+                    next: set-password
+                    redirectUrl: https://dep.example.invalid/kc/realms/shri-patients/login-actions/action-token?key=example
         '400':
           $ref: '#/components/responses/BadRequest'
           description: 400. `malformed-request` (the body is not parseable JSON).
@@ -23462,7 +23471,7 @@ paths:
           description: 409. `idempotency-request-in-progress` (a request with this Idempotency-Key is still running).
         '422':
           $ref: '#/components/responses/UnprocessableContent'
-          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names `/invitationCode` `not-allowed-value` for every reason the code can''t be used: unknown, expired, used, revoked, its chart merged into another or no longer active, or the date of birth doesn''t match); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
+          description: '422. `validation-failed` (a field is missing or malformed); `business-rule-violation` (`errors` names `/invitationToken` `not-allowed-value` for every reason the link can''t be used: unknown, expired, used, revoked, locked, its chart merged into another or no longer active, or the date of birth doesn''t match); `idempotency-key-reused` (the Idempotency-Key was used with a different body).'
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: 429. `rate-limited` (too many requests).
@@ -29467,7 +29476,7 @@ components:
           description: Reason, recorded in the audit trail only.
           x-phi: identifier
     PortalInvitationSummary:
-      description: An invitation, without its code (the code is shown once, when issued).
+      description: An invitation as the front desk sees it, never its link or token.
       type: object
       required:
         - id
@@ -29494,7 +29503,7 @@ components:
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
-          description: When it stops working (72 hours after issue).
+          description: When its link stops working (7 days after it was sent).
           x-phi: none
     PortalAccountStatus:
       description: 'The patient''s portal account as the front desk sees it: never a password, factor or code. `none`: no account and no active invitation; `invited`: an invitation is active; `pending-setup`: enrolled, but the patient hasn''t finished the realm''s set-up (verify email, password, second factor); `active`; `disabled`: ADM disabled it (D92), and `enable` reopens it; `suspended`: the chart was merged into another (ADR-0013) while the account was `active` or `pending-setup`; its sessions ended and nobody can sign in. Undoing the merge restores exactly the earlier state, unless ADM disabled the account meanwhile (then it stays `disabled`). `enable` and `reset-factors` refuse it.'
@@ -29539,11 +29548,11 @@ components:
           description: When the account was disabled; present only while `disabled`.
           x-phi: none
     PortalInvitation:
-      description: 'A new invitation with its code. The code is in this response only: it is stored as an HMAC, never logged, and can''t be read again. Print it or read it out at the desk; never email or text it (ADR-0013 §3).'
+      description: A new invitation, sent by email to the chart's address (D124). Its link and token are never returned, logged or shown; only the hash of the token is stored.
       type: object
       required:
         - id
-        - code
+        - sentTo
         - issuedAt
         - expiresAt
       properties:
@@ -29551,11 +29560,10 @@ components:
           $ref: '#/components/schemas/Id'
           description: Invitation ID.
           x-phi: internal-id
-        code:
+        sentTo:
           type: string
-          maxLength: 14
-          pattern: ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
-          description: 'The invitation code: 12 Crockford base32 characters in three groups.'
+          maxLength: 254
+          description: The address it was sent to, masked (`k•••@example.com`), so the desk can confirm it with the patient.
           x-phi: identifier
         issuedAt:
           $ref: '#/components/schemas/Timestamp'
@@ -29563,7 +29571,7 @@ components:
           x-phi: none
         expiresAt:
           $ref: '#/components/schemas/Timestamp'
-          description: When it stops working (72 hours, single use).
+          description: When its link stops working (7 days, single use).
           x-phi: none
     PortalFactorResetRequest:
       description: Body to reset a patient's sign-in factors after an ID check at the desk (ADR-0013 §2).
@@ -39501,29 +39509,43 @@ components:
           description: When the session ends regardless (4 hours; ADR-0013 §5, Q20).
           x-phi: none
     EnrollmentRequest:
-      description: Body to enroll with a front-desk invitation code (ADR-0013 §3, D85). The code was given in person after an ID check; the date of birth is checked with it, never used on its own; the email becomes the sign-in name.
+      description: Body to enroll from an emailed invitation (D124). The token came from the link; the date of birth is checked with it, never used on its own; the account's username is the chart's email, not typed here.
       type: object
       additionalProperties: false
       required:
-        - invitationCode
+        - invitationToken
         - birthDate
-        - email
       properties:
-        invitationCode:
+        invitationToken:
           type: string
-          maxLength: 14
-          description: 'The invitation code as printed (`K7Q2-9MZD-4TXH`), in any case and with or without the dashes. The server normalizes it before checking: upper case, dashes removed, and Crockford''s look-alikes read as digits (`I` and `L` as `1`, `O` as `0`). A code that is still not valid gets the same answer as any other failure.'
-          x-phi: identifier
-          minLength: 12
-          pattern: ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$
+          minLength: 16
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+          description: The token from the invitation link's fragment (`#t=…`). Only its hash is stored; never logged.
+          x-phi: none
         birthDate:
           $ref: '#/components/schemas/Date'
-          description: The patient's date of birth, checked with the code.
+          description: The patient's date of birth, checked with the token.
           x-phi: identifier
-        email:
-          $ref: '#/components/schemas/EmailAddress'
-          description: The email to sign in with; verified by the patient realm before the first sign-in.
-          x-phi: identifier
+    EnrollmentResult:
+      description: Where the browser goes after enrolling (D124).
+      type: object
+      required:
+        - next
+        - redirectUrl
+      properties:
+        next:
+          type: string
+          enum:
+            - set-password
+          description: '`set-password`: open `redirectUrl`, Keycloak''s page to set the password and second factor.'
+          x-phi: none
+        redirectUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Keycloak's one-time set-password link for the new account, short-lived. Open it at once; never store or log it.
+          x-phi: none
     DemoSignInRequest:
       description: 'Body for the demo sign-in (D121, demo servers only): the mobile number on the patient''s chart and her date of birth, checked together; neither is used on its own.'
       type: object
