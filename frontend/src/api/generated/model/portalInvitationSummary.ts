@@ -19,7 +19,7 @@ import type { PortalInvitationSummaryStatus } from './portalInvitationSummarySta
 import type { Timestamp } from './timestamp';
 
 /**
- * An invitation, without its code (the code is shown once, when issued).
+ * An invitation as the front desk sees it, never its link or token.
  */
 export interface PortalInvitationSummary {
   /** Invitation ID. */
@@ -28,6 +28,6 @@ export interface PortalInvitationSummary {
   status: PortalInvitationSummaryStatus;
   /** When it was issued. */
   issuedAt: Timestamp;
-  /** When it stops working (72 hours after issue). */
+  /** When its link stops working (7 days after it was sent). */
   expiresAt: Timestamp;
 }

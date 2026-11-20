@@ -15,21 +15,18 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type { Date } from './date';
-import type { EmailAddress } from './emailAddress';
 
 /**
- * Body to enroll with a front-desk invitation code (ADR-0013 §3, D85). The code was given in person after an ID check; the date of birth is checked with it, never used on its own; the email becomes the sign-in name.
+ * Body to enroll from an emailed invitation (D124). The token came from the link; the date of birth is checked with it, never used on its own; the account's username is the chart's email, not typed here.
  */
 export interface EnrollmentRequest {
   /**
-     * The invitation code as printed (`K7Q2-9MZD-4TXH`), in any case and with or without the dashes. The server normalizes it before checking: upper case, dashes removed, and Crockford's look-alikes read as digits (`I` and `L` as `1`, `O` as `0`). A code that is still not valid gets the same answer as any other failure.
-     * @minLength 12
-     * @maxLength 14
-     * @pattern ^[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}$
+     * The token from the invitation link's fragment (`#t=…`). Only its hash is stored; never logged.
+     * @minLength 16
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9_-]+$
      */
-  invitationCode: string;
-  /** The patient's date of birth, checked with the code. */
+  invitationToken: string;
+  /** The patient's date of birth, checked with the token. */
   birthDate: Date;
-  /** The email to sign in with; verified by the patient realm before the first sign-in. */
-  email: EmailAddress;
 }

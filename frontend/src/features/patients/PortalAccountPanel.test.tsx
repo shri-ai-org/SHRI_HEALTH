@@ -33,43 +33,51 @@ function renderPanel() {
 }
 
 describe('PortalAccountPanel', () => {
-  it('issues an invitation only after the ID check, and shows the code once', async () => {
+  it('issues an invitation only after the ID check, and says where it was emailed (D124)', async () => {
     const server = serve({
-      [GET]: [() => json(200, account('none')), () => json(200, account('invited', { invitation: { id: invitationId, status: 'active', issuedAt: '2026-10-27T15:00:00Z', expiresAt: '2026-10-30T15:00:00Z' } }))],
-      [`POST ${BASE}/portal-invitations`]: [() => json(201, { id: invitationId, code: 'ABCD-1234-EFGH', issuedAt: '2026-10-27T15:00:00Z', expiresAt: '2026-10-30T15:00:00Z' })],
+      [GET]: [() => json(200, account('none')), () => json(200, account('invited', { invitation: { id: invitationId, status: 'active', issuedAt: '2026-10-27T15:00:00Z', expiresAt: '2026-11-03T15:00:00Z' } }))],
+      [`POST ${BASE}/portal-invitations`]: [() => json(201, { id: invitationId, sentTo: 'k•••@example.com', issuedAt: '2026-10-27T15:00:00Z', expiresAt: '2026-11-03T15:00:00Z' })],
     })
     const user = renderPanel()
     expect(await screen.findByText('No account')).toBeInTheDocument()
     expect(await axeViolations()).toEqual([])
     await user.click(screen.getByRole('button', { name: 'Issue invitation' }))
     const dialog = await screen.findByRole('dialog', { name: 'Issue a portal invitation?' })
+    expect(within(dialog).getByText(/We email the invitation to the address on the chart/)).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Issue invitation' }))
     expect(within(dialog).getByText("Check the patient's photo ID in person first.")).toBeInTheDocument()
     expect(server.calls()).not.toContain(`POST ${BASE}/portal-invitations`)
 
     await user.click(within(dialog).getByRole('checkbox', { name: /I checked the patient's photo ID in person/ }))
     await user.click(within(dialog).getByRole('button', { name: 'Issue invitation' }))
-    const shown = await screen.findByRole('dialog', { name: 'Portal invitation' })
-    expect(within(shown).getByText('ABCD-1234-EFGH')).toBeInTheDocument()
+    const shown = await screen.findByRole('dialog', { name: 'Invitation sent' })
+    expect(within(shown).getByText('k•••@example.com')).toBeInTheDocument()
+    // Clinic time, US format, whatever the browser's zone: 15:00 UTC on 3 Nov is 7:00 AM PST.
+    expect(within(shown).getByText(/until 11\/03\/2026, 7:00 AM PST/)).toBeInTheDocument()
     expect(server.bodies(`POST ${BASE}/portal-invitations`)[0]?.body).toEqual({ idChecked: true })
     expect(await screen.findByText('Invited')).toBeInTheDocument()
-    // The invitation names the portal's set-up page directly (the portal skips its own sign-in page).
-    const setUpUrl = `${window.location.origin}/portal/set-up-account`
-    expect(within(shown).getByText(setUpUrl)).toBeInTheDocument()
-
-    // The printed letter carries the code and the same address, nothing about the patient.
-    const printed = document.implementation.createHTMLDocument('')
-    vi.stubGlobal('open', vi.fn(() => ({ document: printed, focus: vi.fn(), print: vi.fn() })))
-    await user.click(within(shown).getByRole('button', { name: 'Print invitation' }))
-    expect(printed.body.textContent).toContain('ABCD-1234-EFGH')
-    expect(printed.body.textContent).toContain(setUpUrl)
-    expect(printed.body.textContent).not.toContain('Set up your account')
-    vi.unstubAllGlobals()
-
+    // The panel's issued and expires times are clinic time too (PDT before 1 Nov, PST after).
+    expect(screen.getByText('10/27/2026, 8:00 AM PDT')).toBeInTheDocument()
+    expect(screen.getByText('11/03/2026, 7:00 AM PST')).toBeInTheDocument()
+    // No code, link or print: the invitation went by email.
+    expect(within(shown).queryByRole('button', { name: /Print/ })).toBeNull()
+    expect(within(shown).queryByText(/portal\/invite|set-up-account/)).toBeNull()
     await user.click(within(shown).getByRole('button', { name: 'Done' }))
-    // Closing the dialog drops the code; the panel never shows it again.
-    expect(screen.queryByText('ABCD-1234-EFGH')).toBeNull()
     expect(screen.getByRole('button', { name: 'Issue new invitation' })).toBeInTheDocument()
+  })
+
+  it('says to add an email first when the chart has none (422 on /email)', async () => {
+    serve({
+      [GET]: [() => json(200, account('none'))],
+      [`POST ${BASE}/portal-invitations`]: [() => json(422, { type: 'about:blank', title: 'Business rule violation', status: 422, code: 'business-rule-violation', requestId: 'r', errors: [{ in: 'body', pointer: '/email', code: 'required' }] })],
+    })
+    const user = renderPanel()
+    await user.click(await screen.findByRole('button', { name: 'Issue invitation' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Issue a portal invitation?' })
+    await user.click(within(dialog).getByRole('checkbox', { name: /I checked the patient's photo ID in person/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Issue invitation' }))
+    expect(await within(dialog).findByText(/This chart has no email address/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Invitation sent' })).toBeNull()
   })
 
   it('shows the sign-in email, or says it is unavailable, for an enrolled account', async () => {

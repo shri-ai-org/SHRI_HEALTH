@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import type {
   DemoSignInRequest,
   EnrollmentRequest,
+  EnrollmentResult,
   PortalAllergy,
   PortalAppointment,
   PortalAppointmentCreate,
@@ -59,12 +60,13 @@ export interface PortalContractApi {
   refreshSession(): Promise<PortalSession>
   signOut(): Promise<void>
   /**
-   * Redeems the invitation code the front desk issued after an ID check, with the patient's date of
-   * birth and the email they want to use (`POST /portal/enrollments`; D85, ADR-0013 §3). Signed out:
-   * the API creates the patient-realm account and Keycloak emails the setup link. Every refusal is
-   * the same `422`, so nothing can be probed.
+   * Redeems the emailed invitation (D124): the token from the link's `#t=` fragment and the
+   * patient's date of birth (`POST /portal/enrollments`). Signed out. The answer is Keycloak's
+   * one-time set-password link; every refusal is the same `422`, so nothing can be probed.
    */
-  enroll(input: EnrollmentRequest, idempotencyKey: string): Promise<void>
+  enroll(input: EnrollmentRequest, idempotencyKey: string): Promise<EnrollmentResult>
+  /** Leaves for Keycloak's set-password page (`EnrollmentResult.redirectUrl`), at once; never stored. */
+  openSetPassword(redirectUrl: string): void
   /**
    * Demo servers only (D121): `POST /portal/auth/demo-sign-in` with the mobile number and date of
    * birth. The server sets the session cookie and returns the session; every refusal is one `422`.
