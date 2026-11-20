@@ -15,6 +15,7 @@
  * OpenAPI spec version: 1.0.0-draft.1
  */
 import type { CursorParameter } from './cursorParameter';
+import type { Id } from './id';
 import type { LimitParameter } from './limitParameter';
 import type { RefillRequestStatus } from './refillRequestStatus';
 
@@ -35,4 +36,8 @@ cursor?: CursorParameter;
  * Only requests with this status. Default `requested` (the open ones).
  */
 status?: RefillRequestStatus;
+/**
+ * Only requests whose prescription to refill was signed by this user (the prescription's `prescriberId`, a user ID); a doctor passes their own user ID from `GET /me` to see only their own patients' requests. Absent, the list is the clinic's, as before. An ID that signed nothing gives an empty page, never an error.
+ */
+prescriberId?: Id;
 };
