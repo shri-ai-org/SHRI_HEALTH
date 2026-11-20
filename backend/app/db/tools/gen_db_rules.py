@@ -75,8 +75,9 @@ WRITE_ONCE = {"event_log"}
 NO_ROLE_ACCESS = {"consumed_logout_token"}
 #: Clinic tables no service role may read or write, under the usual clinic policy: only their
 #: owner's SECURITY DEFINER functions do. work_item_reply (0031): the portal's and the staff's
-#: message functions, so neither side can write as the other.
-DEFINER_ONLY = {"work_item_reply"}
+#: message functions, so neither side can write as the other. portal_record_export (0032):
+#: the portal's export function, portal_file() and the maintenance job's export purge.
+DEFINER_ONLY = {"work_item_reply", "portal_record_export"}
 #: shri_app privileges that replace the defaults below. pre_registration (D96, A51): rows come
 #: only from admin.submit_pre_registration() (shri_public, migration 0009); the front desk
 #: reads the queue and records its decision, nothing else.

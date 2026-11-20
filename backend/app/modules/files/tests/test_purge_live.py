@@ -244,3 +244,54 @@ async def test_the_functions_check_their_arguments_and_their_callers(
             assert refused.value.orig.sqlstate == "42501"  # type: ignore[union-attr]
     finally:
         await app_engine.dispose()
+
+
+async def _export(admin: Engine, store: LocalFileStore, tenant: UUID, patient: UUID, *,
+                  past_expiry: timedelta) -> UUID:
+    """A patient's "My records" export (0032) that expired ``past_expiry`` ago, stored."""
+    file_id = uuid.uuid4()
+    key = f"{tenant}/{file_id}"
+    await store.put(key, DATA, "application/pdf", bucket=CLEAN_BUCKET)
+    age = f"{int(past_expiry.total_seconds())} seconds"
+    with admin.begin() as c:
+        c.execute(text(
+            "INSERT INTO admin.binary_object (id, tenant_id, bucket, storage_key, content_type, "
+            "size_bytes, sha256, purpose, state, scan_status, wrapped_data_key, retention_until) "
+            "VALUES (:i, :t, 'clean', :k, 'application/pdf', :n, :h, 'export', 'clean', "
+            "'pending', 'vault:v1:k', now() - CAST(:age AS interval) + interval '24 hours')"),
+            {"i": file_id, "t": tenant, "k": key, "n": len(DATA),
+             "h": hashlib.sha256(DATA).hexdigest(), "age": age})
+        c.execute(text(
+            "INSERT INTO admin.portal_record_export (id, tenant_id, patient_id, binary_object_id, "
+            "format, created_at, expires_at) VALUES (:e, :t, :p, :i, 'pdf', "
+            "now() - CAST(:age AS interval) - interval '15 minutes', "
+            "now() - CAST(:age AS interval))"),
+            {"e": uuid.uuid4(), "t": tenant, "p": patient, "i": file_id, "age": age})
+    return file_id
+
+
+async def test_exports_go_a_day_after_they_expire_and_nothing_else(
+        admin: Engine, maintenance: AsyncEngine, store: LocalFileStore) -> None:
+    assert purge.EXPORT_PURGE_AFTER == timedelta(hours=24)  # the window 0032 fixes
+    tenant = make_tenant(admin)
+    app_engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(app_engine, "shri_app")
+    db: Session = open_session(app_engine, tenant)
+    try:
+        patient = b.patient(db, "Okafor904", "Ada").id
+        db.commit()
+    finally:
+        db.close()
+        app_engine.dispose()
+    old = await _export(admin, store, tenant, patient, past_expiry=OLD)
+    recent = await _export(admin, store, tenant, patient, past_expiry=RECENT)
+    clean = await _file(admin, store, tenant, state="clean", age=timedelta(days=30))
+
+    report = await purge.purge(maintenance, store, kind=purge.EXPIRED_EXPORTS)
+
+    assert report.deleted >= 1
+    assert not _exists(admin, old) and not await _stored(store, tenant, old, CLEAN_BUCKET)
+    for kept in (recent, clean):
+        assert _exists(admin, kept) and await _stored(store, tenant, kept, CLEAN_BUCKET)
+    await purge.purge(maintenance, store)          # the unusable-files purge never takes one
+    assert _exists(admin, recent)

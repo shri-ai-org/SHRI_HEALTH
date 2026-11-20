@@ -1,5 +1,5 @@
-"""Response shapes for the portal's lab results (portal.yaml `PortalLabResult*`). Field names are
-the contract's camelCase."""
+"""Response shapes for the portal's lab results (portal.yaml `PortalLabResult*`) and the "My
+records" link (`PortalDownloadUrl`). Field names are the contract's camelCase."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -55,3 +55,10 @@ class LabResult(Out):
 class LabResultList(Out):
     items: Annotated[list[LabResult], Field(max_length=100)]
     next_cursor: str | None = None
+
+
+class PortalDownloadUrl(Out):
+    """A one-minute, single-use link to the patient's own record for this portal session
+    (portal.yaml ``PortalDownloadUrl``; D105). A bearer secret: never logged."""
+    url: Annotated[str, Field(max_length=2000)]
+    expires_at: datetime

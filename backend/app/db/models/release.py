@@ -116,6 +116,7 @@ TAGS: dict[str, str] = {
     "portal_account": P1,
     "portal_change_request": P1,
     "portal_invitation": P1,
+    "portal_record_export": P1,  # getPortalRecordDownloadUrl is P1 (0032)
     "portal_session": P1,
     "release_hold": P1,
     # admin.practice

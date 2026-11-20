@@ -54,7 +54,10 @@ CLEAN_BUCKET = "clean"
 QUARANTINE_BUCKET = "quarantine"
 BUCKETS = frozenset({CLEAN_BUCKET, QUARANTINE_BUCKET})
 #: Purposes the server makes itself, clean from the start (``ck_binary_object_generated_clean``).
-GENERATED_PURPOSES = frozenset({"receipt", "after-visit-summary", "imaging"})
+#: An ``export`` (0032) is the portal's "My records" file, recorded only by
+#: ``admin.portal_record_export()`` (portal_records.records_repository), never by
+#: ``store_generated()``, which writes as ``shri_app``.
+GENERATED_PURPOSES = frozenset({"receipt", "after-visit-summary", "imaging", "export"})
 #: The environment variable that names the store's folder, until core has a setting for it.
 FILE_STORE_DIR_ENV = "SHRI_FILE_STORE_DIR"
 

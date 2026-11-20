@@ -126,14 +126,14 @@ def test_upload_needs_files_create(as_user: Client, world: World, name: str) -> 
 
 
 def test_the_upload_rules_refuse_every_server_made_purpose() -> None:
-    """Receipt, after-visit-summary and imaging are never uploaded, so an imaging file (never
-    scanned, 0023) can't arrive through an upload."""
-    for purpose in ("receipt", "after-visit-summary", "imaging"):
+    """Receipt, after-visit-summary, imaging and export are never uploaded, so an imaging file or
+    an export (never scanned, 0023, 0032) can't arrive through an upload."""
+    for purpose in ("receipt", "after-visit-summary", "imaging", "export"):
         body = schemas.UploadUrlRequest(
             purpose=purpose, content_type="image/jpeg", size_bytes=10, sha256="0" * 64)
         assert service.upload_rule_errors(body) == [
             {"in": "body", "pointer": "/purpose", "code": "not-allowed-value"}], purpose
-    assert storage.GENERATED_PURPOSES == {"receipt", "after-visit-summary", "imaging"}
+    assert storage.GENERATED_PURPOSES == {"receipt", "after-visit-summary", "imaging", "export"}
 
 
 @pytest.mark.parametrize(("overrides", "errors"), [
