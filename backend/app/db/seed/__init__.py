@@ -13,10 +13,12 @@ Layers, each building on the one before, through the same insert-if-missing buil
   features are on. The demo users linked to Keycloak come with Thulasi's demo realm. Then, in a
   second transaction, demo patients 2 to 5's clinical history (history.py: past visits with
   vitals and a signed note, problems, allergies, medications, family, social and surgical
-  history), written through ``app.db.fhir_store`` and skipped for a patient who has it;
+  history), written through ``app.db.fhir_store`` and skipped for a patient who has it; then,
+  each in its own transaction, their results (results.py), Linda Thompson's summaries and
+  prescriptions (linda.py) and her secure-message threads (messages.py);
 - ``reset`` (reset.py): on an empty database (recreated by Thulasi's reset split), migrate,
-  then seed ``demo`` with the history, then check it. It never drops anything itself, and the audit
-  protections are never disabled or bypassed.
+  then seed ``demo`` with the history, then check it. It never drops anything itself, and the
+  audit protections are never disabled or bypassed.
 
 It runs as ``shri_migrator`` (``MIGRATION_DATABASE_URL``), because creating a practice is a
 platform action no service role may take. It sets ``app.current_tenant_id`` for each practice,

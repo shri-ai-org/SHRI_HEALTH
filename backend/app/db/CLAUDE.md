@@ -665,6 +665,9 @@ stays, as the test's only allowed overlap.
 | 63 | `LAB_ORDER` (results) | a history study's order (ServiceRequest) | the labs and reports seed |
 | 64 | `LAB_REPORT` (results) | its report (DiagnosticReport) | the labs and reports seed |
 | 65 | `RESULT_ORG` (results) | the lab and the radiology group | the labs and reports seed |
+| 66 | `MESSAGE_THREAD` (messages) | Linda's secure-message thread (`patient-message` work item) | the secure messaging demo data |
+| 67 | `MESSAGE_EVENT` (messages) | its `created` work item event | the secure messaging demo data |
+| 68 | `MESSAGE_REPLY` (messages) | its message (`work_item_reply`), n = thread * 10 + message | the secure messaging demo data |
 
 ## Rules that never bend
 

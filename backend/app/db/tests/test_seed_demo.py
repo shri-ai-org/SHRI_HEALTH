@@ -479,9 +479,9 @@ def test_no_two_seed_kinds_share_a_number() -> None:
     import ast
 
     used: dict[int, list[str]] = {}
-    from app.db.seed import results
+    from app.db.seed import messages, results
 
-    for module in (starter, demo, results):
+    for module in (starter, demo, results, messages):
         source = Path(module.__file__ or "").read_text()
         for node in ast.parse(source).body:
             if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Tuple)
@@ -635,10 +635,12 @@ def test_an_additive_run_leaves_live_work_alone(migrator_engine: Engine, admin_e
 def test_the_reset_check_passes_on_the_demo_data_and_names_what_is_wrong(
         migrator_engine: Engine) -> None:
     """reset.verify (the reset's last step): nothing to report on a fresh seed; an AI feature
-    switched off, a lost portal account and too few visits each give their own phrase."""
-    from app.db.seed import reset
+    switched off, a lost portal account and too few visits each give their own phrase (Linda's
+    message threads: test_seed_messages)."""
+    from app.db.seed import messages, reset
 
     _seed(migrator_engine)
+    messages.run(migrator_engine)
     with Session(migrator_engine) as db, db.begin():
         db.execute(text("SET LOCAL search_path = clinical, admin, audit, public"))  # as the seed
         found = reset.summary(db)

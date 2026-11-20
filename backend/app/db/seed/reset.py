@@ -11,13 +11,15 @@ The reset has two halves. Dropping and recreating the database, with its databas
 3. load the ``demo`` layer (which loads ``starter`` first) in one transaction;
 4. load the demo patients' clinical history (``history.py``) in a second one, their results
    and imaging reports (``results.py``) in a third, and Linda Thompson's after-visit
-   summaries and refill-ready prescription (``linda.py``) in a fourth; the images and the
-   summaries are stored encrypted, so the file store and the key service must be reachable;
+   summaries and refill-ready prescription (``linda.py``) in a fourth, and her secure-message
+   threads (``messages.py``) in a fifth; the images and the summaries are stored encrypted, so
+   the file store and the key service must be reachable;
 5. check the result and print a short summary: the migration head, and the demo clinic's
    patients and appointments, read inside that clinic as row-level security requires. The
    reset fails (a non-zero exit and one line) unless the clinic has at least 512 patients, its
    zone is America/Los_Angeles, both AI features are on, at least 6 visits are booked on the
-   demo day, the four portal accounts are on their charts and the MRN counter answers.
+   demo day, the four portal accounts are on their charts, Linda Thompson's message threads
+   are there and open, and the MRN counter answers.
 
 The audit protections are never disabled or bypassed. The demo users linked to Keycloak are
 added here once Thulasi's realm has them.
@@ -34,7 +36,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import CLINIC_A, FACILITY_A
-from app.db.seed import history, linda, results, starter
+from app.db.seed import history, linda, messages, results, starter
 from app.db.seed.demo import (
     CLINIC_ZONE,
     DEMO_DAY,
@@ -96,6 +98,7 @@ def reset(engine: Engine) -> ResetSummary:
     history.run(engine)
     results.run(engine)
     linda.run(engine)
+    messages.run(engine)
     with Session(engine) as db, db.begin():
         found = summary(db)
         problems = verify(db, found)
@@ -140,6 +143,13 @@ def verify(db: Session, found: ResetSummary) -> list[str]:
               **{subject: patient for _, patient, _, subject in PORTAL_USERS}}
     if missing := [s for s, n in wanted.items() if accounts.get(s) != sid(PATIENT, n)]:
         problems.append(f"portal account missing or on another chart: {', '.join(missing)}")
+    threads = db.execute(text(
+        "SELECT count(*) FROM admin.work_item WHERE id = ANY(:ids) AND patient_id = :p "
+        "AND item_type = 'patient-message' AND status = 'open'"),
+        {"ids": list(messages.thread_ids()), "p": messages.LINDA}).scalar_one()
+    if threads < len(messages.THREADS):
+        problems.append(f"{threads} of Linda Thompson's {len(messages.THREADS)} message threads "
+                        "open")
     nested = db.begin_nested()           # the MRN counter answers; the rollback gives it back
     try:
         mrn = db.execute(text("SELECT value FROM admin.next_mrn()")).scalar_one()
