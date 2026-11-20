@@ -471,6 +471,8 @@ def test_a_reply_to_the_patient_is_for_patient_messages_only(client: Any,
     refused = client("rn").post(f"{INBOX}/{item}/replies", json={"text": "Hi",
                                                                  "toPatient": True})
     assert _problem(refused) == (422, "validation-failed", ["/toPatient"])
+    blank = client("rn").post(f"{INBOX}/{item}/replies", json={"text": "  \n  "})
+    assert _problem(blank) == (422, "validation-failed", ["/text"])
     for who in ("dsp", "none"):
         assert _problem(client(who).post(f"{INBOX}/{item}/replies",
                                          json={"text": "Hi"}))[:2] == (403, "permission-denied")

@@ -640,5 +640,7 @@ def _refusal(reason: str, row: ItemRow) -> AppError:
             return _invalid("/toPatient", "not-allowed-value")
         case "inbox_reply_not_staff":
             return Forbidden()
+        case "message_body_invalid":  # only spaces: the contract's length passes, this doesn't
+            return _invalid("/text", "too-short")
         case _:  # pragma: no cover - 0031 raises no other
             return InternalError()
