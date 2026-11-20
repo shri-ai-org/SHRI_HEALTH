@@ -71,12 +71,12 @@ def test_it_needs_the_url(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
         admin_engine: Engine, migrator_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    """After the demo seed, its history, its results and Linda's extras, every demo check passes
-    but the code lists (the test database has none loaded); an AI feature switched off fails its
-    own line."""
+    """After the demo seed, its history, its results and Linda's extras and messages, every demo
+    check passes but the code lists (the test database has none loaded); an AI feature switched
+    off fails its own line."""
     from sqlalchemy.orm import Session
 
-    from app.db.seed import demo
+    from app.db.seed import demo, messages
     from app.db.tests.test_seed_linda import load_linda
     from app.db.tests.test_seed_results import _load
 
@@ -85,6 +85,7 @@ def test_the_demo_checks_pass_on_the_seed_and_name_what_is_missing(
         demo.load_demo(db)
     _load()
     load_linda()
+    messages.run(migrator_engine)
     with admin_engine.connect() as conn:
         failed = {c.name for c, v in sc.run(conn, sc.demo_checks(demo.DEMO_DAY)) if not c.passes(v)}
         assert failed <= {"ICD-10-CM codes loaded", "RxNorm codes loaded"}, failed
@@ -137,6 +138,34 @@ def test_lindas_prescriptions_fail_when_they_are_the_old_reported_ones(
     assert sc.line(line, old).startswith(
         "FAIL  Linda Thompson has at least 4 signed prescriptions: 0 (expected at least 4); "
         "reset needed")
+
+
+def test_lindas_message_threads_fail_when_one_is_closed(
+        admin_engine: Engine, migrator_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The seed's three threads, open, pass; one closed in a rehearsal fails and asks for a
+    reset. The line carries a count only, never a subject or a message."""
+    from sqlalchemy.orm import Session
+
+    from app.db.seed import demo, messages
+
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    with Session(migrator_engine) as db, db.begin():
+        demo.load_demo(db)
+    messages.run(migrator_engine)
+    [line] = [c for c in sc.demo_checks(demo.DEMO_DAY)
+              if c.name == "Linda Thompson's seeded message threads, open"]
+    with admin_engine.connect() as conn:
+        [(_, got)] = sc.run(conn, [line])
+        assert (got, line.passes(got)) == ("3", True)
+        conn.execute(text("UPDATE admin.work_item SET status = 'cancelled' WHERE id = :t"),
+                     {"t": messages.thread_ids()[0]})
+        [(_, closed)] = sc.run(conn, [line])
+        conn.rollback()                                     # nothing is kept
+    failed = sc.line(line, closed)
+    assert failed == ("FAIL  Linda Thompson's seeded message threads, open: 2 (expected 3); "
+                      + sc.RESET)
+    assert not any(t.subject in failed or any(m.body in failed for m in t.messages)
+                   for t in messages.THREADS)
 
 
 def test_an_at_least_check_takes_more_but_not_fewer() -> None:

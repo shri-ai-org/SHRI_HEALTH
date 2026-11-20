@@ -99,7 +99,7 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
     the clinic's own day, in its zone; a test passes the seed's own `day` (demo.DEMO_DAY), so a
     session that runs past midnight in San Jose still counts the day the seed booked."""
     from app.core.deps import CLINIC_A, FACILITY_A
-    from app.db.seed import demo, history, results
+    from app.db.seed import demo, history, messages, results
     from app.db.seed.starter import PRACTITIONER, sid
 
     clinic = f"'{CLINIC_A}'::uuid"
@@ -220,6 +220,13 @@ def demo_checks(day: dt.date | None = None) -> list[Check]:
               "SELECT count(*) FROM clinical.medication_request WHERE subject_patient_id = "
               f"'{sid(demo.PATIENT, 3)}' AND intent = 'order' AND ext_signed_at IS NOT NULL "
               "AND status NOT IN ('draft', 'entered-in-error')", "4", at_least=True, fix=RESET),
+        # Her secure-message threads (seed/messages.py), by their fixed IDs, still open so the
+        # portal can reply: one a rehearsal closed comes back with a reset.
+        Check("Linda Thompson's seeded message threads, open",
+              "SELECT count(*) FROM admin.work_item WHERE id IN ("
+              + ", ".join(f"'{t}'" for t in messages.thread_ids()) + ") AND patient_id = "
+              f"'{messages.LINDA}' AND item_type = 'patient-message' AND status = 'open'",
+              str(len(messages.THREADS)), fix=RESET),
     ]
 
 
@@ -255,7 +262,8 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"pgvector version (default {PGVECTOR})")
     parser.add_argument("--demo", action="store_true",
                         help="also the demo server's readiness: AI, today's visits, the shown "
-                             "patients, portal accounts, results and reports, the alert data")
+                             "patients, portal accounts, results and reports, the alert "
+                             "data, Linda's message threads")
     args = parser.parse_args(argv)
     url = os.environ.get("SERVER_CHECK_DATABASE_URL")
     if not url:
