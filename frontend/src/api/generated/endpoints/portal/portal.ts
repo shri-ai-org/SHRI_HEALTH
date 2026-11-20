@@ -25,6 +25,7 @@ import type {
   DownloadPortalFileContentParams,
   EnrollInPortalHeaders,
   EnrollmentRequest,
+  EnrollmentResult,
   ForbiddenResponse,
   GetPortalRecordDownloadUrlParams,
   Id,
@@ -374,9 +375,9 @@ export const signOutOfPortal = async ( options?: Parameters<typeof apiFetch>[1])
 );}
 
 
-export type enrollInPortalResponse204 = {
-  data: void
-  status: 204
+export type enrollInPortalResponse200 = {
+  data: EnrollmentResult
+  status: 200
 }
 
 export type enrollInPortalResponse400 = {
@@ -414,7 +415,7 @@ export type enrollInPortalResponse503 = {
   status: 503
 }
 
-export type enrollInPortalResponseSuccess = (enrollInPortalResponse204) & {
+export type enrollInPortalResponseSuccess = (enrollInPortalResponse200) & {
   headers: Headers;
 };
 export type enrollInPortalResponseError = (enrollInPortalResponse400 | enrollInPortalResponse403 | enrollInPortalResponse409 | enrollInPortalResponse422 | enrollInPortalResponse429 | enrollInPortalResponse500 | enrollInPortalResponse503) & {
@@ -432,8 +433,8 @@ export const getEnrollInPortalUrl = () => {
 }
 
 /**
- * Redeems a front-desk invitation code (ADR-0013 §3, D85): with the matching date of birth it creates the patient realm account for the email given, links it to the chart once, and the realm sends its "set up your account" email (password and second factor are set in the realm, never here, D3). The chart's existing contacts are told an account was set up, without naming the clinic. Every failure gives the same answer, so codes, accounts and charts cannot be probed; rate-limited per address and per invitation, and an invitation is revoked after 5 failed tries. Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).
- * @summary Enroll with an invitation code
+ * Redeems an emailed invitation (D124, amending D85 and ADR-0013 §3). The patient opens the link (`/portal/invite#t=…`); the page keeps the token from the URL fragment, never a query string (D13), and sends it back only in this body, with the patient's date of birth. With a matching date of birth core creates the patient realm account, with the chart's email (the one the invitation went to) as its username, links it to the chart once, and answers with Keycloak's own one-time set-password link for that account: the browser goes straight to Keycloak's page and the patient sets the password and second factor there, never here (D3); no second email. The link is single use and valid for 7 days; 5 wrong dates of birth lock it. Every failure gives the same answer, so links, accounts and charts cannot be probed; rate-limited per address and per invitation. Public: there is no session yet, so there is no CSRF token either; instead the `Origin` header must be the portal host (ADR-0013 §5), which stops another site from posting the form. Implemented in core (ADR-0013 Consequences).
+ * @summary Enroll from an email invitation
  */
 export const enrollInPortal = async (enrollmentRequest: EnrollmentRequest,
     headers?: EnrollInPortalHeaders, options?: Parameters<typeof apiFetch>[1]): Promise<enrollInPortalResponse> => {

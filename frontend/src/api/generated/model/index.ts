@@ -272,6 +272,8 @@ export * from './encounterSummary';
 export * from './encounterSummaryClass';
 export * from './enrollInPortalHeaders';
 export * from './enrollmentRequest';
+export * from './enrollmentResult';
+export * from './enrollmentResultNext';
 export * from './enteredInErrorRequest';
 export * from './eventEnvelope';
 export * from './eventEnvelopeData';

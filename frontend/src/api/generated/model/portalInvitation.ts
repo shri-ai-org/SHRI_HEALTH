@@ -18,19 +18,18 @@ import type { Id } from './id';
 import type { Timestamp } from './timestamp';
 
 /**
- * A new invitation with its code. The code is in this response only: it is stored as an HMAC, never logged, and can't be read again. Print it or read it out at the desk; never email or text it (ADR-0013 §3).
+ * A new invitation, sent by email to the chart's address (D124). Its link and token are never returned, logged or shown; only the hash of the token is stored.
  */
 export interface PortalInvitation {
   /** Invitation ID. */
   id: Id;
   /**
-     * The invitation code: 12 Crockford base32 characters in three groups.
-     * @maxLength 14
-     * @pattern ^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$
+     * The address it was sent to, masked (`k•••@example.com`), so the desk can confirm it with the patient.
+     * @maxLength 254
      */
-  code: string;
+  sentTo: string;
   /** When it was issued. */
   issuedAt: Timestamp;
-  /** When it stops working (72 hours, single use). */
+  /** When its link stops working (7 days, single use). */
   expiresAt: Timestamp;
 }
