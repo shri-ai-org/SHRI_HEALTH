@@ -8458,6 +8458,38 @@ Paths: `/providers`
 | `specialties` | — | not mapped yet |
 | `updatedAt` | — | not mapped yet |
 
+### Inbox, messages
+
+Paths: `/inbox`, `/messages`
+
+| Property | Stored in | How |
+|---|---|---|
+| `assignee` | `work_item.assigned_user_id`, `work_item.assigned_role_id` | mapped: one user or one role, never both (ck_work_item_one_assignee) |
+| `body` | `work_item.body` | mapped: messages and tasks; a patient-message has none (its text is in work_item_reply) |
+| `completedAt` | `work_item.completed_at`, `work_item.updated_at` | mapped: completed_at for a completed item; a cancelled item keeps completed_at empty (ck_work_item_completed_has_time) and never changes again, so its updated_at |
+| `completedBy` | `work_item.completed_by_user_id` | mapped: who completed or cancelled it |
+| `corrected` | — | computed: not stored yet (BATCH3_PLAN S4, with the results batch); never set |
+| `createdAt` | `work_item.created_at` | mapped |
+| `createdBy` | `work_item.created_by_user_id` | mapped: absent for a patient-message, which the patient sent |
+| `dueAt` | `work_item.due_at` | mapped |
+| `encounterId` | `work_item.encounter_id` | mapped |
+| `escalatedAt` | `work_item.escalated_at` | mapped |
+| `escalationLevel` | `work_item.escalation_level` | mapped |
+| `facilityId` | `work_item.facility_id` | mapped |
+| `id` | `work_item.id` | mapped |
+| `itemType` | `work_item.item_type` | mapped |
+| `kind` | `work_item.item_type` | mapped: a new message or task (createMessage) |
+| `overdue` | — | computed: due_at has passed and the status is open, in-progress or on-hold |
+| `patient` | `work_item.patient_id` | mapped: the patient's official name and birth date, read with the item |
+| `patientId` | `work_item.patient_id` | mapped |
+| `priority` | `work_item.priority` | mapped: smallint 1 to 5: stat 1, asap 2, urgent 3, routine 4 (BATCH3_PLAN Q3); 5 is unused and read as routine. modules/inbox/repository.py PRIORITY_STORED is the one copy in code |
+| `restricted` | — | computed: the item's patient is a restricted chart the user may not open (core's chart_access, D37) |
+| `status` | `work_item.status` | mapped |
+| `subject` | `work_item.diagnostic_report_id`, `work_item.composition_id`, `work_item.document_reference_id`, `work_item.medication_request_id`, `work_item.service_request_id`, `work_item.appointment_id`, `work_item.unmatched_result_id`, `work_item.claim_id`, `work_item.fax_transmission_id` | mapped: at most one is set (ck_work_item_one_subject): result, note, document, prescription, order, appointment, unmatched-result, claim, fax in that order |
+| `thread` | `work_item_event.event`, `work_item_event.from_status`, `work_item_event.to_status`, `work_item_event.assigned_user_id`, `work_item_event.comment`, `work_item_event.occurred_at`, `work_item_event.user_id`, `work_item_reply.body`, `work_item_reply.author_user_id`, `work_item_reply.author_patient_id`, `work_item_reply.to_patient` | mapped: the events and, through admin.inbox_replies (0031), the replies as comment events, oldest first. work_item_event keeps a user assignee only, so a role shows on the last assignment |
+| `title` | `work_item.title` | mapped: a patient-message's subject; shown as "Item about a restricted chart" for a message, task or patient-message about a chart the user may not open (D37) |
+| `updatedAt` | `work_item.updated_at` | mapped: also the ETag, in microseconds (work_item has no version column, BATCH3_PLAN S1) |
+
 ## Contract resources not yet mapped to tables
 
 DATA_OWNERSHIP.md does not name tables for these yet. They are not guessed here.

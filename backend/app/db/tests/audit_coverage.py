@@ -38,6 +38,16 @@ OWNED_WRITES = {
                               "test_a_provider_and_a_schedule_are_audited_as_config_changes",
     "updatePracticeSettings": "app/modules/practice_setup/tests/test_practice_settings_live.py::"
                               "test_a_settings_change_is_audited_as_a_config_change",
+    "createMessage": "app/modules/inbox/tests/test_inbox_live.py::"
+                     "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
+    "updateInboxItem": "app/modules/inbox/tests/test_inbox_live.py::"
+                       "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
+    "completeInboxItem": "app/modules/inbox/tests/test_inbox_live.py::"
+                         "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
+    "cancelInboxItem": "app/modules/inbox/tests/test_inbox_live.py::"
+                       "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
+    "replyToInboxItem": "app/modules/inbox/tests/test_inbox_live.py::"
+                        "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
 }
 
 
