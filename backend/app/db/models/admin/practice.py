@@ -379,7 +379,8 @@ class WorkItem(Base, AdminMixin):
         # work_item_reply (never changed), about no other record.
         CheckConstraint(
             "item_type <> 'patient-message' OR (patient_id IS NOT NULL AND body IS NULL "
-            "AND char_length(title) >= 3 AND encounter_id IS NULL AND num_nonnulls("
+            "AND char_length(title) >= 3 AND title ~ '[^[:space:]]' AND encounter_id IS NULL "
+            "AND num_nonnulls("
             "diagnostic_report_id, composition_id, document_reference_id, medication_request_id, "
             "service_request_id, appointment_id, unmatched_result_id, claim_id, "
             "fax_transmission_id) = 0)", name="patient_message"),
@@ -432,7 +433,8 @@ class WorkItemReply(Base, AdminMixin):
     __tablename__ = "work_item_reply"
     __table_args__ = (
         CheckConstraint("num_nonnulls(author_user_id, author_patient_id) = 1", name="one_author"),
-        CheckConstraint("char_length(body) BETWEEN 1 AND 4000", name="body"),
+        CheckConstraint("char_length(body) BETWEEN 1 AND 4000 AND body ~ '[^[:space:]]'",
+                        name="body"),
         CheckConstraint("author_patient_id IS NULL OR to_patient", name="patient_sees_own"),
         # The same clinic's item; a patient's reply only on her own item.
         ForeignKeyConstraint(["tenant_id", "work_item_id"],
