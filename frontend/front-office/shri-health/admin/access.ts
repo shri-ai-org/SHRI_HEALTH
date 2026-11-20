@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { getMe } from '../../../src/api/generated/endpoints/platform/platform'
 import { useSession } from '../../../src/api/session'
+import { showPasswordResets } from './passwordResets'
 
 /** The admin screens and the permission each one reads with (the contract's x-permission). */
 export const ADMIN_SECTIONS = [
@@ -12,6 +13,8 @@ export const ADMIN_SECTIONS = [
   { path: 'audit', label: 'Audit trail', permission: 'audit-events:read' },
   { path: 'fhir', label: 'FHIR R4 view', permission: 'patients:read' },
   { path: 'integrations', label: 'Partner messages', permission: 'integration-messages:read' },
+  // "Forgot password?" approvals (#85): only with VITE_FEATURE_PASSWORD_HELP=on (sectionsFor).
+  { path: 'password-resets', label: 'Password resets', permission: 'password-resets:approve' },
 ] as const
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]
@@ -37,7 +40,7 @@ export function permissionsFor(userId: string): Promise<ReadonlySet<string>> {
 
 /** The sections a set of permissions opens, in menu order. */
 export function sectionsFor(permissions: ReadonlySet<string>): AdminSection[] {
-  return ADMIN_SECTIONS.filter((s) => permissions.has(s.permission))
+  return ADMIN_SECTIONS.filter((s) => (s.path === 'password-resets' ? showPasswordResets(permissions) : permissions.has(s.permission)))
 }
 
 export interface AdminAccess {

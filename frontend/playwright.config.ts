@@ -70,11 +70,13 @@ export default defineConfig({
     },
     {
       // The front office as the development administrator (adm), for the clinic's AI switch
-      // (e2e/aiSwitch.e2e.ts).
+      // (e2e/aiSwitch.e2e.ts) and the password-reset approvals on the development preview's
+      // synthetic requests (e2e/adminPasswordResets.e2e.ts).
       command: `npm run dev -w front-office -- --port ${frontOfficeAdminPort} --strictPort`,
       url: `http://localhost:${frontOfficeAdminPort}`,
       reuseExistingServer: !process.env.CI,
-      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'adm' },
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'adm',
+             VITE_FEATURE_PASSWORD_HELP: 'on', VITE_PASSWORD_HELP_PREVIEW: 'on' },
     },
     // The patient portal as a synthetic patient whose clinic books online (e2e/portalBooking.e2e.ts),
     // only when SHRI_E2E_PORTAL_PATIENT names one; without it the portal tests skip.
