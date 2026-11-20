@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { ApiError, newIdempotencyKey } from '../../api/client'
 import { registerPatient } from '../../api/generated/endpoints/patients/patients'
-import type { AdministrativeGender, BirthSex, ContactUse, PatientCreate } from '../../api/generated/model'
+import type { AdministrativeGender, BirthSex, ConsentRequirement, ContactUse, PatientCreate } from '../../api/generated/model'
 import {
   Alert,
   Button,
@@ -22,6 +22,7 @@ import {
   useToast,
   type Problem,
 } from '../../design-system'
+import { consentProblem, consentWording, loadRequiredConsents, toConsents } from './consents'
 import { BIRTH_SEX_OPTIONS, GENDER_IDENTITY_OPTIONS } from './demographics'
 import { useRegisterPrefill } from './registerPrefill'
 
@@ -140,6 +141,21 @@ export function RegisterPatientPage() {
   const [busy, setBusy] = useState(false)
   // One key per user action: kept while the same form is retried, replaced when anything changes.
   const idempotencyKey = useRef<string | null>(null)
+  // The practice's required consents (D120): read once; Register waits until they're read and agreed.
+  const [consents, setConsents] = useState<ConsentRequirement[] | null>(null)
+  const [consentReadError, setConsentReadError] = useState(false)
+  const [agreed, setAgreed] = useState(false)
+  const [consentError, setConsentError] = useState<string | null>(null)
+  const [consentRead, setConsentRead] = useState(0)
+  useEffect(() => {
+    let live = true
+    loadRequiredConsents()
+      .then((items) => live && setConsents(items))
+      .catch(() => live && setConsentReadError(true))
+    return () => {
+      live = false
+    }
+  }, [consentRead])
 
   function update(changes: Partial<Form>) {
     setForm((f) => ({ ...f, ...changes }))
@@ -149,6 +165,8 @@ export function RegisterPatientPage() {
 
   async function send(override: boolean) {
     const body = toBody(form)
+    // Optional in the API; here always sent, since Register waits for the patient's agreement.
+    if (consents?.length && agreed) body.consents = toConsents(consents, new Date().toISOString())
     if (override) {
       body.duplicateCheck = 'override'
       body.duplicateOverrideReason = reason.trim()
@@ -187,7 +205,9 @@ export function RegisterPatientPage() {
     e.preventDefault()
     const found = validate(form)
     setErrors(found)
-    if (Object.keys(found).length === 0) void send(false)
+    const blocked = consentProblem(consents, consentReadError, agreed)
+    setConsentError(blocked ?? null)
+    if (Object.keys(found).length === 0 && !blocked) void send(false)
   }
 
   function registerAnyway() {
@@ -268,6 +288,46 @@ export function RegisterPatientPage() {
           <Field label="City" error={errors.city}>{(p) => <TextInput {...p} autoComplete="off" value={form.city} onChange={set('city')} />}</Field>
           <Field label="State" error={errors.state}>{(p) => <StateSelect {...p} value={form.state} onChange={set('state')} />}</Field>
           <Field label="ZIP code" hint="12345 or 12345-6789" error={errors.zip}>{(p) => <TextInput {...p} inputMode="numeric" autoComplete="off" value={form.zip} onChange={set('zip')} />}</Field>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="mb-2 text-sm font-semibold text-ink">Consent</legend>
+          {consentReadError ? (
+            <Alert tone="critical" title="The consents could not be read">
+              <p>The patient can't be registered until they are. Try again, or ask your practice administrator.</p>
+              <Button type="button" variant="outline" className="mt-2" onClick={() => {
+                  setConsentReadError(false)
+                  setConsentRead((n) => n + 1)
+                }}>
+                Try again
+              </Button>
+            </Alert>
+          ) : !consents ? (
+            <p className="text-sm text-ink-muted" role="status">
+              Loading the consents…
+            </p>
+          ) : (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={agreed}
+                onChange={(e) => {
+                  setAgreed(e.target.checked)
+                  setConsentError(null)
+                  idempotencyKey.current = null
+                }}
+                aria-invalid={consentError ? true : undefined}
+                aria-describedby={consentError ? 'consent-error' : undefined}
+              />
+              <span>{consentWording(consents)}</span>
+            </label>
+          )}
+          {consentError && !consentReadError ? (
+            <p id="consent-error" className="text-sm text-critical-fg">
+              {consentError}
+            </p>
+          ) : null}
         </fieldset>
 
         {problem ? <ProblemAlert problem={problem} fieldLabels={FIELD_LABELS} /> : null}

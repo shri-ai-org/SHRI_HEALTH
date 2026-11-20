@@ -145,28 +145,42 @@ describe('PatientSearchPage', () => {
   })
 })
 
+// The practice's consent requirements (D59, D120): two required, one optional, one inactive. Synthetic.
+const REQUIREMENTS = [
+  { id: '00000000-0000-4000-8000-00000000c001', kind: 'treatment', title: 'Consent to treatment', policyVersion: '2026-10', required: true, active: true },
+  { id: '00000000-0000-4000-8000-00000000c002', kind: 'privacy-notice', title: 'Acknowledgement of the privacy notice', policyVersion: '2026-09', required: true, active: true },
+  { id: '00000000-0000-4000-8000-00000000c003', kind: 'telehealth', title: 'Consent to telehealth', policyVersion: '2026-10', required: false, active: true },
+  { id: '00000000-0000-4000-8000-00000000c004', kind: 'treatment', title: 'Old consent to treatment', policyVersion: '2025-01', required: true, active: false },
+]
+const CONSENTS_KEY = 'GET /api/v1/consent-requirements?limit=100'
+const consentsOk = { [CONSENTS_KEY]: [() => json(200, { items: REQUIREMENTS })] }
+const WORDING = 'The patient agrees to: consent to treatment; acknowledgement of the privacy notice'
+
 describe('RegisterPatientPage', () => {
-  async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
+  async function fillRequired(user: ReturnType<typeof userEvent.setup>, agree = true) {
     await user.type(screen.getByLabelText(/First name/), 'Ana')
     await user.type(screen.getByLabelText(/Last name/), 'Testperson')
     await user.type(screen.getByLabelText(/Date of birth/), '07/19/1984')
+    if (agree) await user.click(await screen.findByRole('checkbox', { name: WORDING }))
   }
 
   it('requires name and date of birth before sending', async () => {
     const user = userEvent.setup()
-    serve({})
+    const server = serve({ ...consentsOk })
     renderAt('/patients/new')
+    await screen.findByRole('checkbox', { name: WORDING })
     await user.click(screen.getByRole('button', { name: 'Register patient' }))
     expect(screen.getByLabelText(/First name/)).toBeInvalid()
     expect(screen.getByLabelText(/Last name/)).toBeInvalid()
     expect(screen.getByLabelText(/Date of birth/)).toBeInvalid()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(server.calls()).toEqual([CONSENTS_KEY])
     expect(await axeViolations()).toEqual([])
   })
 
   it('registers with an Idempotency-Key and opens the new chart', async () => {
     const user = userEvent.setup()
     const server = serve({
+      ...consentsOk,
       'POST /api/v1/patients': [() => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
       ...noCoverages,
@@ -185,13 +199,45 @@ describe('RegisterPatientPage', () => {
       name: { given: ['Ana'], family: 'Testperson' },
       birthDate: '1984-07-19',
       phones: [{ number: '+16175550123', use: 'mobile' }],
+      consents: [
+        { kind: 'treatment', decision: 'permit', signatureMethod: 'electronic', signedAt: expect.any(String), policyVersion: '2026-10' },
+        { kind: 'privacy-notice', decision: 'permit', signatureMethod: 'electronic', signedAt: expect.any(String), policyVersion: '2026-09' },
+      ],
     })
     expect(sent?.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('blocks Register until the patient agrees to the required consents', async () => {
+    const user = userEvent.setup()
+    const server = serve({ ...consentsOk })
+    renderAt('/patients/new')
+    await fillRequired(user, false)
+    // Only the active, required ones, in the requirements' own words.
+    expect(await screen.findByRole('checkbox', { name: WORDING })).not.toBeChecked()
+    expect(screen.queryByText(/telehealth|Old consent/)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Register patient' }))
+    expect(screen.getByText('The patient must agree to the consents before registering.')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: WORDING })).toBeInvalid()
+    expect(server.calls()).not.toContain('POST /api/v1/patients')
+    expect(await axeViolations()).toEqual([])
+  })
+
+  it("blocks Register when the consents can't be read, and reads them again on Try again", async () => {
+    const user = userEvent.setup()
+    const server = serve({ [CONSENTS_KEY]: [() => problem(503, 'service-unavailable'), () => json(200, { items: REQUIREMENTS })] })
+    renderAt('/patients/new')
+    expect(await screen.findByText('The consents could not be read')).toBeInTheDocument()
+    await fillRequired(user, false)
+    await user.click(screen.getByRole('button', { name: 'Register patient' }))
+    expect(server.calls()).not.toContain('POST /api/v1/patients')
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('checkbox', { name: WORDING })).toBeInTheDocument()
   })
 
   it('sends the phone type the front desk chose', async () => {
     const user = userEvent.setup()
     const server = serve({
+      ...consentsOk,
       'POST /api/v1/patients': [() => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
       ...noCoverages,
@@ -208,6 +254,7 @@ describe('RegisterPatientPage', () => {
   it('warns of a possible duplicate and registers anyway only with a reason, under a new key', async () => {
     const user = userEvent.setup()
     const server = serve({
+      ...consentsOk,
       'POST /api/v1/patients': [() => problem(409, 'possible-duplicate'), () => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, patient)],
       ...noCoverages,
@@ -235,6 +282,7 @@ describe('RegisterPatientPage', () => {
   it('names the field a 422 points at', async () => {
     const user = userEvent.setup()
     serve({
+      ...consentsOk,
       'POST /api/v1/patients': [() => problem(422, 'validation-failed', { errors: [{ in: 'body', pointer: '/birthDate', code: 'invalid-format' }] })],
     })
     renderAt('/patients/new')
@@ -267,6 +315,7 @@ describe('RegisterPatientPage demographics (D39)', () => {
   it('sends sex assigned at birth and gender identity only when chosen', async () => {
     const user = userEvent.setup()
     const server = serve({
+      ...consentsOk,
       'POST /api/v1/patients': [() => json(201, patient)],
       [`GET /api/v1/patients/${patient.id}`]: [() => json(200, { ...patient, birthSex: 'F', genderIdentity: { system: 'http://snomed.info/sct', code: '33791000087105' } })],
       ...noCoverages,
@@ -277,6 +326,7 @@ describe('RegisterPatientPage demographics (D39)', () => {
     await user.type(screen.getByLabelText(/Date of birth/), '07/19/1984')
     await user.selectOptions(screen.getByLabelText(/Sex assigned at birth/), 'F')
     await user.selectOptions(screen.getByLabelText(/Gender identity/), 'Nonbinary')
+    await user.click(await screen.findByRole('checkbox', { name: WORDING }))
     await user.click(screen.getByRole('button', { name: 'Register patient' }))
 
     await screen.findByRole('heading', { name: 'Ana Testperson' })
