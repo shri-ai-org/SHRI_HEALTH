@@ -48,6 +48,10 @@ OWNED_WRITES = {
                        "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
     "replyToInboxItem": "app/modules/inbox/tests/test_inbox_live.py::"
                         "test_every_inbox_write_is_audited_with_its_patient_and_no_patient_data",
+    "createPortalMessage": "app/modules/portal_records/tests/test_portal_messages_live.py::"
+                           "test_a_message_and_a_reply_are_audited_with_the_patient_and_no_text",
+    "replyToPortalMessageThread": "app/modules/portal_records/tests/test_portal_messages_live.py::"
+                                  "test_a_message_and_a_reply_are_audited_with_the_patient_and_no_text",
 }
 
 
