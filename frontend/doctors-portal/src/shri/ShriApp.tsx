@@ -37,6 +37,7 @@ import { WORK_IN_PROGRESS_ROUTES } from './logic/workInProgress'
 import { forceState, useForcedState } from './state/ai'
 import { useShri } from './state/store'
 import { ErrorFrame } from './ui/states'
+import { refillRequestsOn } from '../../shri-health/refills'
 
 /** Screens whose old address now makes one hop to a new one. */
 const MOVED = new Set(['S-06-01', 'S-06-11'])
@@ -57,7 +58,9 @@ function routedWithApi(id: string): boolean {
   if (WITH_SERVICE.has(id)) return true
   return !NO_SERVICE.has(id) && !NO_SERVICE_PREFIXES.some((p) => id.startsWith(p))
 }
-const ROUTED = REAL_API ? ROUTED_SCREENS.filter((s) => routedWithApi(s.id)) : ROUTED_SCREENS
+/** Refill requests (S-06-21): only with the API and VITE_FEATURE_REFILL_REQUESTS=on; never sample data. */
+const FLAGGED_OFF = new Set(REAL_API && refillRequestsOn() ? [] : ['S-06-21'])
+const ROUTED = (REAL_API ? ROUTED_SCREENS.filter((s) => routedWithApi(s.id)) : ROUTED_SCREENS).filter((s) => !FLAGGED_OFF.has(s.id))
 /** The command wall draws no shell (`isBare`). Sign-in is bare too, and the one public route. */
 const BARE = ROUTED.filter((s) => isBare(s) && s.permission !== 'public')
 const SHELLED = ROUTED.filter((s) => !isBare(s) && !MOVED.has(s.id))

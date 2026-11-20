@@ -61,12 +61,12 @@ export default defineConfig({
       {
         // The doctors' portal's own unit tests, with its `@` (doctors-portal/src) and the real-API build flag.
         root: './doctors-portal',
-        resolve: { alias: { '@': fileURLToPath(new URL('./doctors-portal/src', import.meta.url)) } },
+        resolve: { alias: { '@': fileURLToPath(new URL('./doctors-portal/src', import.meta.url)), 'react-router-dom': 'react-router' } },
         define: { __SHRI_REAL_API__: 'true' },
         test: {
           name: 'doctors-portal',
           environment: 'jsdom',
-          include: ['shri-health/**/*.test.ts', 'src/shri/logic/**/*.test.ts'],
+          include: ['shri-health/**/*.test.ts', 'src/shri/logic/**/*.test.ts', 'src/shri/refills/**/*.test.tsx'],
           css: false,
         },
       },

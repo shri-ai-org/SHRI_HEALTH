@@ -18,6 +18,7 @@ import { AssessmentPage } from '../inpatients/AssessmentPage'
 import { InpatientsPage } from '../inpatients/InpatientsPage'
 import { ProgressNotePage } from '../inpatients/ProgressNotePage'
 import { BriefPage } from '../myday/BriefPage'
+import { RefillRequestsPage } from '../refills/RefillRequestsPage'
 import { MyDayPage } from '../myday/MyDayPage'
 import { CoSignPage } from '../notes/CoSignPage'
 import { ConsultationPage } from '../notes/ConsultationPage'
@@ -88,6 +89,7 @@ export const SCREEN_COMPONENTS: Partial<Record<string, ComponentType>> = {
   'S-06-14': NotesPage,
   'S-06-15': ConditionPage,
   'S-06-20': HistoryPage,
+  'S-06-21': RefillRequestsPage,
   'S-06-16': PrescriptionsPage,
   'S-06-17': AppointmentsPage,
   'S-05-03': OpdQueuePage,

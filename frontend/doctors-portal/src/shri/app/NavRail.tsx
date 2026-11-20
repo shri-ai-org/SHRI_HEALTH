@@ -5,7 +5,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, House, ListChecks, LogOut, Search, Send, Sparkles, Stethoscope, UsersRound, Video,
+  Aperture, BedDouble, Brain, Ellipsis, FlaskConical, House, ListChecks, LogOut, Pill, Search, Send, Sparkles, Stethoscope, UsersRound, Video,
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -27,11 +27,12 @@ import { Icon } from '../ui/primitives'
 
 import { mayOpen } from './landing'
 import { canonical } from './paths'
+import { refillRequestsOn } from '../../../shri-health/refills'
 
 type Section = NavItem['section']
 
 interface RailItem {
-  key: Section | 'patients' | 'search' | 'more' | 'referrals'
+  key: Section | 'patients' | 'search' | 'more' | 'referrals' | 'refills'
   label: string
   /** The phone tab bar's label. */
   short: string
@@ -103,6 +104,9 @@ const OFF_RAIL_WITH_API = new Set<Section>(['results', 'imaging', 'inpatients', 
 /** With the API, orders (on the rail from the nav) and referrals open "Work in progress" until their
  *  service lands after the demo (Thulasi; Vimal on #85, 18 Nov); never an error or a blank page. */
 const REFERRALS: RailItem = { key: 'referrals', label: 'Referrals', short: 'Referrals', icon: Send, to: '/referrals' }
+/** Refill requests (S-06-21), under More for those who sign prescriptions: only with the API and
+ *  VITE_FEATURE_REFILL_REQUESTS=on (#415's API). */
+const REFILLS: RailItem = { key: 'refills', label: 'Refill requests', short: 'Refills', icon: Pill, to: '/refills' }
 
 function useRail() {
   const persona = useSession((s) => s.persona)
@@ -112,6 +116,7 @@ function useRail() {
     const primary = mergePatientLists(groups.primary.filter(onRail).map((n) => railItem(n, persona)))
     const more = mergePatientLists(groups.secondary.filter(onRail).map((n) => railItem(n, persona)))
     if (REAL_API && mayOpen(persona, 'referral.read')) more.push(REFERRALS)
+    if (REAL_API && refillRequestsOn() && mayOpen(persona, 'rx.sign')) more.push(REFILLS)
     const items = [...primary.slice(0, 1), SEARCH, ...primary.slice(1), ...(more.length > 0 ? [MORE_ITEM] : [])]
     return { primary, more, items }
   }, [persona])
@@ -123,6 +128,7 @@ function useActiveKey(): RailItem['key'] | null {
   if (pathname === '/') return 'home'
   if (pathname.startsWith('/patient/')) return 'search'
   if (pathname === '/referrals' || pathname.startsWith('/referrals/')) return 'referrals'
+  if (pathname === '/refills') return 'refills'
   const section = screenForPath(pathname)?.navSection ?? null
   return section && PATIENT_LISTS.has(section) ? 'patients' : section
 }
