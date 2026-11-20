@@ -5,6 +5,7 @@ import { Alert, Button } from '../../../../design-system'
 import { usePortalApi } from '../../api/portalApi'
 import { Link } from '../../router'
 import { demoSignInOn } from '../../features'
+import { PASSWORD_HELP_PATH, passwordHelpOn } from '../../passwordHelp'
 import { AuthLayout } from './AuthLayout'
 import { DemoSignInForm } from './DemoSignInForm'
 
@@ -53,7 +54,14 @@ export function SignInPage({ reason, onDemoSignIn }: { reason?: SignedOutReason 
         >
           Sign in
         </Button>
-        <p className="text-sm text-ink-muted">Forgot your password? Choose "Forgot password" on the sign-in page.</p>
+        {passwordHelpOn() ? (
+          // Demo servers (#85): the sign-in service's own reset is off there, so the clinic resets it.
+          <Link to={PASSWORD_HELP_PATH} className="inline-flex min-h-11 items-center text-sm font-semibold text-primary-700 underline-offset-2 hover:underline">
+            Forgot your password?
+          </Link>
+        ) : (
+          <p className="text-sm text-ink-muted">Forgot your password? Choose "Forgot password" on the sign-in page.</p>
+        )}
       </div>
 
       <div className="mt-6 border-t border-border-soft pt-5 text-sm text-ink-muted">
