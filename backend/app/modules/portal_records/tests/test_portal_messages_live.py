@@ -15,6 +15,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 from app.core.deps import DEV_PATIENT_CLINIC_HEADER, DEV_PATIENT_HEADER, DEV_USER_HEADER
+from app.db.tests.audit_coverage import audit_problems, phi_in
+from app.db.tests.audit_coverage import audit_rows as request_rows
 from app.db.tests.conftest import TEST_DATABASE_URL, sync_url
 from app.modules.scheduling.tests.conftest import setup_session
 from app.modules.scheduling.tests.portal_live import PortalChart, audit_rows
@@ -189,3 +191,20 @@ def test_only_a_patient_session_reaches_the_messages(portal_app: Any,
     assert portal_app.get(API, headers=staff).status_code == 401
     assert _owner("SELECT count(*) FROM admin.work_item WHERE tenant_id = :t "
                   "AND item_type = 'patient-message'", t=chart.practice.clinic)[0][0] == 0
+
+
+def test_a_message_and_a_reply_are_audited_with_the_patient_and_no_text(
+        portal_app: Any, portal_chart: PortalChart) -> None:
+    chart = portal_chart
+    created = _start(portal_app, chart)
+    replied = _reply(portal_app, chart, created.json()["id"], "Thank you, that helps")
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    try:
+        for response, operation in ((created, "createPortalMessage"),
+                                    (replied, "replyToPortalMessageThread")):
+            assert audit_problems(admin, response, operation, tenant=chart.practice.clinic,
+                                  patient=chart.a) == []
+            reasons = [r.reason for r in request_rows(admin, response)]
+            assert phi_in(reasons, [SUBJECT, BODY, "Thank you, that helps"]) == []
+    finally:
+        admin.dispose()

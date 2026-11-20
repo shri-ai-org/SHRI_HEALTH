@@ -38,6 +38,10 @@ OWNED_WRITES = {
                               "test_a_provider_and_a_schedule_are_audited_as_config_changes",
     "updatePracticeSettings": "app/modules/practice_setup/tests/test_practice_settings_live.py::"
                               "test_a_settings_change_is_audited_as_a_config_change",
+    "createPortalMessage": "app/modules/portal_records/tests/test_portal_messages_live.py::"
+                           "test_a_message_and_a_reply_are_audited_with_the_patient_and_no_text",
+    "replyToPortalMessageThread": "app/modules/portal_records/tests/test_portal_messages_live.py::"
+                                  "test_a_message_and_a_reply_are_audited_with_the_patient_and_no_text",
 }
 
 
