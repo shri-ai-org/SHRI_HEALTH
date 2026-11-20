@@ -164,7 +164,8 @@ def test_a_message_is_checked_against_the_contract(portal_app: Any,
     chart = portal_chart
     for body in ({"subject": "Hi", "body": BODY}, {"subject": SUBJECT, "body": ""},
                  {"subject": SUBJECT, "body": "x" * 4001},
-                 {"subject": SUBJECT, "body": BODY, "attachment": "x"}):
+                 {"subject": SUBJECT, "body": BODY, "attachment": "x"},
+                 {"subject": "    ", "body": BODY}, {"subject": SUBJECT, "body": "  \n "}):
         refused = portal_app.post(API, json=body, headers=_me(chart) | _key())
         assert (refused.status_code, refused.json()["code"]) == (422, "validation-failed")
     assert portal_app.get(API, headers=_me(chart)).json()["items"] == []

@@ -5,9 +5,10 @@ A thread is a ``patient-message`` inbox item; migration 0031's functions keep ev
 the database, in the portal session: the patient's own threads only (another patient's is the
 same ``404`` as a missing one), the staff replies sent to her and never a staff-only one, no
 reply in a closed thread (``409``), and at most 5 messages in 10 minutes and 20 in 24 hours
-(``429``). Creating a thread routes it to the clinic's medical assistants and raises
-``inbox.item-assigned`` with no text (D81). Core writes the audit row (patient from the session)
-and keeps the Idempotency-Key. Nothing here logs a subject or a message.
+(``429``); a subject or message of only spaces is ``422``. Creating a thread routes it to the
+clinic's medical assistants and raises ``inbox.item-assigned`` with no text (D81). Core writes
+the audit row (patient from the session) and keeps the Idempotency-Key. Nothing here logs a
+subject or a message.
 """
 from __future__ import annotations
 
@@ -16,7 +17,15 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import PortalPatient
-from app.core.errors import AppError, Conflict, Forbidden, InternalError, NotFound
+from app.core.errors import (
+    AppError,
+    Conflict,
+    Forbidden,
+    InternalError,
+    NotFound,
+    ValidationFailed,
+    field_error,
+)
 
 from ..history.service import decode_cursor, encode_cursor
 from . import messages_schemas as s
@@ -42,6 +51,10 @@ def _refusal(refused: Refused) -> AppError:
             return TooManyMessages(headers={"Retry-After": str(RETRY_AFTER_SECONDS)})
         case "portal_message_chart_inactive":
             return Forbidden()
+        case "message_subject_invalid":  # only spaces: the contract's lengths pass, this doesn't
+            return ValidationFailed(errors=[field_error("body", "/subject", "too-short")])
+        case "message_body_invalid":
+            return ValidationFailed(errors=[field_error("body", "/body", "too-short")])
         case _:  # portal_message_no_queue: the clinic has no facility; never shown as such
             return InternalError()
 
