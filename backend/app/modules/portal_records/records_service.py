@@ -6,9 +6,12 @@
 2. **Build, on request.** In the portal session (``shri_portal``, own chart only), the same reads
    as the portal's pages (records_repository), rendered in memory (records_pdf). It holds what
    the portal shows and nothing more: held, draft, entered-in-error, PSY-labelled and non-final
-   items are hidden by the policies, and no note, inbox item or staff-only text is read.
-3. **Size limit.** At most ``SECTION_LIMIT`` (100) items per section, the newest, and the PDF
-   says when a section was cut; a PDF over ``MAX_PDF_BYTES`` (4 MiB) is refused with ``422
+   items are hidden by the policies, and no note, inbox item or staff-only text is read. Visits
+   are the portal's own past appointments (scheduling's ``listPortalAppointments`` read), less
+   any whose appointment or encounter is labelled PSY, R or V, which leave no trace at all.
+3. **Size limit.** Allergies, problems and current medications are always listed in full. Every
+   other section holds at most ``SECTION_LIMIT`` (100) items, the newest, and the PDF says when
+   one was cut (Anand on #480). A PDF over ``MAX_PDF_BYTES`` (4 MiB) is refused with ``422
    business-rule-violation`` naming ``format`` (``out-of-range``), and nothing is stored.
 4. **Store.** The file service's envelope encryption (a fresh data key, wrapped by core) under
    ``<clinic>/<file>`` in the clean bucket, then ``admin.portal_record_export()`` (0032) records
@@ -25,10 +28,11 @@ in any log, event or audit row. The caller commits; this never does.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,15 +46,19 @@ from ..files.crypto import FileCrypto
 from ..files.storage import CLEAN_BUCKET, FileStore, storage_key
 from ..history.portal_repository import PortalHistoryReads
 from ..medications.portal_repository import PortalMedicationReads
+from ..scheduling.portal_repository import PortalAppointmentReads
 from . import records_pdf, schemas
 from .records_pdf import Section, Summary
-from .records_repository import ExportWrites, RecordReads, Refused
+from .records_repository import ExportWrites, RecordReads, Refused, Visit
 from .repository import LabResultReads
 
 SECTION_LIMIT = 100
 MAX_PDF_BYTES = 4 * 1024 * 1024
-#: Reads that filter after the query (active problems, current medications) look this far.
-FILTER_WINDOW = 500
+#: The page size for the sections that are never cut (allergies, problems, medications) and for
+#: the visits, which are filtered after the read.
+PAGE = 100
+#: Past appointments that are not visits: never kept, or called off.
+NOT_A_VISIT = frozenset({"cancelled", "noshow"})
 VITALS_WINDOW = timedelta(days=366)
 FORMATS = ("pdf", "fhir-r4")
 #: The function's per-patient limit window (0032), for the client's Retry-After.
@@ -69,6 +77,7 @@ class Readers:
     medications: PortalMedicationReads
     labs: LabResultReads
     summaries: PortalSummaryReads
+    appointments: PortalAppointmentReads
     records: RecordReads
 
 
@@ -76,33 +85,63 @@ def _cut(found: list[object]) -> Section:
     return Section(found[:SECTION_LIMIT], truncated=len(found) > SECTION_LIMIT)
 
 
+async def _every[T](read: Callable[[int, int], Awaitable[list[T]]]) -> list[T]:
+    """Every row of a paged read, page by page: for the sections that are never cut."""
+    out: list[T] = []
+    while True:
+        page = await read(PAGE, len(out))
+        out += page
+        if len(page) < PAGE:
+            return out
+
+
+async def _visits(db: AsyncSession, reads: Readers, me: UUID, now: datetime
+                  ) -> list[object]:
+    """The patient's past visits as the portal's appointment list shows them, newest first, less
+    the PSY, R or V labelled ones; up to one more than a section holds, to know it was cut."""
+    out: list[object] = []
+    offset = 0
+    while len(out) <= SECTION_LIMIT:
+        page = await reads.appointments.list(db, me, upcoming=False, now=now, limit=PAGE,
+                                             offset=offset)
+        offset += len(page)
+        kept = [a for a in page if a.status not in NOT_A_VISIT]
+        hidden = await reads.records.hidden_visits(db, [a.id for a in kept])
+        out += [Visit(started_at=a.start, time_zone=a.time_zone, clinician=a.provider_name,
+                      reasons=[a.reason] if a.reason else [])
+                for a in kept if a.id not in hidden]
+        if len(page) < PAGE:
+            break
+    return out
+
+
 async def gather(db: AsyncSession, reads: Readers, patient: PortalPatient) -> Summary:
     """What the PDF shows, read as shri_portal for the session patient only."""
     me = patient.patient_id
     now = (await db.execute(text("SELECT now()"))).scalar_one()
     header = await reads.records.header(db, me)
-    problems = [p for p in await reads.history.problems(
-        db, me, problem_id=None, limit=FILTER_WINDOW, offset=0)
+    allergies = await _every(lambda limit, offset: reads.history.allergies(
+        db, me, allergy_id=None, limit=limit, offset=offset))
+    problems = [p for p in await _every(lambda limit, offset: reads.history.problems(
+        db, me, problem_id=None, limit=limit, offset=offset))
         if p.release_status == "available" and p.clinical_status in ACTIVE_PROBLEM]
-    medications = [m for m in await reads.medications.medications(
-        db, me, limit=FILTER_WINDOW, offset=0) if m.status == "active"]
+    medications = [m for m in await _every(lambda limit, offset: reads.medications.medications(
+        db, me, limit=limit, offset=offset)) if m.status == "active"]
     # Each summary dated in its visit's facility time zone, as the portal's list dates it (D40).
     summaries = [records_pdf.VisitSummary(s.visit_start, s.time_zone) for s in sorted(
         await reads.summaries.released(db, me), key=lambda s: s.visit_start, reverse=True)]
     more = SECTION_LIMIT + 1
     return Summary(
         header=header, generated_at=now, limit=SECTION_LIMIT,
-        allergies=_cut(list(await reads.history.allergies(
-            db, me, allergy_id=None, limit=more, offset=0))),
-        problems=_cut(list(problems)),
-        medications=_cut(list(medications)),
+        allergies=Section(list(allergies)), problems=Section(list(problems)),
+        medications=Section(list(medications)),
         immunizations=_cut(list(await reads.records.immunizations(db, me, limit=more))),
         vitals=_cut(list(await reads.history.vitals(
             db, me, vital_type=None, date_from=(now - VITALS_WINDOW).date(), date_to=None,
             limit=more, offset=0))),
         lab_results=_cut(list(await reads.labs.lab_results(db, me, limit=more, offset=0))),
         imaging=_cut(list(await reads.records.imaging_reports(db, me, limit=more))),
-        visits=_cut(list(await reads.records.visits(db, me, limit=more))),
+        visits=_cut(await _visits(db, reads, me, now)),
         visit_summaries=_cut(list(summaries)))
 
 

@@ -2,13 +2,15 @@
 readable summary of what the portal shows, in the after-visit summary's plain PDF
 (``documents.pdf``: standard fonts, no metadata, no new dependency).
 
-Top to bottom: the clinic's name, the patient's name, date of birth and chart number, and
-"Generated on <date> from your patient portal" (no staff user IDs); then, each only when it has
+Top to bottom: the clinic's name, the title with "Summary, not the complete record" and how to get
+the full record under it, the patient's name, date of birth and chart number, and "Generated on
+<date> from your patient portal" (no staff user IDs); then, each only when it has
 something, allergies and intolerances, active problems, current medications, immunizations,
 vital signs (the latest of each kind, then the last 12 months as a table), lab results with
 their ranges and H/L flags, imaging reports (text only, no images), visits (date, clinician,
-reason) and the after-visit summaries; then the closing line. Dates are the clinic's (D40).
-A section cut at its limit says so. Synthetic data only in tests.
+reason) and the after-visit summaries; then the closing line, which says again that this is a
+summary. Dates are the clinic's, a visit's its facility's (D40). Allergies, problems and current
+medications are never cut; another section cut at its limit says so. Synthetic data only in tests.
 """
 from __future__ import annotations
 
@@ -24,8 +26,10 @@ from . import schemas
 from .records_repository import Header, ImagingReport, Immunization, Visit
 
 CONTENT_TYPE = pdf.CONTENT_TYPE
-CLOSING = ("This summary is not a complete medical record. For a complete copy, contact your "
-           "clinic.")
+#: Said under the title and again at the end (Anand on #480): a summary, never the full record.
+LABEL = "Summary, not the complete record"
+FULL_COPY = "For a complete copy of your record, contact your clinic."
+CLOSING = "This is a summary, not your complete medical record."
 _WRAP = 85  # characters per line at 11 pt, as the after-visit summary
 VITAL_NAMES = {
     "blood-pressure": "Blood pressure", "heart-rate": "Heart rate",
@@ -191,6 +195,8 @@ def lines(summary: Summary) -> list[pdf.Line]:
     out: list[pdf.Line] = [
         ("F2", 18, h.clinic_name),
         ("F1", 14, "Health record summary"),
+        ("F2", 11, LABEL),
+        ("F1", 11, FULL_COPY),
         ("F1", 11, ""),
         ("F1", 11, f"Patient: {h.patient_name}"),
         ("F1", 11, "Date of birth: "
@@ -237,7 +243,7 @@ def lines(summary: Summary) -> list[pdf.Line]:
                      for r in _wrapped(f"- Visit of {_day(d.visit_start, d.time_zone)} "
                                        "(download it from Visits)")],
                     summary.visit_summaries, limit)
-    out += [("F1", 11, ""), ("F1", 9, CLOSING)]
+    out += [("F1", 11, ""), ("F1", 9, CLOSING), ("F1", 9, FULL_COPY)]
     return out
 
 

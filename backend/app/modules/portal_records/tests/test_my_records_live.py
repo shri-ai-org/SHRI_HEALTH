@@ -194,6 +194,13 @@ def test_my_record_downloads_once_with_only_my_released_items_and_is_audited(
                   "Impression: Reviewed.", "Visits",
                   _visit_day(ids["a-avs"]), records_pdf.CLOSING):
         assert shown in pdf, shown
+    # Labelled a summary under the title and again at the end, with how to get the full record.
+    assert records_pdf.LABEL == "Summary, not the complete record"
+    assert records_pdf.FULL_COPY == "For a complete copy of your record, contact your clinic."
+    top = pdf.index("Health record summary")
+    assert pdf.index(records_pdf.LABEL) - top < 200            # the line under the title
+    assert pdf.count(records_pdf.FULL_COPY) == 2 and pdf.index("Patient: ") > pdf.index(
+        records_pdf.FULL_COPY)
     for hidden in ("Synthheldproblem401", "Synthwrongproblem401", "Synthmeddraft401",
                    "Synthlabprelim", "Synthlabheld", "Synthotherproblem904",
                    "Synthotherallergy904", "Synthmedother904", "Synthlabother904",
@@ -264,14 +271,100 @@ def test_the_size_limits(portal_app: Any, portal_chart: PortalChart, files: dict
                                          "code": "out-of-range"}]
     assert not _export_rows(portal_chart.practice.clinic) and not files["store"].objects
     monkeypatch.setattr(records_service, "MAX_PDF_BYTES", 4 * 1024 * 1024)
-    monkeypatch.setattr(records_service, "SECTION_LIMIT", 1)
+
+
+def test_a_long_section_is_cut_and_says_so(portal_app: Any, portal_chart: PortalChart,
+                                           files: dict[str, Any],
+                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    _chart_items(portal_chart)
+    _report(portal_chart, portal_chart.a, "2026-10-05T17:00:00Z", short="Synthlabnewer")
     _sql(portal_chart, """INSERT INTO clinical.allergy_intolerance (id, tenant_id, patient_id,
                           clinical_status, verification_status, code_text, recorded_date)
                           VALUES (:i, :t, :p, 'active', 'confirmed', 'Synthlatex401', now())""",
          i=uuid.uuid4(), t=portal_chart.practice.clinic, p=portal_chart.a)
+    monkeypatch.setattr(records_service, "SECTION_LIMIT", 1)
+    me = portal_client(portal_app, portal_chart, portal_chart.a)
     pdf = _download(me, _ask(me).json()).content.decode("latin-1")
-    assert "Synthlatex401" in pdf and "Synthpeanut401" not in pdf     # the newest one only
+    assert "Synthlabnewer" in pdf and "Synthlabfinal" not in pdf        # the newest lab only
     assert "Only the 1 most recent are listed." in pdf
+    assert "Synthlatex401" in pdf and "Synthpeanut401" in pdf           # allergies: never cut
+
+
+def test_allergies_problems_and_medications_are_never_cut(
+        portal_app: Any, portal_chart: PortalChart, files: dict[str, Any]) -> None:
+    """Over 100 of each: every one is listed, and none of the three says it was cut."""
+    t, a = portal_chart.practice.clinic, portal_chart.a
+    _sql(portal_chart, """
+        INSERT INTO clinical.allergy_intolerance (id, tenant_id, patient_id, clinical_status,
+               verification_status, code_text, recorded_date)
+        SELECT gen_random_uuid(), :t, :p, 'active', 'confirmed',
+               'Synthbulkallergy' || lpad(g::text, 3, '0'), now() - make_interval(days => g)
+        FROM generate_series(1, 105) g""", t=t, p=a)
+    _sql(portal_chart, """
+        WITH c AS (
+          INSERT INTO clinical.condition (id, tenant_id, clinical_status, verification_status,
+                 code_system, code_code, code_display, subject_patient_id, recorded_date)
+          SELECT gen_random_uuid(), :t, 'active', 'confirmed', :icd, 'G43.909',
+                 'Synthbulkproblem' || lpad(g::text, 3, '0'), :p, now() - make_interval(days => g)
+          FROM generate_series(1, 105) g RETURNING id)
+        INSERT INTO clinical.condition_category (id, tenant_id, condition_id, category_system,
+               category_code)
+        SELECT gen_random_uuid(), :t, c.id, :cat, 'problem-list-item' FROM c""",
+         t=t, p=a, icd=systems.ICD10CM, cat=systems.CONDITION_CATEGORY)
+    _sql(portal_chart, """
+        INSERT INTO clinical.medication_request (id, tenant_id, status, intent, subject_patient_id,
+               reported_boolean, requester_patient_id, medication_codeable_concept_text,
+               authored_on)
+        SELECT gen_random_uuid(), :t, 'active', 'plan', :p, true, :p,
+               'Synthbulkmed' || lpad(g::text, 3, '0'), now() - make_interval(days => g)
+        FROM generate_series(1, 105) g""", t=t, p=a)
+    me = portal_client(portal_app, portal_chart, a)
+    asked = _ask(me)
+    assert asked.status_code == 200, asked.text
+    pdf = _download(me, asked.json()).content.decode("latin-1")
+    for kind in ("Synthbulkallergy", "Synthbulkproblem", "Synthbulkmed"):
+        missing = [n for n in range(1, 106) if f"{kind}{n:03d}" not in pdf]
+        assert not missing, (kind, missing)
+    assert "most recent are listed" not in pdf
+
+
+def test_psy_and_restricted_visits_leave_no_trace(
+        portal_app: Any, portal_chart: PortalChart, files: dict[str, Any]) -> None:
+    """Visits are the portal's own past appointments; one whose encounter is labelled PSY or
+    restricted (R) shows no date, clinician or reason at all, while an ordinary one does."""
+    p, a = portal_chart.practice, portal_chart.a
+    now = dt.datetime.now(dt.UTC).replace(microsecond=0)
+    admin = create_engine(sync_url(), poolclass=NullPool)
+    db = setup_session(admin, p.clinic)
+    starts: dict[str, Any] = {}
+    try:
+        zone = db.execute(text("SELECT timezone FROM admin.facility WHERE id = :f"),
+                          {"f": p.facility}).scalar_one()
+        for key, days, labels, reason in (
+                ("ordinary", 220, [], "Synthordinaryreason401"),
+                ("psy", 200, ["PSY"], "Synthpsyreason401"),
+                ("restricted", 210, ["R"], "Synthrestrictedreason401")):
+            appt = _appointment(db, p, a, now - dt.timedelta(days=days), "fulfilled", reason)
+            if labels:  # seen by the other provider, whose name is on no other visit of hers
+                db.execute(text("UPDATE clinical.appointment_participant "
+                                "SET actor_practitioner_id = :o WHERE appointment_id = :a "
+                                "AND actor_practitioner_id IS NOT NULL"),
+                           {"o": p.other_provider, "a": appt.id})
+            encounter = _visit(db, p, a, appt)
+            encounter.meta_security = labels
+            db.flush()
+            starts[key] = format_visit_date(appt.start, zone)
+        db.commit()
+    finally:
+        db.close()
+        admin.dispose()
+    me = portal_client(portal_app, portal_chart, a)
+    pdf = _download(me, _ask(me).json()).content.decode("latin-1")
+    assert f"- {starts['ordinary']}, Dr. Avery401 Lindqvist58" in pdf
+    assert "Synthordinaryreason401" in pdf
+    for hidden in (starts["psy"], starts["restricted"], "Synthpsyreason401",
+                   "Synthrestrictedreason401", "Okonkwo73", "Jordan552"):
+        assert hidden not in pdf, hidden
 
 
 def test_a_staff_session_is_refused(portal_app: Any, portal_chart: PortalChart,

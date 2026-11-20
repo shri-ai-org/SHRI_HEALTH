@@ -7,8 +7,10 @@ pages' own readers (history's allergies, problems and vitals, medications' list,
 lab results, encounters' visit summaries), so the PDF holds exactly what those pages show. The
 rest are read here, under the same own-chart policies: the clinic's name and time zone
 (``admin.portal_clinic()``, 0032: shri_portal has no privilege on ``admin.tenant``), the
-patient's name, date of birth and chart number, immunizations, imaging reports (the report text
-only) and visits (date, clinician, reason). The policies hide held, draft, entered-in-error,
+patient's name, date of birth and chart number, immunizations and imaging reports (the report
+text only). Visits are the portal's own past appointments (``scheduling.portal_repository``);
+this module only says which of them carry a PSY, R or V label, on the appointment or its
+encounter, so the PDF leaves them out entirely. The policies hide held, draft, entered-in-error,
 PSY-labelled and non-final records (0011, 0022), and each query names the session patient too,
 so the rule holds twice. No note, inbox item or staff-only text is read.
 
@@ -31,7 +33,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.errors import db_error_detail
 from app.db.models import systems
-from app.modules.scheduling import repository as scheduling
 
 from .repository import V2_0074
 
@@ -122,23 +123,16 @@ WHERE l.diagnostic_report_id = ANY(:reports) AND o.subject_patient_id = :patient
   AND o.status IN ('final', 'amended', 'corrected') AND o.value_string IS NOT NULL
 ORDER BY l.diagnostic_report_id, l.sequence, o.id
 """)
-# Finished visits (the policy hides draft and entered-in-error), newest first: when, where (for
-# its time zone), the rendering clinician and the reasons as coded or typed at the visit.
-_VISITS = text("""
-SELECT e.id, e.period_start, f.timezone,
-       (SELECT x.individual_practitioner_id FROM clinical.encounter_participant x
-         WHERE x.encounter_id = e.id AND x.individual_practitioner_id IS NOT NULL
-         ORDER BY (x.type_code = 'PPRF') DESC, x.created_at, x.id LIMIT 1) AS provider_id,
-       ARRAY(SELECT coalesce(r.reason_code_text, r.reason_code_display)
-               FROM clinical.encounter_reason r
-              WHERE r.encounter_id = e.id
-                AND coalesce(r.reason_code_text, r.reason_code_display) IS NOT NULL
-              ORDER BY r.created_at, r.id LIMIT 5) AS reasons
-FROM clinical.encounter e
-LEFT JOIN admin.facility f ON f.id = e.ext_facility_id
-WHERE e.subject_patient_id = :patient AND e.status = 'finished' AND e.period_start IS NOT NULL
-ORDER BY e.period_start DESC, e.id
-LIMIT :limit
+# The visits the PDF must leave out entirely (Anand on #480): an appointment, or the encounter
+# made from it, labelled psychotherapy (PSY) or restricted (R, V). No date, clinician or reason.
+HIDDEN_LABELS = ("PSY", "R", "V")
+_HIDDEN_VISITS = text("""
+SELECT a.id FROM clinical.appointment a
+WHERE a.id = ANY(:ids)
+  AND (a.meta_security && CAST(:labels AS varchar[])
+       OR EXISTS (SELECT 1 FROM clinical.encounter e
+                   WHERE e.appointment_id = a.id
+                     AND e.meta_security && CAST(:labels AS varchar[])))
 """)
 _RECORD = text("SELECT admin.portal_record_export(:file, :format, :key, :wrapped, :size, :sha)")
 
@@ -152,7 +146,10 @@ class RecordReads(Protocol):
     async def imaging_reports(self, db: AsyncSession, patient_id: UUID, *, limit: int
                               ) -> list[ImagingReport]: ...
 
-    async def visits(self, db: AsyncSession, patient_id: UUID, *, limit: int) -> list[Visit]: ...
+    async def hidden_visits(self, db: AsyncSession, appointment_ids: list[UUID]
+                            ) -> set[UUID]:
+        """Those of these appointments the PDF never shows (``HIDDEN_LABELS``)."""
+        ...
 
 
 class ExportWrites(Protocol):
@@ -195,13 +192,13 @@ class SqlRecordReads:
                                            if r["conclusion"] else []))
             for r in reports]
 
-    async def visits(self, db: AsyncSession, patient_id: UUID, *, limit: int) -> list[Visit]:
-        rows = list((await db.execute(_VISITS, {"patient": patient_id, "limit": limit})
-                     ).mappings())
-        names = await scheduling.provider_names(db, [r["provider_id"] for r in rows])
-        return [Visit(started_at=r["period_start"], time_zone=r["timezone"],
-                      clinician=names.get(r["provider_id"]) if r["provider_id"] else None,
-                      reasons=[x for x in r["reasons"] if x]) for r in rows]
+    async def hidden_visits(self, db: AsyncSession, appointment_ids: list[UUID]
+                            ) -> set[UUID]:
+        if not appointment_ids:
+            return set()
+        rows = await db.execute(_HIDDEN_VISITS, {"ids": appointment_ids,
+                                                 "labels": list(HIDDEN_LABELS)})
+        return {r.id for r in rows}
 
 
 class SqlExportWrites:

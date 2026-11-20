@@ -25,6 +25,7 @@ from ..files.crypto import FileCrypto, file_crypto
 from ..files.storage import FileStore, file_store
 from ..history.portal_repository import SqlPortalHistoryReads
 from ..medications.portal_repository import SqlPortalMedicationReads
+from ..scheduling.portal_repository import SqlPortalAppointmentReads
 from . import records_service as service
 from . import schemas
 from .records_repository import ExportWrites, SqlExportWrites, SqlRecordReads
@@ -36,7 +37,8 @@ router = APIRouter(tags=["portal"])
 def record_readers() -> service.Readers:
     return service.Readers(history=SqlPortalHistoryReads(),
                            medications=SqlPortalMedicationReads(), labs=SqlLabResultReads(),
-                           summaries=SqlPortalSummaryReads(), records=SqlRecordReads())
+                           summaries=SqlPortalSummaryReads(),
+                           appointments=SqlPortalAppointmentReads(), records=SqlRecordReads())
 
 
 def export_writes() -> ExportWrites:

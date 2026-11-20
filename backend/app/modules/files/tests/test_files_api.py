@@ -145,6 +145,7 @@ def test_the_upload_rules_refuse_every_server_made_purpose() -> None:
     ({"purpose": "receipt"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "after-visit-summary"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "imaging"}, [("/purpose", "not-allowed-value")]),   # never scanned (0023)
+    ({"purpose": "export"}, [("/purpose", "not-allowed-value")]),    # never scanned (0032)
     ({"purpose": "document"}, [("/purpose", "not-allowed-value")]),
     ({"purpose": "encounter-audio"}, [("/purpose", "not-allowed-value")]),
 ])
