@@ -180,14 +180,15 @@ class DemoSignInRequest(BaseModel):
 @demo_router.post("/portal/auth/demo-sign-in", operation_id="signInToPortalForDemo")
 async def sign_in_to_portal_for_demo(request: Request, body: DemoSignInRequest) -> Response:
     """D121, demo servers only: the mobile number and date of birth, from the portal host only;
-    rate-limited per IP and per number; every refusal the same 422, audited without the number
-    or the date of birth. A match gets a new portal session (cookie) and the session's body."""
+    rate-limited per IP and per number; every refusal the same 401 (#458), audited without
+    the number or the date of birth. A match gets a new portal session (cookie) and the
+    session's body."""
     require_portal_origin(request)
     guard: demo.DemoSignInGuard = request.app.state.demo_sign_in_guard
     guard.attempt(audit._client_ip(request) or "unknown", body.mobile_number)
     try:
         found = await demo.sign_in(request, body.mobile_number, body.birth_date)
-    except ValidationFailed:
+    except demo.DemoSignInRefused:
         await demo.audit_refused(request)
         raise
     response = JSONResponse(await _session_body(request, found))  # no-store: the middleware

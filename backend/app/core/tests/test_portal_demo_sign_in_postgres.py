@@ -66,10 +66,10 @@ def _sign_in(client: TestClient, typed: str, birth: str = DOB.isoformat()) -> An
 
 
 def _refused(response: Any) -> bool:
-    return bool(response.status_code == 422
-            and response.json()["code"] == "business-rule-violation"
-            and response.json()["errors"] == [{"in": "body", "pointer": "/mobileNumber",
-                                               "code": "not-allowed-value"}])
+    # The one answer for every refusal (#458): 401, never naming a field or a reason.
+    return bool(response.status_code == 401
+                and response.json()["code"] == "unauthenticated"
+                and "errors" not in response.json())
 
 
 def _accounts(admin: Engine, patient: uuid.UUID) -> list[Any]:
