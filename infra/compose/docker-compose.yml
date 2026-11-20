@@ -249,6 +249,10 @@ volumes:
 
 networks:
   default:
+    # Containers get their addresses from .128 up only, so Nginx's fixed .10 is never taken by a
+    # container that started first (as on the deploy kit's networks).
     ipam:
       config:
         - subnet: 172.31.250.0/24
+          ip_range: 172.31.250.128/25
+          gateway: 172.31.250.1
