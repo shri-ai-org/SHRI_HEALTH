@@ -7102,6 +7102,7 @@ CREATE TABLE admin.work_item (
 	CONSTRAINT ck_work_item_one_subject CHECK (num_nonnulls(diagnostic_report_id, composition_id, document_reference_id, medication_request_id, service_request_id, appointment_id, unmatched_result_id, claim_id, fax_transmission_id) <= 1), 
 	CONSTRAINT ck_work_item_completed_has_time CHECK ((status = 'completed') = (completed_at IS NOT NULL)), 
 	CONSTRAINT ck_work_item_one_assignee CHECK (num_nonnulls(assigned_user_id, assigned_role_id) <= 1), 
+	CONSTRAINT ck_work_item_patient_message CHECK (item_type <> 'patient-message' OR (patient_id IS NOT NULL AND body IS NULL AND char_length(title) >= 3 AND title ~ '[^[:space:]]' AND encounter_id IS NULL AND num_nonnulls(diagnostic_report_id, composition_id, document_reference_id, medication_request_id, service_request_id, appointment_id, unmatched_result_id, claim_id, fax_transmission_id) = 0)), 
 	CONSTRAINT fk_work_item_assigned_user_id_app_user FOREIGN KEY(assigned_user_id) REFERENCES admin.app_user (id), 
 	CONSTRAINT fk_work_item_assigned_role_id_role FOREIGN KEY(assigned_role_id) REFERENCES admin.role (id), 
 	CONSTRAINT fk_work_item_facility_id_facility FOREIGN KEY(facility_id) REFERENCES admin.facility (id), 
@@ -7120,7 +7121,7 @@ CREATE TABLE admin.work_item (
 	CONSTRAINT fk_work_item_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_work_item_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
 	CONSTRAINT fk_work_item_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
-	CONSTRAINT ck_work_item_item_type_codes CHECK (item_type IN ('result-review', 'refill-request', 'message', 'task', 'document-review', 'unsigned-note', 'cosign', 'fax-indexing', 'unmatched-result', 'eligibility', 'claim-rejection', 'rooming')), 
+	CONSTRAINT ck_work_item_item_type_codes CHECK (item_type IN ('result-review', 'refill-request', 'message', 'task', 'document-review', 'unsigned-note', 'cosign', 'fax-indexing', 'unmatched-result', 'eligibility', 'claim-rejection', 'rooming', 'patient-message')), 
 	CONSTRAINT ck_work_item_status_codes CHECK (status IN ('open', 'in-progress', 'on-hold', 'completed', 'cancelled')), 
 	CONSTRAINT uq_work_item_tenant_id_id UNIQUE (tenant_id, id), 
 	CONSTRAINT uq_work_item_patient_id_id UNIQUE (patient_id, id)
@@ -7852,6 +7853,37 @@ CREATE INDEX ix_portal_change_request_queue ON admin.portal_change_request (tena
 
 CREATE INDEX ix_portal_change_request_tenant_id ON admin.portal_change_request (tenant_id);
 
+CREATE TABLE admin.work_item_reply (
+	work_item_id UUID NOT NULL, 
+	author_user_id UUID, 
+	author_patient_id UUID, 
+	body TEXT NOT NULL, 
+	to_patient BOOLEAN DEFAULT false NOT NULL, 
+	id UUID NOT NULL, 
+	tenant_id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	created_by_user_id UUID, 
+	updated_by_user_id UUID, 
+	CONSTRAINT pk_work_item_reply PRIMARY KEY (id), 
+	CONSTRAINT ck_work_item_reply_one_author CHECK (num_nonnulls(author_user_id, author_patient_id) = 1), 
+	CONSTRAINT ck_work_item_reply_body CHECK (char_length(body) BETWEEN 1 AND 4000 AND body ~ '[^[:space:]]'), 
+	CONSTRAINT ck_work_item_reply_patient_sees_own CHECK (author_patient_id IS NULL OR to_patient), 
+	CONSTRAINT fk_work_item_reply_item_same_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id), 
+	CONSTRAINT fk_work_item_reply_patient_own_item FOREIGN KEY(author_patient_id, work_item_id) REFERENCES admin.work_item (patient_id, id), 
+	CONSTRAINT fk_work_item_reply_author_user_id_app_user FOREIGN KEY(author_user_id) REFERENCES admin.app_user (id), 
+	CONSTRAINT fk_work_item_reply_author_patient_id_patient FOREIGN KEY(author_patient_id) REFERENCES clinical.patient (id), 
+	CONSTRAINT fk_work_item_reply_tenant_id_tenant FOREIGN KEY(tenant_id) REFERENCES admin.tenant (id) ON DELETE RESTRICT, 
+	CONSTRAINT fk_work_item_reply_created_by_user_id_app_user FOREIGN KEY(created_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL, 
+	CONSTRAINT fk_work_item_reply_updated_by_user_id_app_user FOREIGN KEY(updated_by_user_id) REFERENCES admin.app_user (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_work_item_reply_patient_recent ON admin.work_item_reply (tenant_id, author_patient_id, created_at) WHERE author_patient_id IS NOT NULL;
+
+CREATE INDEX ix_work_item_reply_tenant_id ON admin.work_item_reply (tenant_id);
+
+CREATE INDEX ix_work_item_reply_thread ON admin.work_item_reply (tenant_id, work_item_id, created_at);
+
 CREATE TABLE admin.work_item_event (
 	work_item_id UUID NOT NULL, 
 	event VARCHAR(20) NOT NULL, 
@@ -8530,6 +8562,8 @@ ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_service_request_id_tenan
 ALTER TABLE admin.work_item ADD CONSTRAINT fk_work_item_unmatched_result_id_tenant FOREIGN KEY(tenant_id, unmatched_result_id) REFERENCES admin.unmatched_result (tenant_id, id);
 
 ALTER TABLE admin.work_item_event ADD CONSTRAINT fk_work_item_event_work_item_id_tenant FOREIGN KEY(tenant_id, work_item_id) REFERENCES admin.work_item (tenant_id, id);
+
+ALTER TABLE admin.work_item_reply ADD CONSTRAINT fk_work_item_reply_author_patient_id_tenant FOREIGN KEY(tenant_id, author_patient_id) REFERENCES clinical.patient (tenant_id, id);
 
 ALTER TABLE audit.break_glass_access ADD CONSTRAINT fk_break_glass_access_audit_event_id_same_patient FOREIGN KEY(patient_id, audit_event_id) REFERENCES audit.audit_event (patient_id, id) DEFERRABLE INITIALLY IMMEDIATE;
 

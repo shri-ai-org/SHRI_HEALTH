@@ -61,7 +61,7 @@ INSERT_ONLY = {
     "claim_status_event", "service_request_status_event", "visit_flow_event",
     "ai_suggestion_evidence", "ai_suggestion_unknown",
     "detected_issue_mitigation", "composition_attester", "provenance", "provenance_agent",
-    "provenance_entity", "provenance_signature", "eligibility_benefit",
+    "provenance_entity", "provenance_signature", "eligibility_benefit", "work_item_reply",
 }
 # Written only by SECURITY DEFINER functions.
 NO_APP_WRITE = {"fhir_resource_history"}
@@ -73,6 +73,10 @@ WRITE_ONCE = {"event_log"}
 #: Platform-wide tables no service role may read or write; only a SECURITY DEFINER function
 #: touches them. consumed_logout_token (D94, migration 0011): end_backchannel_sessions().
 NO_ROLE_ACCESS = {"consumed_logout_token"}
+#: Clinic tables no service role may read or write, under the usual clinic policy: only their
+#: owner's SECURITY DEFINER functions do. work_item_reply (0031): the portal's and the staff's
+#: message functions, so neither side can write as the other.
+DEFINER_ONLY = {"work_item_reply"}
 #: shri_app privileges that replace the defaults below. pre_registration (D96, A51): rows come
 #: only from admin.submit_pre_registration() (shri_public, migration 0009); the front desk
 #: reads the queue and records its decision, nothing else.
@@ -450,6 +454,12 @@ def rls_sql(only: set[str] | None = None) -> str:
         if name in NO_ROLE_ACCESS:
             out += [f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",
                     f"ALTER TABLE {qt} FORCE ROW LEVEL SECURITY;", ""]
+            continue
+        if name in DEFINER_ONLY:
+            out += [f"ALTER TABLE {qt} ENABLE ROW LEVEL SECURITY;",
+                    f"ALTER TABLE {qt} FORCE ROW LEVEL SECURITY;",
+                    f"CREATE POLICY tenant_isolation ON {qt} USING ({own}) "
+                    f"WITH CHECK ({own});", ""]
             continue
         if name in GLOBAL_TABLES:
             out.append(f"GRANT SELECT ON {qt} TO shri_app;")

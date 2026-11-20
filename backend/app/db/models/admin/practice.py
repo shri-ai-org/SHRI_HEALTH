@@ -375,6 +375,15 @@ class WorkItem(Base, AdminMixin):
                         name="completed_has_time"),
         CheckConstraint("num_nonnulls(assigned_user_id, assigned_role_id) <= 1",
                         name="one_assignee"),
+        # A portal thread (0031): the patient's, its subject as the title, its text in
+        # work_item_reply (never changed), about no other record.
+        CheckConstraint(
+            "item_type <> 'patient-message' OR (patient_id IS NOT NULL AND body IS NULL "
+            "AND char_length(title) >= 3 AND title ~ '[^[:space:]]' AND encounter_id IS NULL "
+            "AND num_nonnulls("
+            "diagnostic_report_id, composition_id, document_reference_id, medication_request_id, "
+            "service_request_id, appointment_id, unmatched_result_id, claim_id, "
+            "fax_transmission_id) = 0)", name="patient_message"),
         Index("ix_work_item_open", "tenant_id", "assigned_user_id", "status", "priority",
               postgresql_where=text("status IN ('open', 'in-progress', 'on-hold')")),
         Index("ix_work_item_role_open", "tenant_id", "assigned_role_id", "status",
@@ -414,6 +423,38 @@ class WorkItem(Base, AdminMixin):
     claim_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.claim.id"))
     fax_transmission_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("admin.fax_transmission.id"))
+
+
+class WorkItemReply(Base, AdminMixin):
+    """A reply on an inbox item's thread (#254, D38; 0031): a staff member's, or on a
+    `patient-message` item the patient's own from the portal. Insert-only; no service role
+    holds a privilege on it: the portal's and the staff's SECURITY DEFINER functions write and
+    read it (0031). Only `to_patient` replies, and the patient's own, reach the portal."""
+    __tablename__ = "work_item_reply"
+    __table_args__ = (
+        CheckConstraint("num_nonnulls(author_user_id, author_patient_id) = 1", name="one_author"),
+        CheckConstraint("char_length(body) BETWEEN 1 AND 4000 AND body ~ '[^[:space:]]'",
+                        name="body"),
+        CheckConstraint("author_patient_id IS NULL OR to_patient", name="patient_sees_own"),
+        # The same clinic's item; a patient's reply only on her own item.
+        ForeignKeyConstraint(["tenant_id", "work_item_id"],
+                             ["admin.work_item.tenant_id", "admin.work_item.id"],
+                             name="fk_work_item_reply_item_same_tenant"),
+        ForeignKeyConstraint(["author_patient_id", "work_item_id"],
+                             ["admin.work_item.patient_id", "admin.work_item.id"],
+                             name="fk_work_item_reply_patient_own_item"),
+        Index("ix_work_item_reply_thread", "tenant_id", "work_item_id", "created_at"),
+        Index("ix_work_item_reply_patient_recent", "tenant_id", "author_patient_id",
+              "created_at", postgresql_where=text("author_patient_id IS NOT NULL")),
+    )
+
+    work_item_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("admin.app_user.id"))
+    author_patient_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clinical.patient.id"))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    to_patient: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                             server_default=text("false"))
 
 
 class WorkItemEvent(Base, AdminMixin):
