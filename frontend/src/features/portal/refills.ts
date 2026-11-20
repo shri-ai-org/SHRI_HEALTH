@@ -3,8 +3,7 @@
  * asks for a refill of a current prescription from the Prescriptions page, and sees each request's
  * answer there. Generated client only; no sample data.
  *
- * The request carries no note: the contract on main still lists an optional `note`, but the API
- * refuses any (422 `/note`, Vimal's demo rule), and #457 drops it from the contract.
+ * The request carries no note: the contract has none since #457, and the API refuses one.
  */
 import { ApiError } from '../../api/client'
 import { createPortalRefillRequest, listPortalRefillRequests } from '../../api/generated/endpoints/portal/portal'
