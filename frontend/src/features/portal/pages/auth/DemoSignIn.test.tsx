@@ -77,6 +77,20 @@ describe('the demo sign-in (D121)', () => {
     expect(onDemoSignIn).not.toHaveBeenCalled()
   })
 
+  it('shows the one refusal message on 401, and still on 422 from a server not yet changed', async () => {
+    vi.stubEnv('VITE_FEATURE_DEMO_SIGN_IN', 'on')
+    const demoSignIn = vi.fn().mockRejectedValueOnce(problem(401, 'unauthenticated')).mockRejectedValueOnce(problem(422, 'business-rule-violation'))
+    const { user, onDemoSignIn } = renderPage({ demoSignIn })
+    await fill(user, '(408) 555-0142', '07/19/1984')
+    expect((await screen.findAllByText(/We couldn't sign you in with those details/)).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Sign in with my mobile number' }))
+    expect(demoSignIn).toHaveBeenCalledTimes(2)
+    expect((await screen.findAllByText(/We couldn't sign you in with those details/)).length).toBeGreaterThan(0)
+    // A refusal is not an ended session: the patient stays on the form, nothing signs in or out.
+    expect(screen.getByRole('heading', { name: 'Demo sign-in' })).toBeInTheDocument()
+    expect(onDemoSignIn).not.toHaveBeenCalled()
+  })
+
   it('has no axe violations', async () => {
     vi.stubEnv('VITE_FEATURE_DEMO_SIGN_IN', 'on')
     const { container } = render(

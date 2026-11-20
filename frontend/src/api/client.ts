@@ -138,8 +138,11 @@ export function ifMatch(etag: string): { 'If-Match': string } {
 
 // ---- The mutator ----------------------------------------------------------------------------
 
-/** URLs that are about the session itself and must not trigger a session re-read. */
-const SESSION_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout', '/portal/auth/session', '/portal/auth/refresh', '/portal/auth/logout']
+/**
+ * URLs that are about the session itself and must not trigger a session re-read. The demo sign-in
+ * is one of them: its `401` refuses the details typed (#458), it never means a session ended.
+ */
+const SESSION_PATHS = ['/auth/session', '/auth/refresh', '/auth/logout', '/portal/auth/session', '/portal/auth/refresh', '/portal/auth/logout', '/portal/auth/demo-sign-in']
 
 export async function apiFetch<T>(url: string, init: ApiRequestInit = {}): Promise<T> {
   const { background = false, ...requestInit } = init

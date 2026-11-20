@@ -127,6 +127,16 @@ describe('apiFetch', () => {
     expect(etagOf(res)).toBe('"v4"')
   })
 
+  it('does not end the session on the demo sign-in refusing the details (401)', async () => {
+    const ended = vi.fn()
+    const stop = onUnauthenticated(ended)
+    setCsrfToken('c'.repeat(64))
+    mockFetch(json(401, problem(401, 'unauthenticated')))
+    await apiFetch('/portal/auth/demo-sign-in', { method: 'POST', body: JSON.stringify({}) }).catch(() => {})
+    expect(ended).not.toHaveBeenCalled()
+    stop()
+  })
+
   it('tells the session layer about user requests, but not background or session calls', async () => {
     const seen = vi.fn()
     const stop = onUserRequest(seen)
