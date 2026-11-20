@@ -329,7 +329,7 @@ def test_a_cancel_that_rolls_back_keeps_the_slot(
     assert_double_booking(err.value)
 
 
-# =========================================================================== 4. a gap
+# =========================================================================== 4. added mid-change
 def add_practitioner(s: Session, appointment_id: uuid.UUID, practitioner_id: uuid.UUID) -> None:
     s.add(M["appointment_participant"](appointment_id=appointment_id,
                                        actor_practitioner_id=practitioner_id,
@@ -337,14 +337,6 @@ def add_practitioner(s: Session, appointment_id: uuid.UUID, practitioner_id: uui
     s.flush()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "GAP: shri_participant_sync (BEFORE INSERT) reads the appointment without locking it, so a "
-    "practitioner row inserted while another transaction moves or reinstates the appointment "
-    "copies the old period/status. The insert then waits on the appointment row only in "
-    "trg_appointment_participant_touch (AFTER INSERT), after the stale values are set, and "
-    "that touch updates meta_last_updated only, so trg_appointment_sync never recomputes the "
-    "row. Not reachable through the scheduling service today: it never moves or reinstates an "
-    "appointment in place, and adds only location participants to an existing one."))
 @pytest.mark.parametrize("change", ["move", "reinstate"])
 def test_a_practitioner_added_while_the_appointment_changes_stays_in_step(
         app_engine: Engine, admin_engine: Engine, tenant: uuid.UUID,
@@ -354,9 +346,11 @@ def test_a_practitioner_added_while_the_appointment_changes_stays_in_step(
     always match its appointment. A changes appointment X (moves it from 14:00 to 16:00, or
     reinstates it from cancelled to booked) and stays open; B adds Dr 2 to X and waits on A; A
     commits, then B. Then Dr 2 must be blocked at X's real time, so a booking of Dr 2 for
-    another patient at that time must be refused. Today B's row keeps X's old period / status,
-    Dr 2 is free at 16:00 (or, for the reinstated appointment, not blocking at all), and the
-    second booking commits: Dr 2 is booked twice for one slot."""
+    another patient at that time must be refused. ``shri_participant_sync`` reads X FOR NO KEY
+    UPDATE (migration 0033), so B waits on A before it copies X's period and status; without
+    that lock B's row kept X's old period / status, Dr 2 was free at 16:00 (or, for the
+    reinstated appointment, not blocking at all), and the second booking committed: Dr 2 was
+    booked twice for one slot."""
     a, b_ = pair
     cancelled: dict[str, Any] = ({"status": "cancelled", "ext_cancelled_at": b.NOW}
                                  if change == "reinstate" else {})
@@ -370,7 +364,7 @@ def test_a_practitioner_added_while_the_appointment_changes_stays_in_step(
         row.status, row.ext_cancelled_at = "booked", None
     a.flush()
     fut = run(worker, lambda: add_practitioner(b_, first, clinic["dr2"]))
-    wait_until_blocked(admin_engine, pid_b, pid_a, fut)   # on the touch of X, after the copy
+    wait_until_blocked(admin_engine, pid_b, pid_a, fut)   # on X's lock, before the copy
     a.commit()
     fut.result(timeout=WAIT_S)
     b_.commit()
