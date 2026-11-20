@@ -5,7 +5,7 @@
 // sign and send) or declines with a reason code; MD and APP only (D110). Generated client only.
 import { ApiError } from '../../src/api/client'
 import { listRefillRequests, respondToRefillRequest } from '../../src/api/generated/endpoints/medications/medications'
-import type { RefillRequest, RefillRequestList } from '../../src/api/generated/model'
+import { RefillRequestResponseReason, type RefillRequest, type RefillRequestList } from '../../src/api/generated/model'
 
 /** The screen and its rail item are off unless the build sets VITE_FEATURE_REFILL_REQUESTS=on. */
 export function refillRequestsOn(env: Record<string, unknown> = import.meta.env): boolean {
@@ -13,18 +13,21 @@ export function refillRequestsOn(env: Record<string, unknown> = import.meta.env)
 }
 
 /**
- * Why a refill is declined: the codes the API accepts (#415; the contract makes them its enum in
- * #452). The patient reads a fixed sentence for each, never the clinician's own words, so there
- * is no free-text note.
+ * Why a refill is declined: the contract's fixed codes (RefillRequestResponseReason, #452). The
+ * patient reads a fixed sentence for each, never the clinician's own words, so there is no
+ * free-text note.
  */
-export const DECLINE_REASONS = [
-  { code: 'needs-visit', label: 'Needs a visit first' },
-  { code: 'needs-lab-work', label: 'Needs new lab work first' },
-  { code: 'no-longer-recommended', label: 'No longer recommended' },
-  { code: 'contact-the-office', label: 'Patient should contact the office' },
-] as const
+export type DeclineReason = RefillRequestResponseReason
 
-export type DeclineReason = (typeof DECLINE_REASONS)[number]['code']
+/** The doctor's label for each code; a code added to the contract fails the build until it has one. */
+const DECLINE_LABELS: Record<DeclineReason, string> = {
+  [RefillRequestResponseReason['needs-visit']]: 'Needs a visit first',
+  [RefillRequestResponseReason['needs-lab-work']]: 'Needs new lab work first',
+  [RefillRequestResponseReason['no-longer-recommended']]: 'No longer recommended',
+  [RefillRequestResponseReason['contact-the-office']]: 'Patient should contact the office',
+}
+
+export const DECLINE_REASONS = (Object.keys(DECLINE_LABELS) as DeclineReason[]).map((code) => ({ code, label: DECLINE_LABELS[code] }))
 
 /** One request as the screen shows it. */
 export interface RefillRow {
