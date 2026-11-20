@@ -295,3 +295,44 @@ async def test_exports_go_a_day_after_they_expire_and_nothing_else(
         assert _exists(admin, kept) and await _stored(store, tenant, kept, CLEAN_BUCKET)
     await purge.purge(maintenance, store)          # the unusable-files purge never takes one
     assert _exists(admin, recent)
+
+
+async def test_an_export_goes_bytes_first_and_a_missing_object_counts_as_gone(
+        admin: Engine, maintenance: AsyncEngine, store: LocalFileStore) -> None:
+    tenant = make_tenant(admin)
+    app_engine = create_engine(sync_url(), poolclass=NullPool)
+    switch_to_role(app_engine, "shri_app")
+    db: Session = open_session(app_engine, tenant)
+    try:
+        patient = b.patient(db, "Lindgren118", "Kaia").id
+        db.commit()
+    finally:
+        db.close()
+        app_engine.dispose()
+    gone = await _export(admin, store, tenant, patient, past_expiry=OLD)
+    kept_bytes = await _export(admin, store, tenant, patient, past_expiry=OLD)
+    await store.delete(f"{tenant}/{gone}", bucket=CLEAN_BUCKET)    # already gone from the store
+
+    order: list[str] = []
+
+    def _row_untouched() -> bool:
+        """The file row isn't being deleted: the purge's transaction would hold its lock."""
+        with admin.connect() as c:
+            try:
+                c.execute(text("SELECT 1 FROM admin.binary_object WHERE id = :i "
+                               "FOR UPDATE NOWAIT"), {"i": kept_bytes})
+                return True
+            except DBAPIError:
+                return False
+
+    class _Watching(LocalFileStore):
+        async def delete(self, key: str, *, bucket: str = CLEAN_BUCKET) -> None:
+            order.append("object" if _row_untouched() else "object-after-row")
+            await super().delete(key, bucket=bucket)
+
+    report = await purge.purge_once(maintenance, _Watching(store.root),
+                                    kind=purge.EXPIRED_EXPORTS)
+    assert report.deleted >= 2
+    assert not _exists(admin, gone) and not _exists(admin, kept_bytes)
+    assert not await _stored(store, tenant, kept_bytes, CLEAN_BUCKET)
+    assert order and set(order) == {"object"}                      # every object before any row

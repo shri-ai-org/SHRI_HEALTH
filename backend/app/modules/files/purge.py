@@ -20,9 +20,12 @@ repeat while a full batch deleted something.
 
 **Expired exports (migration 0032).** A patient's "My records" export is served for 15
 minutes; ``EXPORT_PURGE_AFTER`` (24 hours) after that, ``admin.list_expired_exports(batch)`` and
-``admin.delete_expired_exports(ids)`` remove it the same way, in the same order: the export row
-and its file row together (or neither), then the stored object, then the commit. They never
-touch a file of any other purpose. ``main()`` runs both purges.
+``admin.delete_expired_exports(ids)`` remove it, in the other order: the stored objects first
+(an object already gone counts as deleted), then, in one transaction, the export rows and their
+file rows together (or neither). An expired export is never served again and nothing changes
+it, so deleting its bytes first can't lose a file anyone still needs; a failure leaves at most
+rows whose objects are gone, which the next run removes. They never touch a file of any other
+purpose. ``main()`` runs both purges. Nothing schedules ``main()`` yet (infra's job, Thulasi).
 
 Not covered: stored objects without any row (the bytes of a generated file whose transaction
 rolled back; storage.py). Finding those means listing the store and asking the database which
@@ -68,9 +71,11 @@ EXPORT_PURGE_AFTER = timedelta(hours=24)
 
 @dataclass(frozen=True)
 class Purge:
-    """One purge's pair of functions: list what is past its window, then delete those rows."""
+    """One purge's pair of functions: list what is past its window, then delete those rows.
+    ``files_first``: delete the stored objects before the rows (exports; module docstring)."""
     list: TextClause
     delete: TextClause
+    files_first: bool = False
 
 
 def _ids(sql: str) -> TextClause:
@@ -82,7 +87,7 @@ UNUSABLE = Purge(
     _ids("SELECT id FROM admin.delete_unusable_files(:ids)"))
 EXPIRED_EXPORTS = Purge(
     text("SELECT id, tenant_id, bucket, storage_key FROM admin.list_expired_exports(:limit)"),
-    _ids("SELECT id FROM admin.delete_expired_exports(:ids)"))
+    _ids("SELECT id FROM admin.delete_expired_exports(:ids)"), files_first=True)
 
 
 @dataclass
@@ -107,12 +112,16 @@ async def purge_once(engine: AsyncEngine, store: FileStore, *, batch: int = BATC
         purgeable = [file for file in files if _ours(file)]
         if not purgeable:
             return report
+        if kind.files_first:  # an export that expired never comes back, so the bytes go first
+            for file in purgeable:
+                await store.delete(file.storage_key, bucket=file.bucket)  # gone already: fine
         async with conn.begin():
             deleted: set[UUID] = set((await conn.execute(
                 kind.delete, {"ids": [file.id for file in purgeable]})).scalars())
-            for file in purgeable:
-                if file.id in deleted:
-                    await store.delete(file.storage_key, bucket=file.bucket)
+            if not kind.files_first:
+                for file in purgeable:
+                    if file.id in deleted:
+                        await store.delete(file.storage_key, bucket=file.bucket)
         report.deleted = len(deleted)
     return report
 
