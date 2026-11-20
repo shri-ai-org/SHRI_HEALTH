@@ -665,9 +665,21 @@ host_nginx() {
     cp "$TLS_CERT_FILE" "$dir/upstream.crt"
     cert="${HOST_TLS_CERT:-/etc/letsencrypt/live/$SHRI_HOSTNAME/fullchain.pem}"
     key="${HOST_TLS_KEY:-/etc/letsencrypt/live/$SHRI_HOSTNAME/privkey.pem}"
+    # This host's access log for our paths: the path only, never a query string (sign-in codes,
+    # download tokens, Keycloak's action links; D13, D105), as our edge logs (shri.conf.template).
+    # The format is defined once at http level (log-format.conf, installed in conf.d), since the
+    # path mode's file is included inside the host's own server block, where none can be.
+    local log="access_log /var/log/nginx/$PROJECT.access.log shri_no_query;"
+    cat >"$dir/log-format.conf" <<'EOF'
+# Shri Health: the host's access log without query strings (deploy.sh host-nginx). Install once
+# at http level, /etc/nginx/conf.d/shri-log-format.conf; the same file for every Shri project.
+log_format shri_no_query '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                         '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+EOF
     local proxy
     proxy="$(cat <<EOF
         # Shri Health ($PROJECT, release $SHRI_RELEASE): written by deploy.sh host-nginx.
+        $log
         proxy_pass https://127.0.0.1:$SHRI_HTTPS_PORT/;
         proxy_redirect off;               # ours are relative or already public
         proxy_http_version 1.1;
@@ -720,6 +732,7 @@ EOF
         mail="$(cat <<EOF
 location ^~ $SHRI_MAILPIT_WEBROOT {
     # Mailpit, the demo mail catcher ($PROJECT, demo host only): written by deploy.sh host-nginx.
+    $log
     auth_basic "Shri Health demo mail";
     auth_basic_user_file /etc/nginx/shri/$PROJECT-mail.htpasswd;
     proxy_pass http://127.0.0.1:$SHRI_MAILPIT_UI_PORT;   # no URI: Mailpit's webroot is $SHRI_MAILPIT_WEBROOT
@@ -761,6 +774,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name $SHRI_HOSTNAME;
+    $log
     location /.well-known/acme-challenge/ { root /var/www/html; }
     location / { return 301 https://\$host\$request_uri; }
 }
@@ -776,6 +790,7 @@ server {
     ssl_certificate_key $key;
     ssl_protocols TLSv1.2 TLSv1.3;
     server_tokens off;
+    $log
 
 $mail
     location ^~ /kc/ {
@@ -794,6 +809,7 @@ EOF
 # a shared host; README "Two ways to serve it": read its security notes). Install: include this
 # file INSIDE the existing "listen 443 ssl" server block of $SHRI_HOSTNAME, never the port 80 one.
 location = $SHRI_BASE_PATH {
+    $log
     return 301 $SHRI_BASE_PATH/;
 }
 
@@ -807,7 +823,7 @@ $proxy
 }
 EOF
     fi
-    say "Wrote $file and $dir/upstream.crt (README: the one-time sudo commands)"
+    say "Wrote $file, $dir/upstream.crt and $dir/log-format.conf (README: the one-time sudo commands)"
     [ -z "$mail" ] || say "and $dir/mail.htpasswd for Mailpit's /mail/ (demo host; README: Mailpit)"
 }
 
