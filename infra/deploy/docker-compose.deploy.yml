@@ -303,13 +303,22 @@ volumes:
 
 networks:
   # SHRI_NET_A: another /24 for the default network where this one is taken (a shared host).
+  # Docker gives containers their addresses from ip_range (.128 to .254) only, so the fixed ones
+  # below it (Nginx's .10 on both networks) are never taken by a container that started first:
+  # with Mailpit on both networks (#460) one did, and Nginx failed with "Address already in use".
+  # The gateway stays .1, which the shared-host mode trusts (SHRI_REAL_IP). Compose recreates an
+  # existing network whose settings changed, so a host already set up needs nothing by hand.
   default:
     ipam:
       config: !override
         - subnet: ${SHRI_NET_A:-172.31.250}.0/24
+          ip_range: ${SHRI_NET_A:-172.31.250}.128/25
+          gateway: ${SHRI_NET_A:-172.31.250}.1
   # Internal: no route to the internet. The API and the worker are on it alone.
   backend:
     internal: true
     ipam:
       config:
         - subnet: ${SHRI_NET_B:-172.31.251}.0/24
+          ip_range: ${SHRI_NET_B:-172.31.251}.128/25
+          gateway: ${SHRI_NET_B:-172.31.251}.1
