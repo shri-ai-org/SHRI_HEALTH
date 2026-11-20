@@ -136,6 +136,7 @@ TAGS: dict[str, str] = {
     "visit_flow_event": P0,
     "work_item": P0,
     "work_item_event": P0,
+    "work_item_reply": P0,     # replyToInboxItem is P0; the portal threads (P1) use it too
     # admin.rcm
     "charge": P0,
     "charge_diagnosis_pointer": P0,

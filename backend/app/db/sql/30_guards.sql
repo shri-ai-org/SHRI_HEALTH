@@ -79,6 +79,7 @@ CREATE TRIGGER trg_result_acknowledgement_insert_only BEFORE UPDATE OR DELETE ON
 CREATE TRIGGER trg_service_request_status_event_insert_only BEFORE UPDATE OR DELETE ON admin.service_request_status_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_visit_flow_event_insert_only BEFORE UPDATE OR DELETE ON admin.visit_flow_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_work_item_event_insert_only BEFORE UPDATE OR DELETE ON admin.work_item_event FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
+CREATE TRIGGER trg_work_item_reply_insert_only BEFORE UPDATE OR DELETE ON admin.work_item_reply FOR EACH ROW EXECUTE FUNCTION shri_forbid_change();
 CREATE TRIGGER trg_appointment_type_version BEFORE UPDATE ON admin.appointment_type FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_consent_requirement_version BEFORE UPDATE ON admin.consent_requirement FOR EACH ROW EXECUTE FUNCTION shri_bump_version();
 CREATE TRIGGER trg_facility_version BEFORE UPDATE ON admin.facility FOR EACH ROW EXECUTE FUNCTION shri_bump_version();

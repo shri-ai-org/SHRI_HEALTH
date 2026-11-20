@@ -629,6 +629,7 @@ class WorkItemType(StrEnum):            # FR-ENC-05 clinician inbox + front-offi
     ELIGIBILITY = "eligibility"
     CLAIM_REJECTION = "claim-rejection"
     ROOMING = "rooming"
+    PATIENT_MESSAGE = "patient-message"   # a portal thread (#398; D77); its text is in replies
 
 
 # =========================================================================== admin: orders

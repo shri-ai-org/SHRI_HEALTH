@@ -1320,3 +1320,7 @@ ALTER TABLE admin.work_item_event ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin.work_item_event FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON admin.work_item_event USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
 
+ALTER TABLE admin.work_item_reply ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin.work_item_reply FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON admin.work_item_reply USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+
