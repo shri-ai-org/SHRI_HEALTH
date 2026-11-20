@@ -230,6 +230,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
                 "roles:read", "user-roles:update", "superbills:read", "claims:read",
                 "remittances:read", "billing-reports:read", "exports:read|create",
                 "integration-messages:read|replay", "operations-dashboard:read",
+                "audit-events:read",  # the admin area's Audit trail tab (Vimal, 2026-11-20)
                 # gap: upload the onboarding import file and download exports; the file
                 # service limits which file purposes each role may use.
                 "files:create|read"),
