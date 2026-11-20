@@ -53,11 +53,13 @@ export default defineConfig({
     },
     {
       // The front office as the development front desk (fd), for the desk's screens
-      // (e2e/desk*.e2e.ts reach it at http://localhost:5192).
+      // (e2e/desk*.e2e.ts reach it at http://localhost:5192), with the public "Forgot password?"
+      // pages on (e2e/frontOfficePasswordHelp.e2e.ts).
       command: `npm run dev -w front-office -- --port ${frontOfficePort} --strictPort`,
       url: `http://localhost:${frontOfficePort}`,
       reuseExistingServer: !process.env.CI,
-      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd' },
+      env: { SHRI_API: 'real', SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443', SHRI_DEV_USER: 'fd',
+             VITE_FEATURE_PASSWORD_HELP: 'on' },
     },
     {
       // The front office as the development medical assistant (ma), for rooming (e2e/roomingCoded.e2e.ts).

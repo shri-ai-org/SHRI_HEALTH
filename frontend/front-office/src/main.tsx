@@ -9,17 +9,34 @@ import { FrontOfficeLanding } from '../../src/api/landing'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { REAL_API } from '../shri-health/client'
 import { loadClinic } from '../shri-health/scheduling'
+import { PASSWORD_HELP_PATH, passwordHelpOn } from '../shri-health/passwordHelp'
+import { PasswordHelpApp } from './pages/password-help/PasswordHelpApp'
 
 // Last-resort logging for errors outside React's render (event handlers,
 // timers, promises), so nothing fails silently in production.
 window.addEventListener('error', (event) => console.error('[window]', event.error ?? event.message))
 window.addEventListener('unhandledrejection', (event) => console.error('[promise]', event.reason))
 
+// "Forgot password?" (#85; demo servers only, VITE_FEATURE_PASSWORD_HELP): public pages, opened
+// before anyone signs in, so they render outside the session and read nothing else.
+const path = window.location.pathname.slice(import.meta.env.BASE_URL.replace(/\/$/, '').length)
+const passwordHelp = passwordHelpOn() && (path === PASSWORD_HELP_PATH || path.startsWith(`${PASSWORD_HELP_PATH}/`))
+
 // SHRI_API=real: the clinic's time zone comes first, so the first screen already shows its today.
 // If the server can't be reached the app opens anyway, and each page says what it could not read.
-const ready = REAL_API ? loadClinic().catch((err: unknown) => console.error('[clinic]', err)) : Promise.resolve()
+const ready = REAL_API && !passwordHelp ? loadClinic().catch((err: unknown) => console.error('[clinic]', err)) : Promise.resolve()
 
-void ready.then(() => createRoot(document.getElementById('root')!).render(
+if (passwordHelp) {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <MotionConfig reducedMotion="user">
+        <ErrorBoundary scope="root">
+          <PasswordHelpApp />
+        </ErrorBoundary>
+      </MotionConfig>
+    </StrictMode>,
+  )
+} else void ready.then(() => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {/* Honours the OS "reduce motion" setting for every framer-motion animation. */}
     <MotionConfig reducedMotion="user">
