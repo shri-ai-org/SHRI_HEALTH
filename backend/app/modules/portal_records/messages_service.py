@@ -7,7 +7,8 @@ same ``404`` as a missing one), the staff replies sent to her and never a staff-
 reply in a closed thread (``409``), and at most 5 messages in 10 minutes and 20 in 24 hours
 (``429``); a subject or message of only spaces is ``422``. Creating a thread routes it to the
 clinic's medical assistants and raises ``inbox.item-assigned`` with no text (D81). Core writes
-the audit row (patient from the session) and keeps the Idempotency-Key. Nothing here logs a subject or a message.
+the audit row (patient from the session) and keeps the Idempotency-Key. Nothing here logs a
+subject or a message.
 """
 from __future__ import annotations
 
