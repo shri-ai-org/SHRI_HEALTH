@@ -473,6 +473,11 @@ export type signInToPortalForDemoResponse400 = {
   status: 400
 }
 
+export type signInToPortalForDemoResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
 export type signInToPortalForDemoResponse403 = {
   data: ForbiddenResponse
   status: 403
@@ -506,7 +511,7 @@ export type signInToPortalForDemoResponse503 = {
 export type signInToPortalForDemoResponseSuccess = (signInToPortalForDemoResponse200) & {
   headers: Headers;
 };
-export type signInToPortalForDemoResponseError = (signInToPortalForDemoResponse400 | signInToPortalForDemoResponse403 | signInToPortalForDemoResponse404 | signInToPortalForDemoResponse422 | signInToPortalForDemoResponse429 | signInToPortalForDemoResponse500 | signInToPortalForDemoResponse503) & {
+export type signInToPortalForDemoResponseError = (signInToPortalForDemoResponse400 | signInToPortalForDemoResponse401 | signInToPortalForDemoResponse403 | signInToPortalForDemoResponse404 | signInToPortalForDemoResponse422 | signInToPortalForDemoResponse429 | signInToPortalForDemoResponse500 | signInToPortalForDemoResponse503) & {
   headers: Headers;
 };
 
@@ -521,7 +526,7 @@ export const getSignInToPortalForDemoUrl = () => {
 }
 
 /**
- * **Demo servers only (D121): synthetic patients, never real ones.** A patient signs in with the mobile number on her chart and her date of birth; no code, no password and no patient realm account. The server checks both against the chart and, when exactly one patient in any clinic matches, opens a portal session (`__Host-shri_portal`) directly and returns it, as `completePortalLogin` does after the realm. Restricted charts (D37), merged or inactive patients and patients whose portal account is disabled or suspended never match. **Off everywhere else:** the server answers `404` unless it runs with `SHRI_DEMO=true` and the demo sign-in switched on, and the API refuses to start with the switch on without `SHRI_DEMO=true` or in production. Every failure gives the same `422`, so charts can't be probed; rate-limited per mobile number and per address. Every attempt is audited (`security`): a sign-in names the patient, a refusal names no one. The number and date of birth are never logged. Public: there is no session yet, so the `Origin` header must be the portal host instead of a CSRF token (ADR-0013 §5). The real sign-in (ADR-0013, D85) returns after the demo.
+ * **Demo servers only (D121): synthetic patients, never real ones.** A patient signs in with the mobile number on her chart and her date of birth; no code, no password and no patient realm account. The server checks both against the chart and, when exactly one patient in any clinic matches, opens a portal session (`__Host-shri_portal`) directly and returns it, as `completePortalLogin` does after the realm. Restricted charts (D37), merged or inactive patients and patients whose portal account is disabled or suspended never match. **Off everywhere else:** the server answers `404` unless it runs with `SHRI_DEMO=true` and the demo sign-in switched on, and the API refuses to start with the switch on without `SHRI_DEMO=true` or in production. Every refusal gives the same `401` `unauthenticated`, so charts can't be probed (only a body that doesn't match the schema is `422`); rate-limited per mobile number and per address. Every attempt is audited (`security`): a sign-in names the patient, a refusal names no one. The number and date of birth are never logged. Public: there is no session yet, so the `Origin` header must be the portal host instead of a CSRF token (ADR-0013 §5). The real sign-in (ADR-0013, D85) returns after the demo.
  * @summary Demo sign-in with mobile number and date of birth
  */
 export const signInToPortalForDemo = async (demoSignInRequest: DemoSignInRequest, options?: Parameters<typeof apiFetch>[1]): Promise<signInToPortalForDemoResponse> => {
