@@ -3,7 +3,6 @@ import { useState } from 'react'
 import type { PortalSession } from '../../../../api/generated/model'
 import { Alert, Button } from '../../../../design-system'
 import { usePortalApi } from '../../api/portalApi'
-import { Link } from '../../router'
 import { demoSignInOn } from '../../features'
 import { AuthLayout } from './AuthLayout'
 import { DemoSignInForm } from './DemoSignInForm'
@@ -58,10 +57,8 @@ export function SignInPage({ reason, onDemoSignIn }: { reason?: SignedOutReason 
 
       <div className="mt-6 border-t border-border-soft pt-5 text-sm text-ink-muted">
         <p className="font-semibold text-ink">New to the portal?</p>
-        <p className="mt-1">Ask your clinic's front desk for an invitation code. They'll check your ID first.</p>
-        <Link to="/set-up-account" className="mt-1 inline-flex min-h-11 items-center font-semibold text-primary-700 underline-offset-2 hover:underline">
-          Set up your account
-        </Link>
+        {/* Invitations come by email (D124): the account is set up from the emailed link, so there is no set-up link here. */}
+        <p className="mt-1">Ask your clinic's front desk to email you an invitation. They'll check your ID first. Then open the link in that email to set up your account.</p>
       </div>
     </AuthLayout>
   )

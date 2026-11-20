@@ -97,7 +97,10 @@ describe('sign-in', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/Password|Username/)).toBeNull()
     expect(screen.queryByRole('link', { name: /Registration|Forgot/ })).toBeNull()
-    expect(screen.getByText(/Ask your clinic's front desk for an invitation code/)).toBeInTheDocument()
+    // Invitations come by email (D124): no code, and no set-up link without the emailed one.
+    expect(screen.getByText(/Ask your clinic's front desk to email you an invitation/)).toBeInTheDocument()
+    expect(screen.queryByText(/invitation code/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Set up your account' })).toBeNull()
     // D87: a fixed path on the portal host, with no version or commit in it.
     expect(screen.getByRole('link', { name: 'Source code' })).toHaveAttribute('href', '/source.tar.gz')
     expect(await axeViolations()).toEqual([])
