@@ -9,6 +9,8 @@ import { toProblem, useResource } from '../api/useResource'
 import { Link, useRouter } from '../router'
 import { AsyncPanel, Card, DefinitionList, ErrorSummary, formatInstantShort, formatShortDate, matches, PageHeader, Pager, SearchBox, usePaged } from '../ui'
 import { useClinicTimeZone } from '../clinicZone'
+import { refillRequestsOn } from '../refills'
+import { RefillControl, useMyRefills } from './RefillRequest'
 
 const STATUS: Record<Prescription['requestStatus'], { label: string; tone: BadgeTone }> = {
   none: { label: '—', tone: 'neutral' },
@@ -48,9 +50,69 @@ export function MedicationsPage() {
   const api = usePortalApi()
   const tz = useClinicTimeZone()
   const meds = useResource(() => api.listMedications(), [])
+  // Refill requests (#415): only in a build with VITE_FEATURE_REFILL_REQUESTS=on.
+  const refills = refillRequestsOn()
   return (
     <>
-      <PageHeader title="Prescriptions" description="To request a refill, contact your clinic." back={{ to: '/', label: 'Home' }} />
+      <PageHeader
+        title="Prescriptions"
+        description={refills ? 'Ask your clinic to refill a current prescription, or contact your clinic.' : 'To request a refill, contact your clinic.'}
+        back={{ to: '/', label: 'Home' }}
+      />
+      {refills ? <RefillsFor meds={meds} tz={tz} /> : <MedicationList meds={meds} tz={tz} />}
+    </>
+  )
+}
+
+/** The medications with each one's refill status and "Request refill". */
+function RefillsFor({ meds, tz }: { meds: ReturnType<typeof useResource<PortalMedication[]>>; tz: string | null }) {
+  const { state, reload, retry } = useMyRefills()
+  return (
+    <>
+      {state.kind === 'error' ? (
+        <div className="mb-4">
+          <Alert
+            tone="critical"
+            title="We couldn't read your refill requests."
+            actions={
+              <Button size="sm" variant="outline" onClick={retry}>
+                Try again
+              </Button>
+            }
+          >
+            Your medicines are below; refills can be requested once your requests are read.
+          </Alert>
+        </div>
+      ) : null}
+      {state.kind === 'forbidden' ? (
+        <div className="mb-4">
+          <Alert tone="warning" title="Your account can't see refill requests. Contact your clinic for a refill." />
+        </div>
+      ) : null}
+      <MedicationList
+        meds={meds}
+        tz={tz}
+        extra={(m) =>
+          state.kind === 'ok' ? <RefillControl med={m} latest={state.latest.get(m.id)} timeZone={tz} onChanged={() => void reload()} /> : state.kind === 'loading' ? (
+            <p className="mt-2 text-sm text-ink-muted">Checking refills…</p>
+          ) : null
+        }
+      />
+    </>
+  )
+}
+
+function MedicationList({
+  meds,
+  tz,
+  extra,
+}: {
+  meds: ReturnType<typeof useResource<PortalMedication[]>>
+  tz: string | null
+  extra?: (m: PortalMedication) => React.ReactNode
+}) {
+  return (
+    <>
       <AsyncPanel resource={meds} label="your medications">
         {(list) =>
           list.length === 0 ? (
@@ -78,6 +140,7 @@ export function MedicationsPage() {
                       {m.transmissionStatus ? TRANSMISSION[m.transmissionStatus] : null}
                     </p>
                   ) : null}
+                  {extra?.(m)}
                 </li>
               ))}
             </ul>

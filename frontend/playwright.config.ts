@@ -87,6 +87,8 @@ export default defineConfig({
               SHRI_API_URL: process.env.SHRI_API_URL ?? 'https://localhost:8443',
               SHRI_DEV_USER: 'fd',
               SHRI_DEV_PATIENT: portalPatient,
+              // "Request refill" on the Prescriptions page (e2e/portalRequestRefill.e2e.ts).
+              VITE_FEATURE_REFILL_REQUESTS: 'on',
               ...(process.env.SHRI_E2E_PORTAL_CLINIC ? { SHRI_DEV_PATIENT_CLINIC: process.env.SHRI_E2E_PORTAL_CLINIC } : {}),
             },
           },
