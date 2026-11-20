@@ -41,7 +41,9 @@ export function DemoSignInForm({ onSignedIn }: { onSignedIn: (session: PortalSes
       onSignedIn(await api.demoSignIn({ mobileNumber: mobile.trim(), birthDate }))
     } catch (err) {
       const p = toProblem(err)
-      if (p.status === 422) setErrors([{ fieldId: 'demo-mobile', message: COULD_NOT }])
+      // Every refusal is the one 401 (#458, #461); 422 is kept for a server that still answers it, so
+      // the two can merge in either order. Neither says which detail was wrong.
+      if (p.status === 401 || p.status === 422) setErrors([{ fieldId: 'demo-mobile', message: COULD_NOT }])
       else if (p.status === 429) setFailure('Too many attempts. Wait a few minutes, then try again.')
       else setFailure(problemCopy(p).message)
     } finally {
